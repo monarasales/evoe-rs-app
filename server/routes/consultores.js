@@ -28,6 +28,20 @@ router.post("/", requireGestor, (req, res) => {
   if (!nome || !email || !perfil || !PERFIS_ACESSO.includes(perfil)) {
     return res.status(400).json({ erro: "Nome, e-mail e perfil (Gestor/Recrutador) são obrigatórios." });
   }
+
+  // Valida o usuário de login ANTES de criar o consultor, para nunca deixar um
+  // consultor "órfão" (criado, mas sem conseguir fazer login) sem avisar o Gestor.
+  let usernameNormalizado = null;
+  if (username && senha) {
+    usernameNormalizado = String(username).trim().toLowerCase();
+    const jaExiste = db.readCollection("users").some((u) => u.username === usernameNormalizado);
+    if (jaExiste) {
+      return res
+        .status(400)
+        .json({ erro: `O usuário "${usernameNormalizado}" já está em uso por outro consultor. Escolha outro nome de usuário.` });
+    }
+  }
+
   const consultor = db.insert("consultores", {
     nome,
     email,
@@ -36,15 +50,12 @@ router.post("/", requireGestor, (req, res) => {
     ativo: ativo !== false,
   });
 
-  if (username && senha) {
-    const jaExiste = db.readCollection("users").some((u) => u.username === username.toLowerCase());
-    if (!jaExiste) {
-      db.insert("users", {
-        consultorId: consultor.id,
-        username: username.toLowerCase(),
-        passwordHash: bcrypt.hashSync(senha, 10),
-      });
-    }
+  if (usernameNormalizado) {
+    db.insert("users", {
+      consultorId: consultor.id,
+      username: usernameNormalizado,
+      passwordHash: bcrypt.hashSync(senha, 10),
+    });
   }
 
   res.status(201).json(consultor);
@@ -88,6 +99,19 @@ router.patch("/:id/credenciais", requireGestor, (req, res) => {
   }
 
   res.json({ username: usernameNormalizado });
+});
+
+// Excluir consultor (e o login associado, se existir). Só Gestor, e não pode excluir a si mesmo.
+router.delete("/:id", requireGestor, (req, res) => {
+  const consultor = db.findById("consultores", req.params.id);
+  if (!consultor) return res.status(404).json({ erro: "Consultor não encontrado." });
+  if (req.consultor && req.consultor.id === consultor.id) {
+    return res.status(400).json({ erro: "Você não pode excluir o consultor com o qual está logada agora." });
+  }
+  const userDoConsultor = db.readCollection("users").find((u) => u.consultorId === consultor.id);
+  if (userDoConsultor) db.remove("users", userDoConsultor.id);
+  db.remove("consultores", consultor.id);
+  res.json({ ok: true });
 });
 
 module.exports = router;

@@ -181,7 +181,14 @@ export async function renderConfiguracoes(root) {
               <td>${escapeHtml(c.whatsapp)}</td>
               <td>${c.username ? escapeHtml(c.username) : '<span class="sub">sem login</span>'}</td>
               <td><span class="tag ${c.ativo ? "tag-nprazo" : "tag-encerrada"}">${c.ativo ? "Ativo" : "Inativo"}</span></td>
-              ${isGestor() ? `<td><button class="btn btn-outline btn-sm btn-editar-consultor">Editar</button></td>` : ""}
+              ${
+                isGestor()
+                  ? `<td style="white-space:nowrap;">
+                      <button class="btn btn-outline btn-sm btn-editar-consultor">Editar</button>
+                      <button class="btn btn-outline btn-sm btn-excluir-consultor" style="color:#c0392b;">Excluir</button>
+                    </td>`
+                  : ""
+              }
             </tr>`
             )
             .join("")}
@@ -192,6 +199,22 @@ export async function renderConfiguracoes(root) {
         btn.addEventListener("click", (e) => {
           const id = e.target.closest("tr").dataset.id;
           abrirFormularioConsultor(consultores.find((x) => x.id === id));
+        })
+      );
+      el.querySelectorAll(".btn-excluir-consultor").forEach((btn) =>
+        btn.addEventListener("click", async (e) => {
+          const id = e.target.closest("tr").dataset.id;
+          const c = consultores.find((x) => x.id === id);
+          if (!confirm(`Excluir "${c.nome}" e o login dele(a) do sistema? Essa ação não pode ser desfeita.`)) return;
+          try {
+            await api.del(`/api/consultores/${id}`);
+            showToast("Consultor excluído.", "sucesso");
+            carregarConsultores();
+            const atualizados = await api.get("/api/consultores");
+            store.consultores = atualizados;
+          } catch (err) {
+            showToast(err.message, "erro");
+          }
         })
       );
     }
