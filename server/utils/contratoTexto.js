@@ -22,6 +22,11 @@ function porExtenso(n) {
   return EXTENSO_NUMEROS[n] ? ` (${EXTENSO_NUMEROS[n]})` : "";
 }
 
+function formatarReal(valor) {
+  const numero = Number(valor) || 0;
+  return numero.toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
+}
+
 function dataExtenso(dataStr) {
   const [ano, mes, dia] = (dataStr || "").split("-").map(Number);
   if (!ano || !mes || !dia) return "";
@@ -49,12 +54,17 @@ function montarContrato(dados) {
 
   blocos.push({ tipo: "cabecalho", numero: dados.numero });
 
+  const representacaoContratante = c.representanteNome
+    ? ` neste ato representada por seu representante legal, ${c.representanteNome}${c.representanteCpf ? `, portador do CPF nº ${c.representanteCpf}` : ""},`
+    : "";
+
   blocos.push({
     tipo: "texto",
     texto:
       `Contratante: ${c.nome || "—"}\n` +
-      `CNPJ: ${c.cnpj || "—"}\n\n` +
-      `Pelo presente Instrumento Particular de Contrato de Prestação de Serviços de Recrutamento e Seleção de Pessoas, que entre si fazem, de um lado ${c.nome || "—"}, pessoa jurídica de direito privado, inscrita no CNPJ ${c.cnpj || "—"}, com endereço em ${c.endereco || "—"}, doravante denominada CONTRATANTE e, de outro lado, EVOÉ GESTÃO E RH, de nome fantasia EVOÉ GESTÃO E RH, pessoa jurídica de direito privado, inscrita no CNPJ sob o nº ${EVOE_DADOS.cnpj}, com sede à ${EVOE_DADOS.endereco}, neste ato representada por sua representante legal abaixo assinada, doravante denominada CONTRATADA, sob as condições abaixo pactuadas:`,
+      `CNPJ: ${c.cnpj || "—"}\n` +
+      (c.representanteNome ? `Representante legal: ${c.representanteNome}${c.representanteCpf ? ` — CPF: ${c.representanteCpf}` : ""}\n` : "") +
+      `\nPelo presente Instrumento Particular de Contrato de Prestação de Serviços de Recrutamento e Seleção de Pessoas, que entre si fazem, de um lado ${c.nome || "—"}, pessoa jurídica de direito privado, inscrita no CNPJ ${c.cnpj || "—"}, com endereço em ${c.endereco || "—"},${representacaoContratante} doravante denominada CONTRATANTE e, de outro lado, EVOÉ GESTÃO E RH, de nome fantasia EVOÉ GESTÃO E RH, pessoa jurídica de direito privado, inscrita no CNPJ sob o nº ${EVOE_DADOS.cnpj}, com sede à ${EVOE_DADOS.endereco}, neste ato representada por sua representante legal abaixo assinada, doravante denominada CONTRATADA, sob as condições abaixo pactuadas:`,
   });
 
   blocos.push({
@@ -121,10 +131,15 @@ function montarContrato(dados) {
     titulo: "Cláusula 5º. DOS HONORÁRIOS.",
     texto: "Fica acordado entre as partes que os honorários a título de prestação dos serviços objeto deste contrato serão pagos da forma a seguir definida, levando sempre em consideração os parâmetros de definição aqui estabelecidos:",
     itens: [
-      {
-        letra: "I.",
-        texto: `Pela prestação dos serviços contratados, a CONTRATANTE pagará à CONTRATADA um percentual por vaga trabalhada de ${dados.percentualHonorarios}% em cima do salário. Sendo que a primeira parcela a ser paga no percentual de ${dados.parcelaInicialPct}% para iniciar o serviço e os outros ${dados.parcelaFechamentoPct}% no fechamento da vaga. Vagas que a porcentagem aplicada em cima do salário o resultado for menos que um salário-mínimo, aplicamos a cobrança da vaga o valor do salário-mínimo vigente.`,
-      },
+      dados.tipoCobranca === "ValorFixo"
+        ? {
+            letra: "I.",
+            texto: `Pela prestação dos serviços contratados, a CONTRATANTE pagará à CONTRATADA o valor fixo de ${formatarReal(dados.valorFixo)} pela vaga trabalhada, independentemente do salário do cargo. Sendo que a primeira parcela a ser paga no percentual de ${dados.parcelaInicialPct}% desse valor para iniciar o serviço e os outros ${dados.parcelaFechamentoPct}% no fechamento da vaga.`,
+          }
+        : {
+            letra: "I.",
+            texto: `Pela prestação dos serviços contratados, a CONTRATANTE pagará à CONTRATADA um percentual por vaga trabalhada de ${dados.percentualHonorarios}% em cima do salário. Sendo que a primeira parcela a ser paga no percentual de ${dados.parcelaInicialPct}% para iniciar o serviço e os outros ${dados.parcelaFechamentoPct}% no fechamento da vaga. Vagas que a porcentagem aplicada em cima do salário o resultado for menos que um salário-mínimo, aplicamos a cobrança da vaga o valor do salário-mínimo vigente.`,
+          },
     ],
     paragrafos: [
       { simbolo: "§1º", texto: "O atraso no pagamento de qualquer dos honorários estipulados nesta cláusula ocasionará a cobrança de multa correspondente a 5% (cinco unidades por cento) do valor da cobrança atrasada, além de juros de 2% (duas unidades por cento) ao mês, pro rata die, que incidirão automaticamente, independentemente de interpelação administrativa ou judicial." },
@@ -263,7 +278,13 @@ function montarContrato(dados) {
   blocos.push({
     tipo: "assinaturas",
     contratada: { nome: EVOE_DADOS.razaoSocial, cnpj: `CNPJ/MF nº ${EVOE_DADOS.cnpj}` },
-    contratante: { nome: c.nome || "—", cnpj: `CNPJ: ${c.cnpj || "—"}` },
+    contratante: {
+      nome: c.nome || "—",
+      cnpj: `CNPJ: ${c.cnpj || "—"}`,
+      representante: c.representanteNome
+        ? `Representante legal: ${c.representanteNome}${c.representanteCpf ? ` — CPF: ${c.representanteCpf}` : ""}`
+        : "",
+    },
     testemunha1: { nome: t1.nome || "", cpf: t1.cpf || "" },
     testemunha2: { nome: t2.nome || "", cpf: t2.cpf || "" },
   });

@@ -44,6 +44,8 @@ function seed() {
       contatoResponsavel: "Eduardo Nogueira (RH)",
       emailContato: "eduardo@construtoracearasul.com.br",
       whatsappContato: "(85) 98800-1234",
+      representanteLegalNome: "Eduardo Nogueira",
+      representanteLegalCpf: "123.456.789-00",
     },
     {
       id: "emp-farmacia",
@@ -54,6 +56,8 @@ function seed() {
       contatoResponsavel: "Patrícia Ramos (RH)",
       emailContato: "patricia@farmaciapopularne.com.br",
       whatsappContato: "(85) 98800-5678",
+      representanteLegalNome: "Patrícia Ramos",
+      representanteLegalCpf: "987.654.321-00",
     },
   ].map((e) => ({ ...e, createdAt: db.nowIso(), updatedAt: db.nowIso() }));
   db.writeCollection("empresas", empresas);

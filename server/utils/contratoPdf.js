@@ -107,6 +107,9 @@ function gerarContratoPdfBuffer(dadosContrato) {
 
           doc.font("Helvetica-Bold").fontSize(10).fillColor(COR_TEXTO).text(bloco.contratante.nome, { align: "center" });
           doc.font("Helvetica").fontSize(9.5).fillColor(COR_CINZA).text(bloco.contratante.cnpj, { align: "center" });
+          if (bloco.contratante.representante) {
+            doc.text(bloco.contratante.representante, { align: "center" });
+          }
           doc.moveDown(0.6);
           doc.moveTo(doc.page.width / 2 - 110, doc.y).lineTo(doc.page.width / 2 + 110, doc.y).strokeColor("#999").lineWidth(0.7).stroke();
           doc.moveDown(1.6);

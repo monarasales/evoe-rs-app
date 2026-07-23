@@ -115,6 +115,10 @@ export async function renderConfiguracoes(root) {
           <div class="form-row"><label>WhatsApp do contato</label><input type="text" id="e-whatsapp" value="${editando ? escapeHtml(empresa.whatsappContato) : ""}" /></div>
         </div>
         <div class="form-row"><label>Endereço completo</label><input type="text" id="e-endereco" placeholder="Rua, número, bairro, cidade/UF, CEP" value="${editando ? escapeHtml(empresa.endereco) : ""}" /></div>
+        <div class="form-cols">
+          <div class="form-row"><label>Representante legal (nome)</label><input type="text" id="e-rep-nome" value="${editando ? escapeHtml(empresa.representanteLegalNome) : ""}" /></div>
+          <div class="form-row"><label>CPF do representante legal</label><input type="text" id="e-rep-cpf" value="${editando ? escapeHtml(empresa.representanteLegalCpf) : ""}" /></div>
+        </div>
         <div class="sub" style="margin-top:-6px; margin-bottom:10px;">Usado para preencher automaticamente o contrato de prestação de serviços deste cliente.</div>
         <div id="empresa-form-erro" class="form-erro hidden"></div>
         <div class="modal-close-row">
@@ -134,6 +138,8 @@ export async function renderConfiguracoes(root) {
         emailContato: document.getElementById("e-email").value.trim(),
         whatsappContato: document.getElementById("e-whatsapp").value.trim(),
         endereco: document.getElementById("e-endereco").value.trim(),
+        representanteLegalNome: document.getElementById("e-rep-nome").value.trim(),
+        representanteLegalCpf: document.getElementById("e-rep-cpf").value.trim(),
       };
       try {
         if (editando) await api.patch(`/api/empresas/${empresa.id}`, payload);

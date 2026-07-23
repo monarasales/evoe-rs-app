@@ -67,7 +67,9 @@ const EVOE_DADOS = {
 // Valores padrão das cláusulas variáveis do contrato (todos editáveis por contrato
 // na tela de Contratos, conforme pedido da usuária — servem só de ponto de partida).
 const CONTRATO_PADRAO = {
+  tipoCobranca: "Percentual", // "Percentual" (sobre o salário) ou "ValorFixo" (negociado com o cliente)
   percentualHonorarios: 90,
+  valorFixo: 0,
   parcelaInicialPct: 50,
   parcelaFechamentoPct: 50,
   prazoReposicaoDias: 60,

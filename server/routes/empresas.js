@@ -14,7 +14,17 @@ router.get("/:id", (req, res) => {
 });
 
 router.post("/", (req, res) => {
-  const { nome, cnpj, endereco, segmento, contatoResponsavel, emailContato, whatsappContato } = req.body || {};
+  const {
+    nome,
+    cnpj,
+    endereco,
+    segmento,
+    contatoResponsavel,
+    emailContato,
+    whatsappContato,
+    representanteLegalNome,
+    representanteLegalCpf,
+  } = req.body || {};
   if (!nome) return res.status(400).json({ erro: "Nome da empresa é obrigatório." });
   const empresa = db.insert("empresas", {
     nome,
@@ -24,6 +34,8 @@ router.post("/", (req, res) => {
     contatoResponsavel: contatoResponsavel || "",
     emailContato: emailContato || "",
     whatsappContato: whatsappContato || "",
+    representanteLegalNome: representanteLegalNome || "",
+    representanteLegalCpf: representanteLegalCpf || "",
   });
   res.status(201).json(empresa);
 });

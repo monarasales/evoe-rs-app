@@ -3,6 +3,7 @@ const db = require("../db");
 const { requireAuth, requireGestor } = require("../middleware/auth");
 const { CONTRATO_PADRAO } = require("../utils/constants");
 const { gerarContratoPdfBuffer } = require("../utils/contratoPdf");
+const { gerarContratoDocxBuffer } = require("../utils/contratoDocx");
 const { enviarEmail, emailConfigurado } = require("../utils/mailer");
 const { getParamContratos } = require("./config");
 
@@ -31,9 +32,17 @@ function montarDadosContrato(contrato) {
   return {
     numero: contrato.numero,
     dataContrato: contrato.dataContrato,
-    cliente: { nome: empresa.nome || "", cnpj: empresa.cnpj || "", endereco: empresa.endereco || "" },
+    cliente: {
+      nome: empresa.nome || "",
+      cnpj: empresa.cnpj || "",
+      endereco: empresa.endereco || "",
+      representanteNome: empresa.representanteLegalNome || "",
+      representanteCpf: empresa.representanteLegalCpf || "",
+    },
     cargoObjeto: contrato.cargoObjeto || vaga.titulo || "",
+    tipoCobranca: contrato.tipoCobranca || "Percentual",
     percentualHonorarios: contrato.percentualHonorarios,
+    valorFixo: contrato.valorFixo || 0,
     parcelaInicialPct: contrato.parcelaInicialPct,
     parcelaFechamentoPct: contrato.parcelaFechamentoPct,
     prazoReposicaoDias: contrato.prazoReposicaoDias,
@@ -55,10 +64,13 @@ router.get("/:id", requireAuth, (req, res) => {
   res.json(comDetalhes(contrato));
 });
 
-router.post("/", requireAuth, (req, res) => {
+/** Extrai e normaliza os campos comerciais/administrativos do contrato, usados tanto na criação quanto na edição. */
+function extrairCamposEditaveis(body) {
   const {
-    vagaId,
+    cargoObjeto,
+    tipoCobranca,
     percentualHonorarios,
+    valorFixo,
     parcelaInicialPct,
     parcelaFechamentoPct,
     prazoReposicaoDias,
@@ -67,7 +79,28 @@ router.post("/", requireAuth, (req, res) => {
     dataContrato,
     testemunha1,
     testemunha2,
-  } = req.body || {};
+  } = body || {};
+
+  return {
+    cargoObjeto: cargoObjeto !== undefined ? cargoObjeto : undefined,
+    tipoCobranca: tipoCobranca === "ValorFixo" ? "ValorFixo" : "Percentual",
+    percentualHonorarios: Number(percentualHonorarios) || CONTRATO_PADRAO.percentualHonorarios,
+    valorFixo: Number(valorFixo) || 0,
+    parcelaInicialPct: Number(parcelaInicialPct) || CONTRATO_PADRAO.parcelaInicialPct,
+    parcelaFechamentoPct: Number(parcelaFechamentoPct) || CONTRATO_PADRAO.parcelaFechamentoPct,
+    prazoReposicaoDias: Number(prazoReposicaoDias) || CONTRATO_PADRAO.prazoReposicaoDias,
+    vigenciaDias: Number(vigenciaDias) || CONTRATO_PADRAO.vigenciaDias,
+    prazoRescisaoAvisoDias: Number(prazoRescisaoAvisoDias) || CONTRATO_PADRAO.prazoRescisaoAvisoDias,
+    dataContrato: dataContrato || new Date().toISOString().slice(0, 10),
+    testemunha1Nome: (testemunha1 && testemunha1.nome) || "",
+    testemunha1Cpf: (testemunha1 && testemunha1.cpf) || "",
+    testemunha2Nome: (testemunha2 && testemunha2.nome) || "",
+    testemunha2Cpf: (testemunha2 && testemunha2.cpf) || "",
+  };
+}
+
+router.post("/", requireAuth, (req, res) => {
+  const { vagaId } = req.body || {};
 
   if (!vagaId) return res.status(400).json({ erro: "Selecione a vaga para a qual o contrato será gerado." });
   const vaga = db.findById("vagas", vagaId);
@@ -81,7 +114,8 @@ router.post("/", requireAuth, (req, res) => {
   }
 
   const paramContratos = getParamContratos();
-  const ano = new Date(dataContrato || new Date()).getFullYear() || new Date().getFullYear();
+  const campos = extrairCamposEditaveis(req.body);
+  const ano = new Date(campos.dataContrato).getFullYear() || new Date().getFullYear();
   const numero = montarNumero(paramContratos.proximoNumero, ano);
 
   const contrato = db.insert("contratos", {
@@ -89,18 +123,8 @@ router.post("/", requireAuth, (req, res) => {
     vagaId,
     empresaId: vaga.empresaId,
     consultorId: vaga.consultorId || null,
-    cargoObjeto: vaga.titulo,
-    percentualHonorarios: Number(percentualHonorarios) || CONTRATO_PADRAO.percentualHonorarios,
-    parcelaInicialPct: Number(parcelaInicialPct) || CONTRATO_PADRAO.parcelaInicialPct,
-    parcelaFechamentoPct: Number(parcelaFechamentoPct) || CONTRATO_PADRAO.parcelaFechamentoPct,
-    prazoReposicaoDias: Number(prazoReposicaoDias) || CONTRATO_PADRAO.prazoReposicaoDias,
-    vigenciaDias: Number(vigenciaDias) || CONTRATO_PADRAO.vigenciaDias,
-    prazoRescisaoAvisoDias: Number(prazoRescisaoAvisoDias) || CONTRATO_PADRAO.prazoRescisaoAvisoDias,
-    dataContrato: dataContrato || new Date().toISOString().slice(0, 10),
-    testemunha1Nome: (testemunha1 && testemunha1.nome) || "",
-    testemunha1Cpf: (testemunha1 && testemunha1.cpf) || "",
-    testemunha2Nome: (testemunha2 && testemunha2.nome) || "",
-    testemunha2Cpf: (testemunha2 && testemunha2.cpf) || "",
+    ...campos,
+    cargoObjeto: campos.cargoObjeto || vaga.titulo,
     status: "Gerado",
     geradoPorId: req.consultor.id,
   });
@@ -108,6 +132,18 @@ router.post("/", requireAuth, (req, res) => {
   db.update("parametros", paramContratos.id, { proximoNumero: paramContratos.proximoNumero + 1 });
 
   res.status(201).json(comDetalhes(contrato));
+});
+
+// Editar os dados comerciais/administrativos de um contrato já existente (não muda vaga/empresa/número).
+router.patch("/:id", requireAuth, requireGestor, (req, res) => {
+  const contrato = db.findById("contratos", req.params.id);
+  if (!contrato) return res.status(404).json({ erro: "Contrato não encontrado." });
+
+  const campos = extrairCamposEditaveis(req.body);
+  if (!campos.cargoObjeto) campos.cargoObjeto = contrato.cargoObjeto;
+
+  const atualizado = db.update("contratos", contrato.id, { ...campos, status: contrato.status });
+  res.json(comDetalhes(atualizado));
 });
 
 router.delete("/:id", requireAuth, requireGestor, (req, res) => {
@@ -126,6 +162,19 @@ router.get("/:id/pdf", requireAuth, async (req, res) => {
     res.send(buffer);
   } catch (err) {
     res.status(500).json({ erro: "Falha ao gerar o PDF do contrato.", detalhe: err.message });
+  }
+});
+
+router.get("/:id/docx", requireAuth, async (req, res) => {
+  const contrato = db.findById("contratos", req.params.id);
+  if (!contrato) return res.status(404).json({ erro: "Contrato não encontrado." });
+  try {
+    const buffer = await gerarContratoDocxBuffer(montarDadosContrato(contrato));
+    res.setHeader("Content-Type", "application/vnd.openxmlformats-officedocument.wordprocessingml.document");
+    res.setHeader("Content-Disposition", `attachment; filename="Contrato-${contrato.numero.replace("/", "-")}.docx"`);
+    res.send(buffer);
+  } catch (err) {
+    res.status(500).json({ erro: "Falha ao gerar o Word do contrato.", detalhe: err.message });
   }
 });
 
