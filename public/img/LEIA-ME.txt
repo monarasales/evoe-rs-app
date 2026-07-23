@@ -1,0 +1,25 @@
+Esta pasta guarda a logo usada no sistema. Hoje ela tem uma versão recriada
+por aproximação (baseada visualmente na sua logo oficial, mas não é o
+arquivo original) — funcional, mas vale trocar pelo arquivo de verdade
+quando possível.
+
+Arquivos atuais:
+
+1. logo-evoe.svg
+   Usada na tela de login (fundo branco do card). Texto "evoé" em
+   azul-marinho.
+
+2. logo-evoe-topbar.svg
+   Usada na barra superior do sistema (fundo azul-marinho). Texto "evoé"
+   em branco.
+
+Para trocar pela logo oficial da Evoé:
+
+- Envie os dois arquivos (fundo claro e fundo escuro) para o Claude como
+  ANEXO no chat — use o ícone de clipe/"+" ao lado da caixa de mensagem e
+  escolha "carregar arquivo", em vez de colar a imagem direto na conversa.
+  Só assim é possível acessar o arquivo original.
+- Ou, se preferir fazer você mesma: salve os arquivos com exatamente estes
+  nomes (logo-evoe.png ou .svg, e logo-evoe-topbar.png ou .svg) dentro
+  desta pasta "img", substituindo os que já existem. Pode ser .png ou .svg,
+  os dois funcionam. Depois é só recarregar a página no navegador.

@@ -1,0 +1,29 @@
+# "Blueprint" do Render — deixa o serviço quase pronto sozinho quando você
+# escolhe "New + > Blueprint" no Render e aponta para este repositório,
+# em vez de preencher cada campo manualmente.
+#
+# O plano "starter" é necessário porque o disco persistente (que guarda os
+# dados de clientes/vagas/candidatos entre reinicializações) não existe no
+# plano gratuito.
+services:
+  - type: web
+    name: evoe-rs-app
+    runtime: node
+    plan: starter
+    buildCommand: npm install
+    startCommand: npm start
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: SESSION_SECRET
+        generateValue: true
+      - key: DATA_DIR
+        value: /data
+      - key: EMAIL_USER
+        sync: false
+      - key: EMAIL_PASS
+        sync: false
+    disk:
+      name: evoe-data
+      mountPath: /data
+      sizeGB: 1
