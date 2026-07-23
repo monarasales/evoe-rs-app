@@ -169,7 +169,7 @@ export async function renderConfiguracoes(root) {
     if (!el) return;
     el.innerHTML = `
       <table>
-        <thead><tr><th>Nome</th><th>Perfil</th><th>E-mail</th><th>WhatsApp</th><th>Status</th>${isGestor() ? "<th></th>" : ""}</tr></thead>
+        <thead><tr><th>Nome</th><th>Perfil</th><th>E-mail</th><th>WhatsApp</th><th>Usuário</th><th>Status</th>${isGestor() ? "<th></th>" : ""}</tr></thead>
         <tbody>
           ${consultores
             .map(
@@ -179,6 +179,7 @@ export async function renderConfiguracoes(root) {
               <td>${c.perfil}</td>
               <td>${escapeHtml(c.email)}</td>
               <td>${escapeHtml(c.whatsapp)}</td>
+              <td>${c.username ? escapeHtml(c.username) : '<span class="sub">sem login</span>'}</td>
               <td><span class="tag ${c.ativo ? "tag-nprazo" : "tag-encerrada"}">${c.ativo ? "Ativo" : "Inativo"}</span></td>
               ${isGestor() ? `<td><button class="btn btn-outline btn-sm btn-editar-consultor">Editar</button></td>` : ""}
             </tr>`
@@ -226,7 +227,12 @@ export async function renderConfiguracoes(root) {
           <div class="form-row"><label>Usuário de login</label><input type="text" id="cs-username" placeholder="ex: joana" /></div>
           <div class="form-row"><label>Senha inicial</label><input type="text" id="cs-senha" placeholder="ex: evoe123" /></div>
         </div>`
-            : '<p class="sub">Login e senha são definidos na criação do consultor.</p>'
+            : `
+        <div class="form-cols">
+          <div class="form-row"><label>Usuário de login</label><input type="text" id="cs-username" placeholder="ex: joana" value="${consultor.username ? escapeHtml(consultor.username) : ""}" /></div>
+          <div class="form-row"><label>Nova senha</label><input type="text" id="cs-senha" placeholder="deixe em branco para manter a atual" /></div>
+        </div>
+        <p class="sub">Preencha usuário e nova senha juntos só se quiser redefinir o login. Deixando a senha em branco, o login atual não muda.</p>`
         }
         <div id="consultor-form-erro" class="form-erro hidden"></div>
         <div class="modal-close-row">
@@ -245,13 +251,27 @@ export async function renderConfiguracoes(root) {
         perfil: document.getElementById("cs-perfil").value,
         ativo: document.getElementById("cs-ativo").checked,
       };
+      const username = document.getElementById("cs-username").value.trim();
+      const senha = document.getElementById("cs-senha").value;
       if (!editando) {
-        payload.username = document.getElementById("cs-username").value.trim();
-        payload.senha = document.getElementById("cs-senha").value;
+        payload.username = username;
+        payload.senha = senha;
       }
+      const erroEl = document.getElementById("consultor-form-erro");
       try {
-        if (editando) await api.patch(`/api/consultores/${consultor.id}`, payload);
-        else await api.post("/api/consultores", payload);
+        let consultorSalvo;
+        if (editando) consultorSalvo = await api.patch(`/api/consultores/${consultor.id}`, payload);
+        else consultorSalvo = await api.post("/api/consultores", payload);
+
+        if (editando && senha) {
+          if (!username) {
+            erroEl.textContent = "Informe o usuário junto com a nova senha.";
+            erroEl.classList.remove("hidden");
+            return;
+          }
+          await api.patch(`/api/consultores/${consultor.id}/credenciais`, { username, senha });
+        }
+
         showToast("Consultor salvo.", "sucesso");
         fecharModal();
         carregarConsultores();
