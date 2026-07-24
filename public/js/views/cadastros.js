@@ -241,6 +241,7 @@ export async function renderConfiguracoes(root) {
             <label>Perfil de acesso</label>
             <select id="cs-perfil">
               <option ${editando && consultor.perfil === "Recrutador" ? "selected" : ""}>Recrutador</option>
+              <option ${editando && consultor.perfil === "Supervisora" ? "selected" : ""}>Supervisora</option>
               <option ${editando && consultor.perfil === "Gestor" ? "selected" : ""}>Gestor</option>
             </select>
           </div>

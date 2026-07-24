@@ -25,7 +25,9 @@ function notify({ tipo, vagaId = null, destinatarioId, assunto, mensagem }) {
  * autonotificar). Usada em toda mudança de vaga (criação, edição, etapa). */
 function notifyMudancaVaga({ vaga, atorId, tipo, assunto, mensagem }) {
   const consultores = db.readCollection("consultores");
-  const gestoresAtivos = consultores.filter((c) => c.perfil === "Gestor" && c.ativo);
+  const gestoresAtivos = consultores.filter(
+    (c) => (c.perfil === "Gestor" || c.perfil === "Supervisora") && c.ativo
+  );
 
   const destinatarios = new Set();
   if (vaga.consultorId) destinatarios.add(vaga.consultorId);

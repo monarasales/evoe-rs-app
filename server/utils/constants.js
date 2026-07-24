@@ -36,7 +36,11 @@ const ETAPAS_CANDIDATO = [
 
 const PRIORIDADES = ["Alta", "Média", "Baixa"];
 
-const PERFIS_ACESSO = ["Gestor", "Recrutador"];
+// Supervisora: mesmo nível de acesso do Gestor para o Funil de Vagas (criar, editar,
+// mover, atribuir a qualquer consultor, colocar em Stand By, excluir) e para o Dashboard
+// (visão geral de todos os consultores) — mas sem acesso a Contratos nem a Configurações
+// (equipe/login de consultores, empresas, parâmetros do sistema), que seguem só do Gestor.
+const PERFIS_ACESSO = ["Gestor", "Supervisora", "Recrutador"];
 
 const DIAS_ALERTA_PRAZO = 3; // dias antes do prazo para disparar "Prazo Próximo do Vencimento"
 

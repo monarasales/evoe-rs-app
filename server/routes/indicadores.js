@@ -31,7 +31,8 @@ router.get("/dashboard", requireAuth, (req, res) => {
   let vagas = db.readCollection("vagas");
 
   const { consultorId } = req.query;
-  const scopeConsultorId = req.consultor.perfil === "Gestor" ? consultorId : req.consultor.id;
+  const podeVerTudo = req.consultor.perfil === "Gestor" || req.consultor.perfil === "Supervisora";
+  const scopeConsultorId = podeVerTudo ? consultorId : req.consultor.id;
   if (scopeConsultorId) vagas = vagas.filter((v) => v.consultorId === scopeConsultorId);
 
   const vagasComCampos = vagas.map((v) =>

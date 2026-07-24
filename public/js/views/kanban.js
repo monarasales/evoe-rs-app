@@ -1,7 +1,9 @@
 import { api } from "../api.js";
-import { store, isGestor, showToast, nomeEmpresa, formatarData } from "../state.js";
+import { store, podeGerenciarVagas, showToast, nomeEmpresa, nomeConsultor, formatarData } from "../state.js";
 import { abrirModal, fecharModal } from "../modal.js";
 import { navegarPara } from "../router.js";
+
+const ETAPAS_ENCERRADAS_KANBAN = ["11. Aprovado", "12. Cancelada/Encerrada"];
 
 function tagStatusPrazo(status) {
   const map = {
@@ -34,9 +36,10 @@ function cardVagaHtml(vaga) {
     <div class="vaga-card prioridade-${vaga.prioridade} ${vaga.emStandBy ? "vaga-card--standby" : ""}" draggable="true" data-id="${vaga.id}">
       <h4>${vaga.titulo}</h4>
       <div class="empresa">${nomeEmpresa(vaga.empresaId)}</div>
+      <div class="consultor-responsavel" title="Consultor responsável">🧑‍💼 ${nomeConsultor(vaga.consultorId)}</div>
       <div class="meta-row">
         ${tagStatusPrazo(vaga.statusPrazo)}
-        <span class="candidatos-count">👤 ${vaga.qtdCandidatos}</span>
+        <span class="candidatos-count" title="Candidatos nesta vaga">👤 ${vaga.qtdCandidatos}</span>
       </div>
       <div class="meta-row" style="margin-top:4px;">
         <span class="candidatos-count">Prazo: ${formatarData(vaga.prazoFechamento)}</span>
@@ -66,12 +69,15 @@ export async function renderKanban(root) {
         <button type="button" data-modo="lista">Lista</button>
       </div>
     </div>
+    ${podeGerenciarVagas() ? `
+    <div id="resumo-consultores" class="resumo-consultores"></div>` : ""}
     <div id="kanban-board" class="kanban-board"></div>
     <div id="kanban-lista" class="hidden"></div>
   `;
 
   const filtroConsultor = root.querySelector("#filtro-consultor");
-  if (!isGestor()) {
+  const resumoEl = root.querySelector("#resumo-consultores");
+  if (!podeGerenciarVagas()) {
     filtroConsultor.value = store.usuario.id;
   }
 
@@ -108,10 +114,43 @@ export async function renderKanban(root) {
   aplicarModo();
 
   async function carregar() {
-    const qs = filtroConsultor.value ? `?consultorId=${filtroConsultor.value}` : "";
-    vagasAtuais = await api.get(`/api/vagas${qs}`);
+    // Busca sempre todas as vagas (sem filtro no servidor): assim o resumo por consultor
+    // fica sempre completo, e o filtro da tela é aplicado aqui do lado do cliente.
+    const todasVagas = await api.get("/api/vagas");
+    if (resumoEl) atualizarResumoConsultores(todasVagas);
+    vagasAtuais = filtroConsultor.value ? todasVagas.filter((v) => v.consultorId === filtroConsultor.value) : todasVagas;
     montarBoard(vagasAtuais);
     if (modo === "lista") montarLista(vagasAtuais);
+  }
+
+  function atualizarResumoConsultores(todasVagas) {
+    const abertas = todasVagas.filter((v) => !ETAPAS_ENCERRADAS_KANBAN.includes(v.etapaAtual));
+    const porConsultor = {};
+    abertas.forEach((v) => {
+      porConsultor[v.consultorId] = (porConsultor[v.consultorId] || 0) + 1;
+    });
+    const recrutadores = store.consultores.filter((c) => c.perfil === "Recrutador" && c.ativo !== false);
+    if (recrutadores.length === 0) {
+      resumoEl.innerHTML = "";
+      return;
+    }
+    resumoEl.innerHTML =
+      `<span class="resumo-consultores-titulo">Vagas em aberto por consultor:</span>` +
+      recrutadores
+        .map(
+          (c) => `
+        <button type="button" class="resumo-consultor-badge${filtroConsultor.value === c.id ? " ativo" : ""}" data-id="${c.id}" title="Clique para filtrar só as vagas de ${c.nome}">
+          <span class="nome">${c.nome}</span>
+          <span class="count">${porConsultor[c.id] || 0}</span>
+        </button>`
+        )
+        .join("");
+    resumoEl.querySelectorAll(".resumo-consultor-badge").forEach((btn) =>
+      btn.addEventListener("click", () => {
+        filtroConsultor.value = filtroConsultor.value === btn.dataset.id ? "" : btn.dataset.id;
+        carregar();
+      })
+    );
   }
 
   function montarBoard(vagas) {
@@ -263,7 +302,7 @@ export async function renderKanban(root) {
 
   function abrirFormularioVaga(vaga) {
     const editando = !!vaga;
-    const podeEditar = !editando || isGestor() || vaga.consultorId === store.usuario.id;
+    const podeEditar = !editando || podeGerenciarVagas() || vaga.consultorId === store.usuario.id;
 
     abrirModal(`
       <h2>${editando ? "Editar Vaga" : "Nova Vaga"}</h2>
@@ -281,7 +320,7 @@ export async function renderKanban(root) {
           </div>
           <div class="form-row">
             <label>Consultor responsável</label>
-            <select id="v-consultor" required ${podeEditar && isGestor() ? "" : "disabled"}>
+            <select id="v-consultor" required ${podeEditar && podeGerenciarVagas() ? "" : "disabled"}>
               ${store.consultores.filter((c) => c.perfil === "Recrutador" || c.id === (vaga && vaga.consultorId)).map((c) => `<option value="${c.id}" ${editando ? (vaga.consultorId === c.id ? "selected" : "") : (c.id === store.usuario.id ? "selected" : "")}>${c.nome}</option>`).join("")}
             </select>
           </div>

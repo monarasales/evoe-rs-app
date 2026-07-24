@@ -13,6 +13,13 @@ export function isGestor() {
   return store.usuario && store.usuario.perfil === "Gestor";
 }
 
+// Supervisora tem o mesmo acesso do Gestor ao Funil de Vagas e ao Dashboard (visão de
+// todos os consultores), mas não a Contratos nem a Configurações — essas continuam
+// restritas a isGestor().
+export function podeGerenciarVagas() {
+  return store.usuario && (store.usuario.perfil === "Gestor" || store.usuario.perfil === "Supervisora");
+}
+
 export function showToast(mensagem, tipo = "") {
   const toast = document.getElementById("toast");
   toast.textContent = mensagem;

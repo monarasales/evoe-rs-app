@@ -8,7 +8,11 @@ const router = express.Router();
 
 function podeEditar(req, vaga) {
   if (!vaga) return true;
-  return req.consultor.perfil === "Gestor" || vaga.consultorId === req.consultor.id;
+  return (
+    req.consultor.perfil === "Gestor" ||
+    req.consultor.perfil === "Supervisora" ||
+    vaga.consultorId === req.consultor.id
+  );
 }
 
 router.get("/", (req, res) => {
@@ -74,7 +78,7 @@ router.patch("/:id", requireAuth, (req, res) => {
       mensagem: `O candidato ${atualizado.nome} foi aprovado pelo cliente para a vaga "${vaga.titulo}".`,
     });
     db.readCollection("consultores")
-      .filter((c) => c.perfil === "Gestor")
+      .filter((c) => c.perfil === "Gestor" || c.perfil === "Supervisora")
       .forEach((g) =>
         notify({
           tipo: "Candidato Aprovado",

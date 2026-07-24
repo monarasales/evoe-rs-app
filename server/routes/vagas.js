@@ -8,7 +8,11 @@ const { ETAPAS_VAGA, PRIORIDADES } = require("../utils/constants");
 const router = express.Router();
 
 function podeEditar(req, vaga) {
-  return req.consultor.perfil === "Gestor" || vaga.consultorId === req.consultor.id;
+  return (
+    req.consultor.perfil === "Gestor" ||
+    req.consultor.perfil === "Supervisora" ||
+    vaga.consultorId === req.consultor.id
+  );
 }
 
 function comCampos(vaga) {

@@ -243,6 +243,32 @@ input, textarea, select { font-family: inherit; }
 .kanban-board--compacto .vaga-card { width: 230px; margin-bottom: 0; }
 .kanban-board--compacto .kanban-column.drag-over { outline-offset: -3px; }
 
+/* ---------- Kanban: consultor responsável no card + resumo por consultor ---------- */
+.consultor-responsavel {
+  font-size: 11.5px; color: var(--text-muted); margin-bottom: 6px;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.resumo-consultores {
+  display: flex; align-items: center; gap: 8px; flex-wrap: wrap;
+  margin-bottom: 14px; padding: 10px 12px; background: var(--card-bg);
+  border: 1px solid var(--border); border-radius: var(--radius-sm);
+}
+.resumo-consultores-titulo {
+  font-size: 12px; font-weight: 600; color: var(--text-muted); margin-right: 2px;
+}
+.resumo-consultor-badge {
+  display: flex; align-items: center; gap: 6px; border: 1px solid var(--border);
+  background: #f6f8fa; border-radius: 20px; padding: 4px 6px 4px 12px; cursor: pointer;
+  font-size: 12px; color: var(--text); transition: background .12s, border-color .12s;
+}
+.resumo-consultor-badge:hover { background: var(--teal-light); border-color: var(--teal); }
+.resumo-consultor-badge.ativo { background: var(--navy); border-color: var(--navy); color: white; }
+.resumo-consultor-badge .count {
+  background: white; color: var(--navy); border-radius: 10px; padding: 1px 8px;
+  font-size: 11px; font-weight: 700; min-width: 18px; text-align: center;
+}
+.resumo-consultor-badge.ativo .count { background: rgba(255,255,255,.18); color: white; }
+
 /* ---------- Cards / grids genéricos ---------- */
 .card { background: var(--card-bg); border-radius: var(--radius); box-shadow: var(--shadow); border: 1px solid var(--border); padding: 18px 20px; }
 .grid-cards { display: grid; grid-template-columns: repeat(auto-fill, minmax(230px, 1fr)); gap: 14px; }

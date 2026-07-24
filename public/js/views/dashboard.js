@@ -1,5 +1,5 @@
 import { api } from "../api.js";
-import { store, isGestor } from "../state.js";
+import { store, podeGerenciarVagas } from "../state.js";
 
 function barras(obj) {
   const entradas = Object.entries(obj).filter(([, v]) => v > 0);
@@ -192,9 +192,9 @@ export async function renderDashboard(root) {
     <div class="view-header">
       <div>
         <h2>Dashboard</h2>
-        <div class="sub">${isGestor() ? "Visão geral da operação." : "Seus indicadores como consultor(a)."}</div>
+        <div class="sub">${podeGerenciarVagas() ? "Visão geral da operação." : "Seus indicadores como consultor(a)."}</div>
       </div>
-      ${isGestor() ? `
+      ${podeGerenciarVagas() ? `
         <select id="filtro-consultor-dash">
           <option value="">Todos os consultores</option>
           ${store.consultores.filter((c) => c.perfil === "Recrutador").map((c) => `<option value="${c.id}">${c.nome}</option>`).join("")}
