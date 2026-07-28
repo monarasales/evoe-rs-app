@@ -26,6 +26,12 @@ function diasAtras(n) {
   return d.toISOString().slice(0, 10);
 }
 
+function formatarTamanho(bytes) {
+  if (!bytes) return "";
+  if (bytes < 1024 * 1024) return `${Math.round(bytes / 1024)} KB`;
+  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+}
+
 export async function renderCandidatos(root, params) {
   let abaAtiva = "ativos";
   let todosCandidatos = [];
@@ -140,7 +146,7 @@ export async function renderCandidatos(root, params) {
               .map(
                 (c) => `
               <tr data-id="${c.id}">
-                <td>${escapeHtml(c.nome)}</td>
+                <td>${escapeHtml(c.nome)}${c.curriculoArquivo ? ' <span title="Tem currículo anexado">📎</span>' : ""}</td>
                 <td>${escapeHtml(vagaTitulo(c.vagaId))}</td>
                 <td>${escapeHtml(c.etapaCandidato)}</td>
                 <td>${escapeHtml(c.telefone) || "—"}</td>
@@ -162,7 +168,7 @@ export async function renderCandidatos(root, params) {
               .map(
                 (c) => `
               <tr data-id="${c.id}">
-                <td>${escapeHtml(c.nome)}</td>
+                <td>${escapeHtml(c.nome)}${c.curriculoArquivo ? ' <span title="Tem currículo anexado">📎</span>' : ""}</td>
                 <td>${escapeHtml(vagaTitulo(c.vagaId))}</td>
                 <td>${escapeHtml(c.etapaCandidato)}</td>
                 <td>${c.jusbrasilOk ? "✅" : "—"}</td>
@@ -408,6 +414,12 @@ export async function renderCandidatos(root, params) {
         <div class="form-row">
           <label>Parecer comportamental</label>
           <textarea id="c-parecer">${escapeHtml(candidato.parecerComportamental || "")}</textarea>
+        </div>
+        <div class="form-row">
+          <label>Currículo</label>
+          <div id="curriculo-status"></div>
+          <input type="file" id="c-curriculo-input" accept=".pdf,.doc,.docx" style="margin-top:8px;" />
+          <div class="sub" style="margin-top:4px;">Formatos aceitos: PDF, DOC ou DOCX (até 10MB). Selecionar um novo arquivo substitui o anterior.</div>
         </div>`
             : ""
         }
@@ -430,6 +442,55 @@ export async function renderCandidatos(root, params) {
           fecharModal();
           showToast("Candidato excluído.", "sucesso");
           carregar();
+        } catch (err) {
+          showToast(err.message, "erro");
+        }
+      });
+
+      renderizarStatusCurriculo();
+      const inputCurriculo = document.getElementById("c-curriculo-input");
+      inputCurriculo.addEventListener("change", async () => {
+        const arquivo = inputCurriculo.files[0];
+        if (!arquivo) return;
+        try {
+          const atualizado = await api.upload(`/api/candidatos/${candidato.id}/curriculo`, arquivo);
+          candidato.curriculoArquivo = atualizado.curriculoArquivo;
+          candidato.curriculoNomeOriginal = atualizado.curriculoNomeOriginal;
+          candidato.curriculoTamanho = atualizado.curriculoTamanho;
+          renderizarStatusCurriculo();
+          showToast("Currículo anexado.", "sucesso");
+          const idxCandidato = todosCandidatos.findIndex((c) => c.id === candidato.id);
+          if (idxCandidato >= 0) todosCandidatos[idxCandidato] = { ...todosCandidatos[idxCandidato], ...atualizado };
+        } catch (err) {
+          showToast(err.message, "erro");
+        } finally {
+          inputCurriculo.value = "";
+        }
+      });
+    }
+
+    function renderizarStatusCurriculo() {
+      const statusEl = document.getElementById("curriculo-status");
+      if (!statusEl) return;
+      if (!candidato.curriculoArquivo) {
+        statusEl.innerHTML = '<span class="sub">Nenhum currículo anexado ainda.</span>';
+        return;
+      }
+      statusEl.innerHTML = `
+        <a href="/api/candidatos/${candidato.id}/curriculo" target="_blank" class="btn btn-outline btn-sm">📎 Baixar ${escapeHtml(candidato.curriculoNomeOriginal || "currículo")}${candidato.curriculoTamanho ? ` (${formatarTamanho(candidato.curriculoTamanho)})` : ""}</a>
+        <button type="button" id="btn-remover-curriculo" class="btn btn-outline btn-sm" style="margin-left:8px;">Remover</button>
+      `;
+      document.getElementById("btn-remover-curriculo").addEventListener("click", async () => {
+        if (!confirm("Remover o currículo anexado a este candidato?")) return;
+        try {
+          const atualizado = await api.del(`/api/candidatos/${candidato.id}/curriculo`);
+          candidato.curriculoArquivo = null;
+          candidato.curriculoNomeOriginal = null;
+          candidato.curriculoTamanho = null;
+          renderizarStatusCurriculo();
+          showToast("Currículo removido.", "sucesso");
+          const idxCandidato = todosCandidatos.findIndex((c) => c.id === candidato.id);
+          if (idxCandidato >= 0) todosCandidatos[idxCandidato] = { ...todosCandidatos[idxCandidato], ...atualizado };
         } catch (err) {
           showToast(err.message, "erro");
         }

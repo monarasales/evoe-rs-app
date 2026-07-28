@@ -1,10 +1,19 @@
 const express = require("express");
+const fs = require("fs");
+const path = require("path");
 const db = require("../db");
 const { requireAuth } = require("../middleware/auth");
 const { notify } = require("../utils/notify");
 const { ETAPAS_CANDIDATO } = require("../utils/constants");
+const { uploadCurriculo, UPLOADS_DIR } = require("../utils/uploads");
 
 const router = express.Router();
+
+function removerArquivoCurriculo(candidato) {
+  if (!candidato || !candidato.curriculoArquivo) return;
+  const filePath = path.join(UPLOADS_DIR, candidato.curriculoArquivo);
+  if (fs.existsSync(filePath)) fs.unlinkSync(filePath);
+}
 
 function podeEditar(req, vaga) {
   if (!vaga) return true;
@@ -98,8 +107,67 @@ router.delete("/:id", requireAuth, (req, res) => {
   if (!candidato) return res.status(404).json({ erro: "Candidato não encontrado." });
   const vaga = db.findById("vagas", candidato.vagaId);
   if (!podeEditar(req, vaga)) return res.status(403).json({ erro: "Você só pode excluir candidatos de vagas atribuídas a você." });
+  removerArquivoCurriculo(candidato);
   db.remove("candidatos", req.params.id);
   res.json({ ok: true });
+});
+
+// --- Currículo (PDF/DOC/DOCX) -------------------------------------------------------
+// Guardado em disco (DATA_DIR/uploads/curriculos), fora do Git — só o nome do arquivo
+// e o nome original enviado pela usuária ficam no registro do candidato.
+router.post("/:id/curriculo", requireAuth, (req, res, next) => {
+  uploadCurriculo.single("arquivo")(req, res, (err) => {
+    if (err) return res.status(400).json({ erro: err.message || "Falha ao enviar o arquivo." });
+
+    const candidato = db.findById("candidatos", req.params.id);
+    if (!candidato) return res.status(404).json({ erro: "Candidato não encontrado." });
+    const vaga = db.findById("vagas", candidato.vagaId);
+    if (!podeEditar(req, vaga)) {
+      if (req.file) fs.unlinkSync(req.file.path);
+      return res.status(403).json({ erro: "Você só pode anexar currículos em candidatos de vagas atribuídas a você." });
+    }
+    if (!req.file) return res.status(400).json({ erro: "Nenhum arquivo enviado." });
+
+    // Substitui o currículo anterior, se houver, para não acumular arquivos órfãos.
+    removerArquivoCurriculo(candidato);
+
+    const atualizado = db.update("candidatos", candidato.id, {
+      curriculoArquivo: req.file.filename,
+      curriculoNomeOriginal: req.file.originalname,
+      curriculoTamanho: req.file.size,
+      curriculoUploadedAt: db.nowIso(),
+    });
+    res.json(atualizado);
+  });
+});
+
+router.get("/:id/curriculo", requireAuth, (req, res) => {
+  const candidato = db.findById("candidatos", req.params.id);
+  if (!candidato || !candidato.curriculoArquivo) {
+    return res.status(404).json({ erro: "Este candidato ainda não tem currículo anexado." });
+  }
+  const filePath = path.join(UPLOADS_DIR, candidato.curriculoArquivo);
+  if (!fs.existsSync(filePath)) {
+    return res.status(404).json({ erro: "O arquivo não foi encontrado no servidor." });
+  }
+  res.download(filePath, candidato.curriculoNomeOriginal || "curriculo.pdf");
+});
+
+router.delete("/:id/curriculo", requireAuth, (req, res) => {
+  const candidato = db.findById("candidatos", req.params.id);
+  if (!candidato) return res.status(404).json({ erro: "Candidato não encontrado." });
+  const vaga = db.findById("vagas", candidato.vagaId);
+  if (!podeEditar(req, vaga)) {
+    return res.status(403).json({ erro: "Você só pode remover currículos de candidatos de vagas atribuídas a você." });
+  }
+  removerArquivoCurriculo(candidato);
+  const atualizado = db.update("candidatos", candidato.id, {
+    curriculoArquivo: null,
+    curriculoNomeOriginal: null,
+    curriculoTamanho: null,
+    curriculoUploadedAt: null,
+  });
+  res.json(atualizado);
 });
 
 module.exports = router;

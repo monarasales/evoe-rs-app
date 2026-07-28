@@ -107,4 +107,5 @@ module.exports = {
   remove,
   newId,
   nowIso,
+  DATA_DIR,
 };
