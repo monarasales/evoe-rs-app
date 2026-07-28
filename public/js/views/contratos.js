@@ -17,7 +17,24 @@ const PADRAO = {
   prazoReposicaoDias: 60,
   vigenciaDias: 90,
   prazoRescisaoAvisoDias: 30,
+  dataVencimentoParcela1: "",
+  dataVencimentoParcela2: "",
 };
+
+function somarDias(dataStr, dias) {
+  if (!dataStr) return "";
+  const d = new Date(dataStr + "T00:00:00");
+  d.setDate(d.getDate() + dias);
+  return d.toISOString().slice(0, 10);
+}
+
+function vencimentoVencido(dataStr) {
+  return dataStr < new Date().toISOString().slice(0, 10);
+}
+
+function formatarReal(valor) {
+  return (Number(valor) || 0).toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
+}
 
 export async function renderContratos(root) {
   root.innerHTML = `
@@ -45,7 +62,7 @@ export async function renderContratos(root) {
     el.innerHTML = `
       <table>
         <thead>
-          <tr><th>Nº</th><th>Cliente</th><th>Vaga</th><th>Data</th><th>Status</th><th></th></tr>
+          <tr><th>Nº</th><th>Cliente</th><th>Vaga</th><th>Data</th><th>Valor Total</th><th>Vencto. 2ª parcela</th><th>Status</th><th></th></tr>
         </thead>
         <tbody>
           ${contratos
@@ -56,6 +73,8 @@ export async function renderContratos(root) {
               <td>${escapeHtml(c.empresaNome)}</td>
               <td>${escapeHtml(c.vagaTitulo)}</td>
               <td>${formatarData(c.dataContrato)}</td>
+              <td>${c.salarioFaltando ? '<span class="sub" title="Cadastre o salário do cargo na vaga para calcular">sem salário</span>' : formatarReal(c.valorTotalContrato)}</td>
+              <td>${c.dataVencimentoParcela2 ? `<span class="tag ${vencimentoVencido(c.dataVencimentoParcela2) ? "tag-atrasada" : "tag-nprazo"}">${formatarData(c.dataVencimentoParcela2)}</span>` : "—"}</td>
               <td><span class="tag ${c.status === "Gerado" ? "tag-nprazo" : "tag-standby"}">${escapeHtml(c.status)}</span></td>
               <td class="acoes-contrato">
                 <button class="btn btn-outline btn-sm btn-pdf" title="Baixar PDF">📄 PDF</button>
@@ -214,6 +233,11 @@ export async function renderContratos(root) {
           <div class="form-row"><label>1ª parcela — início do serviço (%)</label><input type="number" id="ct-parcela1" min="0" max="100" value="${editando ? c.parcelaInicialPct : PADRAO.parcelaInicialPct}" /></div>
           <div class="form-row"><label>2ª parcela — fechamento da vaga (%)</label><input type="number" id="ct-parcela2" min="0" max="100" value="${editando ? c.parcelaFechamentoPct : PADRAO.parcelaFechamentoPct}" /></div>
         </div>
+        <div class="form-cols">
+          <div class="form-row"><label>Vencimento da 1ª parcela</label><input type="date" id="ct-venc-p1" value="${editando ? (c.dataVencimentoParcela1 || "") : ""}" /></div>
+          <div class="form-row"><label>Vencimento da 2ª parcela</label><input type="date" id="ct-venc-p2" value="${editando ? (c.dataVencimentoParcela2 || "") : ""}" /></div>
+        </div>
+        <div class="sub" style="margin-top:-6px;">O vencimento da 2ª parcela é preenchido automaticamente 30 dias após a 1ª — você recebe um lembrete para cobrar o cliente quando essa data se aproximar. Pode ajustar a mão se combinar outro prazo com o cliente.</div>
         <div class="form-row"><label>Aviso prévio para rescisão sem multa (dias)</label><input type="number" id="ct-aviso" min="1" value="${editando ? c.prazoRescisaoAvisoDias : PADRAO.prazoRescisaoAvisoDias}" /></div>
 
         <div class="section-title" style="margin-top:6px;">Testemunhas</div>
@@ -248,6 +272,18 @@ export async function renderContratos(root) {
     radiosTipo.forEach((r) => r.addEventListener("change", atualizarVisibilidadeCobranca));
     atualizarVisibilidadeCobranca();
 
+    // Vencimento da 2ª parcela = vencimento da 1ª + 30 dias, recalculado sempre que a
+    // 1ª mudar — a menos que a usuária já tenha editado a 2ª data a mão, aí respeitamos
+    // a escolha dela e paramos de sobrescrever.
+    const inputVencP1 = document.getElementById("ct-venc-p1");
+    const inputVencP2 = document.getElementById("ct-venc-p2");
+    let venc2EditadoManualmente = editando && !!c.dataVencimentoParcela2 && c.dataVencimentoParcela2 !== somarDias(c.dataVencimentoParcela1, 30);
+    inputVencP2.addEventListener("input", () => { venc2EditadoManualmente = true; });
+    inputVencP1.addEventListener("change", () => {
+      if (venc2EditadoManualmente) return;
+      inputVencP2.value = somarDias(inputVencP1.value, 30);
+    });
+
     const selectVaga = document.getElementById("ct-vaga");
     if (selectVaga) {
       const avisoEmpresa = document.getElementById("ct-aviso-empresa");
@@ -278,6 +314,8 @@ export async function renderContratos(root) {
         prazoReposicaoDias: document.getElementById("ct-reposicao").value,
         parcelaInicialPct: document.getElementById("ct-parcela1").value,
         parcelaFechamentoPct: document.getElementById("ct-parcela2").value,
+        dataVencimentoParcela1: document.getElementById("ct-venc-p1").value,
+        dataVencimentoParcela2: document.getElementById("ct-venc-p2").value,
         prazoRescisaoAvisoDias: document.getElementById("ct-aviso").value,
         testemunha1: { nome: document.getElementById("ct-t1-nome").value.trim(), cpf: document.getElementById("ct-t1-cpf").value.trim() },
         testemunha2: { nome: document.getElementById("ct-t2-nome").value.trim(), cpf: document.getElementById("ct-t2-cpf").value.trim() },

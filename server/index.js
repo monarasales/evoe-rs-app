@@ -6,6 +6,7 @@ const path = require("path");
 const { seed } = require("./seed");
 const { attachUser } = require("./middleware/auth");
 const { startDeadlineChecker } = require("./utils/deadlineChecker");
+const { startContratoChecker } = require("./utils/contratoChecker");
 
 // Primeira execução: se não houver dados ainda, cria o cenário de exemplo
 // (mesmos dados usados na versão Airtable) para o sistema já nascer navegável.
@@ -48,6 +49,8 @@ app.use("/api/notificacoes", require("./routes/notificacoes"));
 app.use("/api/indicadores", require("./routes/indicadores"));
 app.use("/api/config", require("./routes/config"));
 app.use("/api/contratos", require("./routes/contratos"));
+app.use("/api/financeiro", require("./routes/financeiro"));
+app.use("/api/prospects", require("./routes/prospects"));
 
 app.use(express.static(path.join(__dirname, "..", "public")));
 
@@ -69,6 +72,7 @@ app.use((err, req, res, next) => {
 });
 
 startDeadlineChecker(60);
+startContratoChecker(60);
 
 app.listen(PORT, () => {
   console.log(`\nEvoé Gestão e RH — Sistema de R&S rodando em http://localhost:${PORT}\n`);

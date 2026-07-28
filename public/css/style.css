@@ -209,6 +209,13 @@ input, textarea, select { font-family: inherit; }
 .tag-atraso { background: var(--danger-bg); color: var(--danger); }
 .tag-encerrada { background: #eceff1; color: var(--text-muted); }
 .tag-standby { background: var(--purple-light); color: var(--purple); }
+
+/* ---------- CRM: etapas do Prospect ---------- */
+.tag-prospect-novo { background: var(--purple-light); color: var(--purple); }
+.tag-prospect-contato { background: var(--teal-light); color: var(--teal); }
+.tag-prospect-proposta { background: var(--warning-bg); color: var(--warning); }
+.tag-prospect-fechado { background: var(--success-bg); color: var(--success); }
+.tag-prospect-perdido { background: var(--danger-bg); color: var(--danger); }
 .candidatos-count { color: var(--text-muted); }
 .vaga-card.vaga-card--standby { opacity: .72; border-left-style: dashed; }
 
@@ -312,6 +319,11 @@ table tr:hover td { background: #fafbfc; }
 .kpi-card.kpi-destaque.kpi-destaque-ok .kpi-sub { color: var(--success); font-weight: 600; }
 .kpi-card.kpi-destaque.kpi-destaque-alerta { border-top-color: var(--danger); }
 .kpi-card.kpi-destaque.kpi-destaque-alerta .kpi-sub { color: var(--danger); font-weight: 600; }
+
+/* ---------- Indicadores clicáveis do Dashboard (abrem lista + legenda em modal) ---------- */
+.resumo-card.clicavel, .kpi-card.clicavel { cursor: pointer; }
+.resumo-card.clicavel:hover, .kpi-card.clicavel:hover { border-color: var(--teal); }
+.resumo-card.clicavel:active, .kpi-card.clicavel:active { transform: translateY(0); }
 
 .charts-row { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
 @media (max-width: 900px) { .charts-row { grid-template-columns: 1fr; } }

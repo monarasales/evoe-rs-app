@@ -335,12 +335,19 @@ export async function renderKanban(root) {
             <input type="date" id="v-prazo" required value="${editando ? vaga.prazoFechamento : ""}" ${podeEditar ? "" : "disabled"} />
           </div>
         </div>
-        <div class="form-row">
-          <label>Prioridade</label>
-          <select id="v-prioridade" ${podeEditar ? "" : "disabled"}>
-            ${["Alta", "Média", "Baixa"].map((p) => `<option ${editando && vaga.prioridade === p ? "selected" : (!editando && p === "Média" ? "selected" : "")}>${p}</option>`).join("")}
-          </select>
+        <div class="form-cols">
+          <div class="form-row">
+            <label>Prioridade</label>
+            <select id="v-prioridade" ${podeEditar ? "" : "disabled"}>
+              ${["Alta", "Média", "Baixa"].map((p) => `<option ${editando && vaga.prioridade === p ? "selected" : (!editando && p === "Média" ? "selected" : "")}>${p}</option>`).join("")}
+            </select>
+          </div>
+          <div class="form-row">
+            <label>Salário do cargo (R$)</label>
+            <input type="number" id="v-salario" min="0" step="0.01" value="${editando ? (vaga.salario || "") : ""}" ${podeEditar ? "" : "disabled"} />
+          </div>
         </div>
+        <div class="sub" style="margin-top:-6px;">Usado para calcular o valor do contrato quando os honorários forem cobrados em % sobre o salário (tela Financeiro).</div>
         <div class="form-row">
           <label>Perfil da vaga (requisitos e cultura)</label>
           <textarea id="v-perfil" ${podeEditar ? "" : "disabled"}>${editando ? escapeHtml(vaga.perfilVaga || "") : ""}</textarea>
@@ -415,6 +422,7 @@ export async function renderKanban(root) {
         dataAbertura: document.getElementById("v-abertura").value,
         prazoFechamento: document.getElementById("v-prazo").value,
         prioridade: document.getElementById("v-prioridade").value,
+        salario: document.getElementById("v-salario").value,
         perfilVaga: document.getElementById("v-perfil").value,
         observacoes: document.getElementById("v-obs").value,
       };

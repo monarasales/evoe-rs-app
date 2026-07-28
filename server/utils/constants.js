@@ -36,6 +36,16 @@ const ETAPAS_CANDIDATO = [
 
 const PRIORIDADES = ["Alta", "Média", "Baixa"];
 
+// CRM — Prospects: quem entra em contato querendo cotar serviço, ainda sem ser cliente.
+const SERVICOS_PROSPECT = [
+  "Seleção e Recrutamento",
+  "Implantação de RH",
+  "Implantação de Cultura",
+  "Pesquisa de Clima",
+  "Outro",
+];
+const ETAPAS_PROSPECT = ["Novo", "Em Contato", "Proposta Enviada", "Fechado", "Perdido"];
+
 // Supervisora: mesmo nível de acesso do Gestor para o Funil de Vagas (criar, editar,
 // mover, atribuir a qualquer consultor, colocar em Stand By, excluir) e para o Dashboard
 // (visão geral de todos os consultores) — mas sem acesso a Contratos nem a Configurações
@@ -43,6 +53,11 @@ const PRIORIDADES = ["Alta", "Média", "Baixa"];
 const PERFIS_ACESSO = ["Gestor", "Supervisora", "Recrutador"];
 
 const DIAS_ALERTA_PRAZO = 3; // dias antes do prazo para disparar "Prazo Próximo do Vencimento"
+
+// Contratos: a 2ª parcela dos honorários vence automaticamente N dias após a 1ª,
+// e o Gestor recebe um lembrete de cobrança quando essa data está próxima/chegou.
+const DIAS_PARCELA2_APOS_PARCELA1 = 30;
+const DIAS_ALERTA_PARCELA_CONTRATO = 3;
 
 // SLA de tempo de fechamento de vaga: até SLA_DIAS_IDEAL dias = melhor faixa (peso 2),
 // até SLA_DIAS_LIMITE dias = ainda dentro do combinado (peso 1), acima disso = fora do SLA (peso 0).
@@ -87,10 +102,14 @@ module.exports = {
   ETAPAS_CANDIDATO,
   PRIORIDADES,
   PERFIS_ACESSO,
+  SERVICOS_PROSPECT,
+  ETAPAS_PROSPECT,
   DIAS_ALERTA_PRAZO,
   SLA_DIAS_IDEAL,
   SLA_DIAS_LIMITE,
   DIAS_ALERTA_SLA_PROXIMO,
+  DIAS_PARCELA2_APOS_PARCELA1,
+  DIAS_ALERTA_PARCELA_CONTRATO,
   META_VAGAS_FECHADAS_MES,
   EVOE_DADOS,
   CONTRATO_PADRAO,

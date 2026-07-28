@@ -1,5 +1,86 @@
 import { api } from "../api.js";
-import { store, podeGerenciarVagas } from "../state.js";
+import { store, podeGerenciarVagas, nomeEmpresa, nomeConsultor, formatarData } from "../state.js";
+import { abrirModal, fecharModal } from "../modal.js";
+
+function escapeHtml(str) {
+  const div = document.createElement("div");
+  div.textContent = str || "";
+  return div.innerHTML;
+}
+
+const ETAPAS_ENCERRADAS_DASH = ["11. Aprovado", "12. Cancelada/Encerrada"];
+const ETAPA_BACKLOG_DASH = "1. Backlog";
+
+// Reproduz a mesma classificação usada pelo backend (server/routes/indicadores.js) para
+// poder listar, ao clicar em cada indicador, exatamente as vagas que compõem aquele número.
+function categorizarVagas(vagas) {
+  const abertas = vagas.filter((v) => !ETAPAS_ENCERRADAS_DASH.includes(v.etapaAtual));
+  const standby = abertas.filter((v) => v.emStandBy);
+  const ativas = abertas.filter((v) => !v.emStandBy);
+  const backlog = ativas.filter((v) => v.etapaAtual === ETAPA_BACKLOG_DASH);
+  const andamento = ativas.filter((v) => v.etapaAtual !== ETAPA_BACKLOG_DASH);
+  const atraso = ativas.filter((v) => v.statusPrazo === "Atrasada");
+  const fechadas = vagas.filter((v) => v.etapaAtual === "11. Aprovado");
+  return { abertas, standby, backlog, andamento, atraso, fechadas };
+}
+
+// Pequena legenda explicativa de cada indicador — para não confundir "Aberto" com
+// "Andamento", nem o Tempo Médio em Aberto com o SLA de Fechamento (que só entra em
+// jogo depois que a vaga já foi fechada).
+const LEGENDAS = {
+  aberto: "Todas as vagas que ainda não foram fechadas (Aprovado) nem canceladas/encerradas. É a soma de Backlog + Andamento + Stand By + Atrasadas — tudo que ainda está \"vivo\" no funil.",
+  andamento: "Vagas abertas que já saíram do Backlog — alguém já está atuando ativamente nelas — e que não estão em Stand By.",
+  backlog: "Vagas abertas que ainda estão na 1ª etapa do funil: já foram cadastradas, mas ainda não começaram a ser trabalhadas.",
+  standby: "Vagas pausadas por motivo do cliente ou do candidato (ex: aguardando decisão interna). O prazo e o SLA ficam congelados enquanto a vaga estiver aqui — não contam como Backlog nem Andamento.",
+  atraso: "Vagas abertas (fora do Stand By) cujo prazo combinado com o cliente já passou da data.",
+  tempoAberto: "Média de dias que as vagas abertas (Backlog + Andamento + Stand By + Atrasadas) já estão em aberto até hoje. Não confunda com o SLA de Fechamento, mais abaixo: aquele mede só as vagas que já foram fechadas.",
+  fechadas: "Vagas que chegaram à etapa \"11. Aprovado\" — processo concluído com sucesso. O SLA de Fechamento (mais abaixo na página) mede quanto tempo cada uma levou, do início ao fim.",
+};
+
+function tagStatusDash(status) {
+  const map = {
+    "No Prazo": "tag-nprazo",
+    Atrasada: "tag-atrasada",
+    "Concluída no Prazo": "tag-concluida",
+    "Concluída com Atraso": "tag-atraso",
+    Encerrada: "tag-encerrada",
+    "Em Stand By": "tag-standby",
+  };
+  return `<span class="tag ${map[status] || ""}">${status || "—"}</span>`;
+}
+
+function abrirListaVagas(titulo, legenda, lista) {
+  abrirModal(`
+    <h2>${escapeHtml(titulo)}</h2>
+    <p class="sub">${legenda}</p>
+    ${
+      lista.length === 0
+        ? '<div class="empty-state">Nenhuma vaga nessa situação no momento.</div>'
+        : `<table>
+            <thead><tr><th>Vaga</th><th>Empresa</th><th>Consultor</th><th>Etapa</th><th>Prazo</th><th>Status</th></tr></thead>
+            <tbody>
+              ${lista
+                .map(
+                  (v) => `
+                <tr>
+                  <td>${escapeHtml(v.titulo)}</td>
+                  <td>${escapeHtml(nomeEmpresa(v.empresaId))}</td>
+                  <td>${escapeHtml(nomeConsultor(v.consultorId))}</td>
+                  <td>${escapeHtml(v.etapaAtual)}</td>
+                  <td>${formatarData(v.prazoFechamento)}</td>
+                  <td>${tagStatusDash(v.statusPrazo)}</td>
+                </tr>`
+                )
+                .join("")}
+            </tbody>
+          </table>`
+    }
+    <div class="modal-close-row">
+      <button type="button" id="btn-fechar-lista-vagas" class="btn btn-outline">Fechar</button>
+    </div>
+  `);
+  document.getElementById("btn-fechar-lista-vagas").addEventListener("click", fecharModal);
+}
 
 function barras(obj) {
   const entradas = Object.entries(obj).filter(([, v]) => v > 0);
@@ -239,8 +320,11 @@ export async function renderDashboard(root) {
 
   async function carregar() {
     const filtro = document.getElementById("filtro-consultor-dash");
-    const qs = filtro && filtro.value ? `?consultorId=${filtro.value}` : "";
+    const consultorEscopo = filtro && filtro.value ? filtro.value : (!podeGerenciarVagas() ? store.usuario.id : "");
+    const qs = consultorEscopo ? `?consultorId=${consultorEscopo}` : "";
     const dados = await api.get(`/api/indicadores/dashboard${qs}`);
+    const vagasEscopo = await api.get(`/api/vagas${qs}`);
+    const categorias = categorizarVagas(vagasEscopo);
 
     const slaLimite = dados.slaConfig.diasLimite;
     const dentroDoSla = dados.tempoMedioFechamentoDias > 0 && dados.tempoMedioFechamentoDias <= slaLimite;
@@ -248,42 +332,42 @@ export async function renderDashboard(root) {
     const resumo = dados.resumoOperacional || {};
 
     document.getElementById("resumo-row").innerHTML = `
-      <div class="resumo-card resumo-aberto">
+      <div class="resumo-card resumo-aberto clicavel" data-indicador="aberto" title="Clique para ver a lista">
         <div class="resumo-icone">🗂️</div>
         <div>
           <div class="resumo-label">Vagas em Aberto</div>
           <div class="resumo-value">${resumo.vagasEmAberto ?? 0}</div>
         </div>
       </div>
-      <div class="resumo-card resumo-andamento">
+      <div class="resumo-card resumo-andamento clicavel" data-indicador="andamento" title="Clique para ver a lista">
         <div class="resumo-icone">🚀</div>
         <div>
           <div class="resumo-label">Vagas em Andamento</div>
           <div class="resumo-value">${resumo.vagasEmAndamento ?? 0}</div>
         </div>
       </div>
-      <div class="resumo-card resumo-backlog">
+      <div class="resumo-card resumo-backlog clicavel" data-indicador="backlog" title="Clique para ver a lista">
         <div class="resumo-icone">🗃️</div>
         <div>
           <div class="resumo-label">Vagas no Backlog</div>
           <div class="resumo-value">${resumo.vagasNoBacklog ?? 0}</div>
         </div>
       </div>
-      <div class="resumo-card resumo-standby">
+      <div class="resumo-card resumo-standby clicavel" data-indicador="standby" title="Clique para ver a lista">
         <div class="resumo-icone">⏸️</div>
         <div>
           <div class="resumo-label">Vagas em Stand By</div>
           <div class="resumo-value">${resumo.vagasEmStandBy ?? 0}</div>
         </div>
       </div>
-      <div class="resumo-card resumo-atraso">
+      <div class="resumo-card resumo-atraso clicavel" data-indicador="atraso" title="Clique para ver a lista">
         <div class="resumo-icone">⚠️</div>
         <div>
           <div class="resumo-label">Vagas em Atraso</div>
           <div class="resumo-value">${resumo.vagasEmAtraso ?? 0}</div>
         </div>
       </div>
-      <div class="resumo-card resumo-andamento">
+      <div class="resumo-card resumo-andamento clicavel" data-indicador="tempoAberto" title="Clique para ver a lista">
         <div class="resumo-icone">⏱️</div>
         <div>
           <div class="resumo-label">Tempo Médio em Aberto</div>
@@ -293,7 +377,7 @@ export async function renderDashboard(root) {
     `;
 
     document.getElementById("kpi-row-fechamento").innerHTML = `
-      <div class="kpi-card kpi-destaque">
+      <div class="kpi-card kpi-destaque clicavel" data-indicador="fechadas" title="Clique para ver a lista">
         <div class="kpi-label">Total de Vagas Fechadas</div>
         <div class="kpi-value">${dados.totalVagasFechadas}</div>
       </div>
@@ -307,6 +391,31 @@ export async function renderDashboard(root) {
         <div class="kpi-sub">Nosso SLA: ${slaLimite} dias${temFechamento ? (dentroDoSla ? " · dentro do SLA" : " · acima do SLA") : ""}</div>
       </div>
     `;
+
+    const TITULOS_INDICADOR = {
+      aberto: "Vagas em Aberto",
+      andamento: "Vagas em Andamento",
+      backlog: "Vagas no Backlog",
+      standby: "Vagas em Stand By",
+      atraso: "Vagas em Atraso",
+      tempoAberto: "Vagas em Aberto (base do Tempo Médio)",
+      fechadas: "Vagas Fechadas",
+    };
+    const LISTAS_INDICADOR = {
+      aberto: categorias.abertas,
+      andamento: categorias.andamento,
+      backlog: categorias.backlog,
+      standby: categorias.standby,
+      atraso: categorias.atraso,
+      tempoAberto: categorias.abertas,
+      fechadas: categorias.fechadas,
+    };
+    document.querySelectorAll(".clicavel[data-indicador]").forEach((card) => {
+      card.addEventListener("click", () => {
+        const chave = card.dataset.indicador;
+        abrirListaVagas(TITULOS_INDICADOR[chave], LEGENDAS[chave], LISTAS_INDICADOR[chave]);
+      });
+    });
 
     document.getElementById("kpi-row-carteira").innerHTML = `
       <div class="kpi-card"><div class="kpi-label">Total de Vagas (histórico)</div><div class="kpi-value">${dados.totalVagas}</div></div>

@@ -72,6 +72,7 @@ function seed() {
       dataAbertura: "2026-07-10",
       prazoFechamento: "2026-08-10",
       prioridade: "Alta",
+      salario: 4500,
       etapaAtual: "4. Triagem",
       dataEntradaEtapa: "2026-07-15",
       dataFechamento: null,
@@ -88,6 +89,7 @@ function seed() {
       dataAbertura: "2026-07-01",
       prazoFechamento: "2026-07-25",
       prioridade: "Alta",
+      salario: 6000,
       etapaAtual: "9. Agendamento Cliente",
       dataEntradaEtapa: "2026-07-18",
       dataFechamento: null,
@@ -208,6 +210,40 @@ function seed() {
     { id: "ind-2", periodo: "Julho/2026", consultorId: "cons-camila", vagasRecebidas: 1, vagasFechadasNoPrazo: 0, vagasFechadasComAtraso: 0, vagasEmAberto: 1, tempoMedioFechamentoDias: 0 },
   ].map((i) => ({ ...i, createdAt: db.nowIso(), updatedAt: db.nowIso() }));
   db.writeCollection("indicadoresMensais", indicadoresMensais);
+
+  const prospects = [
+    {
+      id: "prospect-1",
+      nome: "Renata Alencar",
+      empresa: "Grupo Alencar Alimentos",
+      telefone: "(85) 99777-1234",
+      servicoDesejado: "Seleção e Recrutamento",
+      servicoOutro: "",
+      quemIndicou: "Indicação de cliente atual (Construtora Ceará Sul)",
+      motivoNaoFechou: "",
+      etapa: "Em Contato",
+      dataContato: "2026-07-20",
+      proximoFollowUp: "2026-07-28",
+      observacoes: "Quer abrir 3 vagas de operação de loja ainda este semestre.",
+      criadoPorId: "cons-mariana",
+    },
+    {
+      id: "prospect-2",
+      nome: "Marcos Vieira",
+      empresa: "Vieira Contabilidade",
+      telefone: "(85) 99666-5678",
+      servicoDesejado: "Pesquisa de Clima",
+      servicoOutro: "",
+      quemIndicou: "LinkedIn",
+      motivoNaoFechou: "Achou o valor acima do orçamento previsto para este ano.",
+      etapa: "Perdido",
+      dataContato: "2026-06-15",
+      proximoFollowUp: null,
+      observacoes: "Disse para retomar contato no início do próximo ano fiscal.",
+      criadoPorId: "cons-mariana",
+    },
+  ].map((p) => ({ ...p, createdAt: db.nowIso(), updatedAt: db.nowIso() }));
+  db.writeCollection("prospects", prospects);
 
   const parametros = [
     { id: "param-contratos", chave: "contratos", proximoNumero: 31, anoBase: 2025 },

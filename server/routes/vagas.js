@@ -39,7 +39,7 @@ router.get("/:id", (req, res) => {
 });
 
 router.post("/", requireAuth, (req, res) => {
-  const { titulo, perfilVaga, empresaId, consultorId, dataAbertura, prazoFechamento, prioridade, observacoes } = req.body || {};
+  const { titulo, perfilVaga, empresaId, consultorId, dataAbertura, prazoFechamento, prioridade, observacoes, salario } = req.body || {};
 
   if (!titulo || !empresaId || !consultorId || !dataAbertura || !prazoFechamento) {
     return res.status(400).json({ erro: "Título, empresa, consultor, data de abertura e prazo de fechamento são obrigatórios." });
@@ -56,6 +56,7 @@ router.post("/", requireAuth, (req, res) => {
     dataAbertura,
     prazoFechamento,
     prioridade: prioridade || "Média",
+    salario: Number(salario) || 0,
     etapaAtual: ETAPAS_VAGA[0],
     dataEntradaEtapa: hojeStr(),
     dataFechamento: null,
@@ -95,7 +96,7 @@ router.patch("/:id", requireAuth, (req, res) => {
   if (!podeEditar(req, vaga)) {
     return res.status(403).json({ erro: "Você só pode editar vagas atribuídas a você." });
   }
-  const { titulo, perfilVaga, empresaId, consultorId, dataAbertura, prazoFechamento, prioridade, observacoes } = req.body || {};
+  const { titulo, perfilVaga, empresaId, consultorId, dataAbertura, prazoFechamento, prioridade, observacoes, salario } = req.body || {};
   if (prioridade && !PRIORIDADES.includes(prioridade)) return res.status(400).json({ erro: "Prioridade inválida." });
 
   const atualizado = db.update("vagas", vaga.id, {
@@ -107,6 +108,7 @@ router.patch("/:id", requireAuth, (req, res) => {
     prazoFechamento,
     prioridade,
     observacoes,
+    salario: salario !== undefined ? Number(salario) || 0 : undefined,
     // se o prazo mudou, os alertas de prazo/atraso podem disparar de novo
     ...(prazoFechamento && prazoFechamento !== vaga.prazoFechamento
       ? { alertaPrazoEnviado: false, alertaAtrasoEnviado: false }

@@ -1,5 +1,5 @@
 import { api } from "./api.js";
-import { store, showToast } from "./state.js";
+import { store, showToast, isGestor } from "./state.js";
 import { registrarRota, setRaiz, iniciarRouter, navegarPara } from "./router.js";
 import { renderKanban } from "./views/kanban.js";
 import { renderCandidatos } from "./views/candidatos.js";
@@ -7,6 +7,8 @@ import { renderDashboard } from "./views/dashboard.js";
 import { renderConfiguracoes } from "./views/cadastros.js";
 import { renderNotificacoes } from "./views/notificacoes.js";
 import { renderContratos } from "./views/contratos.js";
+import { renderCrm } from "./views/crm.js";
+import { renderFinanceiro } from "./views/financeiro.js";
 
 const loginScreen = document.getElementById("login-screen");
 const mainScreen = document.getElementById("main-screen");
@@ -35,6 +37,13 @@ const NAV_SECOES = [
     ],
   },
   {
+    titulo: "Comercial",
+    itens: [
+      { href: "#/crm", label: "CRM", icone: "🤝" },
+      { href: "#/financeiro", label: "Financeiro", icone: "💰", somenteGestor: true },
+    ],
+  },
+  {
     titulo: "Administração",
     itens: [
       { href: "#/contratos", label: "Contratos", icone: "📝" },
@@ -44,14 +53,16 @@ const NAV_SECOES = [
 ];
 
 function montarNav() {
-  mainNav.innerHTML = NAV_SECOES.map(
-    (secao) => `
+  mainNav.innerHTML = NAV_SECOES.map((secao) => {
+    const itensVisiveis = secao.itens.filter((l) => !l.somenteGestor || isGestor());
+    if (itensVisiveis.length === 0) return "";
+    return `
       ${secao.titulo ? `<div class="sidebar-nav-titulo">${secao.titulo}</div>` : ""}
-      ${secao.itens
+      ${itensVisiveis
         .map((l) => `<a href="${l.href}"><span class="nav-icone">${l.icone}</span><span>${l.label}</span></a>`)
         .join("")}
-    `
-  ).join("");
+    `;
+  }).join("");
 }
 
 async function carregarCachesBasicos() {
@@ -145,6 +156,8 @@ function registrarRotas() {
   registrarRota("/configuracoes", renderConfiguracoes);
   registrarRota("/notificacoes", renderNotificacoes);
   registrarRota("/contratos", renderContratos);
+  registrarRota("/crm", renderCrm);
+  registrarRota("/financeiro", renderFinanceiro);
 }
 
 async function init() {

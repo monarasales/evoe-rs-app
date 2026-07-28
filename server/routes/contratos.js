@@ -1,7 +1,8 @@
 const express = require("express");
 const db = require("../db");
 const { requireAuth, requireGestor } = require("../middleware/auth");
-const { CONTRATO_PADRAO } = require("../utils/constants");
+const { CONTRATO_PADRAO, DIAS_PARCELA2_APOS_PARCELA1 } = require("../utils/constants");
+const { calcularParcelas } = require("../utils/financeiro");
 const { gerarContratoPdfBuffer } = require("../utils/contratoPdf");
 const { gerarContratoDocxBuffer } = require("../utils/contratoDocx");
 const { enviarEmail, emailConfigurado } = require("../utils/mailer");
@@ -13,16 +14,28 @@ function comDetalhes(contrato) {
   const empresa = db.findById("empresas", contrato.empresaId);
   const vaga = db.findById("vagas", contrato.vagaId);
   const consultor = contrato.consultorId ? db.findById("consultores", contrato.consultorId) : null;
+  const { valorTotal, valorParcela1, valorParcela2, salarioFaltando } = calcularParcelas(contrato, vaga);
   return {
     ...contrato,
     empresaNome: empresa ? empresa.nome : "—",
     vagaTitulo: vaga ? vaga.titulo : "—",
     consultorNome: consultor ? consultor.nome : "—",
+    valorTotalContrato: valorTotal,
+    valorParcela1,
+    valorParcela2,
+    salarioFaltando,
   };
 }
 
 function montarNumero(sequencial, ano) {
   return `${String(sequencial).padStart(4, "0")}/${ano}`;
+}
+
+/** Soma dias a uma data no formato "AAAA-MM-DD", devolvendo também nesse formato. */
+function somarDias(dataStr, dias) {
+  const d = new Date(dataStr + "T00:00:00");
+  d.setDate(d.getDate() + dias);
+  return d.toISOString().slice(0, 10);
 }
 
 /** Monta o payload completo (cliente, testemunhas, termos) que alimenta o texto e o PDF do contrato. */
@@ -77,9 +90,16 @@ function extrairCamposEditaveis(body) {
     vigenciaDias,
     prazoRescisaoAvisoDias,
     dataContrato,
+    dataVencimentoParcela1,
+    dataVencimentoParcela2,
     testemunha1,
     testemunha2,
   } = body || {};
+
+  // A 2ª parcela vence automaticamente 30 dias após a 1ª — só é recalculada aqui
+  // quando o formulário não mandou um valor próprio (ex: usuária editou a mão).
+  const venc1 = dataVencimentoParcela1 || "";
+  const venc2 = dataVencimentoParcela2 || (venc1 ? somarDias(venc1, DIAS_PARCELA2_APOS_PARCELA1) : "");
 
   return {
     cargoObjeto: cargoObjeto !== undefined ? cargoObjeto : undefined,
@@ -92,6 +112,8 @@ function extrairCamposEditaveis(body) {
     vigenciaDias: Number(vigenciaDias) || CONTRATO_PADRAO.vigenciaDias,
     prazoRescisaoAvisoDias: Number(prazoRescisaoAvisoDias) || CONTRATO_PADRAO.prazoRescisaoAvisoDias,
     dataContrato: dataContrato || new Date().toISOString().slice(0, 10),
+    dataVencimentoParcela1: venc1,
+    dataVencimentoParcela2: venc2,
     testemunha1Nome: (testemunha1 && testemunha1.nome) || "",
     testemunha1Cpf: (testemunha1 && testemunha1.cpf) || "",
     testemunha2Nome: (testemunha2 && testemunha2.nome) || "",
@@ -127,6 +149,7 @@ router.post("/", requireAuth, (req, res) => {
     cargoObjeto: campos.cargoObjeto || vaga.titulo,
     status: "Gerado",
     geradoPorId: req.consultor.id,
+    lembreteParcela2Enviado: false,
   });
 
   db.update("parametros", paramContratos.id, { proximoNumero: paramContratos.proximoNumero + 1 });
@@ -142,7 +165,12 @@ router.patch("/:id", requireAuth, requireGestor, (req, res) => {
   const campos = extrairCamposEditaveis(req.body);
   if (!campos.cargoObjeto) campos.cargoObjeto = contrato.cargoObjeto;
 
-  const atualizado = db.update("contratos", contrato.id, { ...campos, status: contrato.status });
+  // Se a data de vencimento da 2ª parcela mudou (ex: usuária corrigiu a mão), o lembrete
+  // de cobrança volta a poder disparar de novo para a nova data.
+  const lembreteParcela2Enviado =
+    campos.dataVencimentoParcela2 !== contrato.dataVencimentoParcela2 ? false : contrato.lembreteParcela2Enviado;
+
+  const atualizado = db.update("contratos", contrato.id, { ...campos, status: contrato.status, lembreteParcela2Enviado });
   res.json(comDetalhes(atualizado));
 });
 
