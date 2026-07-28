@@ -19,6 +19,8 @@ const ETAPAS_ENCERRADAS = ["11. Aprovado", "12. Cancelada/Encerrada"];
 
 const ETAPAS_CANDIDATO = [
   "Inscrito",
+  "Sem Interesse",
+  "Não Respondeu",
   "Triagem OK",
   "Convocado",
   "Entrevistado",
@@ -33,6 +35,11 @@ const ETAPAS_CANDIDATO = [
   "Reprovado pelo Cliente",
   "Desistiu",
 ];
+
+// Banco de Talentos: candidatos contatados que não demonstraram interesse na vaga
+// ou não deram retorno — ficam numa aba separada dos candidatos ativos/engajados,
+// mas continuam cadastrados para eventual reaproveitamento em vagas futuras.
+const ETAPAS_SEM_RETORNO = ["Sem Interesse", "Não Respondeu"];
 
 const PRIORIDADES = ["Alta", "Média", "Baixa"];
 
@@ -100,6 +107,7 @@ module.exports = {
   ETAPAS_VAGA,
   ETAPAS_ENCERRADAS,
   ETAPAS_CANDIDATO,
+  ETAPAS_SEM_RETORNO,
   PRIORIDADES,
   PERFIS_ACESSO,
   SERVICOS_PROSPECT,

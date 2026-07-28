@@ -278,7 +278,7 @@ export async function renderDashboard(root) {
       ${podeGerenciarVagas() ? `
         <select id="filtro-consultor-dash">
           <option value="">Todos os consultores</option>
-          ${store.consultores.filter((c) => c.perfil === "Recrutador").map((c) => `<option value="${c.id}">${c.nome}</option>`).join("")}
+          ${store.consultores.filter((c) => c.perfil === "Recrutador" || c.perfil === "Supervisora").map((c) => `<option value="${c.id}">${c.nome}</option>`).join("")}
         </select>` : ""}
     </div>
 

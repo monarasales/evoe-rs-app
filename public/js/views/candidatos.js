@@ -8,7 +8,21 @@ function escapeHtml(str) {
   return div.innerHTML;
 }
 
+// Banco de Talentos: candidatos que já foram contatados mas não têm interesse na
+// vaga ou não deram retorno ficam numa aba separada dos candidatos engajados
+// (convocados, entrevistados etc.), mas continuam cadastrados para reaproveitar
+// em vagas futuras. Espelha ETAPAS_SEM_RETORNO em server/utils/constants.js.
+const ETAPAS_SEM_RETORNO = ["Sem Interesse", "Não Respondeu"];
+
+const ABAS = [
+  { id: "ativos", label: "Candidatos" },
+  { id: "banco", label: "Sem Interesse / Sem Retorno" },
+];
+
 export async function renderCandidatos(root, params) {
+  let abaAtiva = "ativos";
+  let todosCandidatos = [];
+
   root.innerHTML = `
     <div class="view-header">
       <div>
@@ -22,6 +36,9 @@ export async function renderCandidatos(root, params) {
         <option value="">Todas as vagas</option>
       </select>
     </div>
+    <div class="tabs" id="candidatos-tabs">
+      ${ABAS.map((a) => `<button type="button" class="tab-btn" data-aba="${a.id}">${a.label}</button>`).join("")}
+    </div>
     <div id="candidatos-tabela"></div>
   `;
 
@@ -31,10 +48,35 @@ export async function renderCandidatos(root, params) {
     '<option value="">Todas as vagas</option>' +
     vagas.map((v) => `<option value="${v.id}" ${params.vagaId === v.id ? "selected" : ""}>${v.titulo}</option>`).join("");
 
+  const tabsEl = root.querySelector("#candidatos-tabs");
+
+  function contagemBanco() {
+    return todosCandidatos.filter((c) => ETAPAS_SEM_RETORNO.includes(c.etapaCandidato)).length;
+  }
+
+  function marcarAbaAtiva() {
+    tabsEl.querySelectorAll(".tab-btn").forEach((btn) => {
+      btn.classList.toggle("ativo", btn.dataset.aba === abaAtiva);
+      if (btn.dataset.aba === "banco") {
+        const qtd = contagemBanco();
+        btn.textContent = qtd > 0 ? `Sem Interesse / Sem Retorno (${qtd})` : "Sem Interesse / Sem Retorno";
+      }
+    });
+  }
+
+  tabsEl.querySelectorAll(".tab-btn").forEach((btn) => {
+    btn.addEventListener("click", () => {
+      abaAtiva = btn.dataset.aba;
+      marcarAbaAtiva();
+      renderizarTabela();
+    });
+  });
+
   async function carregar() {
     const qs = filtroVaga.value ? `?vagaId=${filtroVaga.value}` : "";
-    const candidatos = await api.get(`/api/candidatos${qs}`);
-    montarTabela(candidatos);
+    todosCandidatos = await api.get(`/api/candidatos${qs}`);
+    marcarAbaAtiva();
+    renderizarTabela();
   }
 
   function vagaTitulo(id) {
@@ -42,39 +84,73 @@ export async function renderCandidatos(root, params) {
     return v ? v.titulo : "—";
   }
 
-  function montarTabela(candidatos) {
+  function renderizarTabela() {
     const el = root.querySelector("#candidatos-tabela");
+    const candidatos = todosCandidatos.filter((c) =>
+      abaAtiva === "banco" ? ETAPAS_SEM_RETORNO.includes(c.etapaCandidato) : !ETAPAS_SEM_RETORNO.includes(c.etapaCandidato)
+    );
+
     if (candidatos.length === 0) {
-      el.innerHTML = '<div class="empty-state">Nenhum candidato encontrado.</div>';
+      el.innerHTML =
+        abaAtiva === "banco"
+          ? '<div class="empty-state">Nenhum candidato sem interesse ou sem retorno por aqui.</div>'
+          : '<div class="empty-state">Nenhum candidato encontrado.</div>';
       return;
     }
-    el.innerHTML = `
-      <table>
-        <thead>
-          <tr><th>Nome</th><th>Vaga</th><th>Etapa</th><th>Jusbrasil</th><th>Parecer</th><th>Entrevista</th><th></th></tr>
-        </thead>
-        <tbody>
-          ${candidatos
-            .map(
-              (c) => `
-            <tr data-id="${c.id}">
-              <td>${escapeHtml(c.nome)}</td>
-              <td>${escapeHtml(vagaTitulo(c.vagaId))}</td>
-              <td>${escapeHtml(c.etapaCandidato)}</td>
-              <td>${c.jusbrasilOk ? "✅" : "—"}</td>
-              <td>${(c.parecerComportamental || "").trim() ? "✅" : "—"}</td>
-              <td>${c.dataEntrevista || "—"}</td>
-              <td><button class="btn btn-outline btn-sm btn-editar">Abrir</button></td>
-            </tr>`
-            )
-            .join("")}
-        </tbody>
-      </table>
-    `;
+
+    if (abaAtiva === "banco") {
+      el.innerHTML = `
+        <div class="sub" style="margin-bottom:10px;">Candidatos contatados que não tiveram interesse na vaga ou não responderam — ficam aqui para futuro reaproveitamento, sem poluir o funil ativo.</div>
+        <table>
+          <thead>
+            <tr><th>Nome</th><th>Vaga</th><th>Situação</th><th>Telefone</th><th></th></tr>
+          </thead>
+          <tbody>
+            ${candidatos
+              .map(
+                (c) => `
+              <tr data-id="${c.id}">
+                <td>${escapeHtml(c.nome)}</td>
+                <td>${escapeHtml(vagaTitulo(c.vagaId))}</td>
+                <td>${escapeHtml(c.etapaCandidato)}</td>
+                <td>${escapeHtml(c.telefone) || "—"}</td>
+                <td><button class="btn btn-outline btn-sm btn-editar">Abrir</button></td>
+              </tr>`
+              )
+              .join("")}
+          </tbody>
+        </table>
+      `;
+    } else {
+      el.innerHTML = `
+        <table>
+          <thead>
+            <tr><th>Nome</th><th>Vaga</th><th>Etapa</th><th>Jusbrasil</th><th>Parecer</th><th>Entrevista</th><th></th></tr>
+          </thead>
+          <tbody>
+            ${candidatos
+              .map(
+                (c) => `
+              <tr data-id="${c.id}">
+                <td>${escapeHtml(c.nome)}</td>
+                <td>${escapeHtml(vagaTitulo(c.vagaId))}</td>
+                <td>${escapeHtml(c.etapaCandidato)}</td>
+                <td>${c.jusbrasilOk ? "✅" : "—"}</td>
+                <td>${(c.parecerComportamental || "").trim() ? "✅" : "—"}</td>
+                <td>${c.dataEntrevista || "—"}</td>
+                <td><button class="btn btn-outline btn-sm btn-editar">Abrir</button></td>
+              </tr>`
+              )
+              .join("")}
+          </tbody>
+        </table>
+      `;
+    }
+
     el.querySelectorAll(".btn-editar").forEach((btn) => {
       btn.addEventListener("click", (e) => {
         const id = e.target.closest("tr").dataset.id;
-        const candidato = candidatos.find((c) => c.id === id);
+        const candidato = todosCandidatos.find((c) => c.id === id);
         abrirFormularioCandidato(candidato);
       });
     });
@@ -83,6 +159,7 @@ export async function renderCandidatos(root, params) {
   filtroVaga.addEventListener("change", carregar);
   root.querySelector("#btn-novo-candidato").addEventListener("click", () => abrirFormularioCandidato(null));
 
+  marcarAbaAtiva();
   await carregar();
 
   function abrirFormularioCandidato(candidato) {
@@ -115,6 +192,7 @@ export async function renderCandidatos(root, params) {
           <select id="c-etapa">
             ${store.etapasCandidato.map((e) => `<option ${editando && candidato.etapaCandidato === e ? "selected" : ""}>${e}</option>`).join("")}
           </select>
+          <div class="sub" style="margin-top:4px;">Use "Sem Interesse" ou "Não Respondeu" para mandar o candidato para a aba de Banco de Talentos sem excluí-lo.</div>
         </div>
         ${
           editando

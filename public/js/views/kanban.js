@@ -129,7 +129,7 @@ export async function renderKanban(root) {
     abertas.forEach((v) => {
       porConsultor[v.consultorId] = (porConsultor[v.consultorId] || 0) + 1;
     });
-    const recrutadores = store.consultores.filter((c) => c.perfil === "Recrutador" && c.ativo !== false);
+    const recrutadores = store.consultores.filter((c) => (c.perfil === "Recrutador" || c.perfil === "Supervisora") && c.ativo !== false);
     if (recrutadores.length === 0) {
       resumoEl.innerHTML = "";
       return;
@@ -321,7 +321,7 @@ export async function renderKanban(root) {
           <div class="form-row">
             <label>Consultor responsável</label>
             <select id="v-consultor" required ${podeEditar && podeGerenciarVagas() ? "" : "disabled"}>
-              ${store.consultores.filter((c) => c.perfil === "Recrutador" || c.id === (vaga && vaga.consultorId)).map((c) => `<option value="${c.id}" ${editando ? (vaga.consultorId === c.id ? "selected" : "") : (c.id === store.usuario.id ? "selected" : "")}>${c.nome}</option>`).join("")}
+              ${store.consultores.filter((c) => c.perfil === "Recrutador" || c.perfil === "Supervisora" || c.id === (vaga && vaga.consultorId)).map((c) => `<option value="${c.id}" ${editando ? (vaga.consultorId === c.id ? "selected" : "") : (c.id === store.usuario.id ? "selected" : "")}>${c.nome}</option>`).join("")}
             </select>
           </div>
         </div>
