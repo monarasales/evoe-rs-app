@@ -5,6 +5,13 @@ import { navegarPara } from "../router.js";
 
 const ETAPAS_ENCERRADAS_KANBAN = ["11. Aprovado", "12. Cancelada/Encerrada"];
 
+// Vaga de Reposição: substituição de um profissional já colocado (desistência do
+// candidato ou desligamento pelo cliente), geralmente dentro do prazo de garantia
+// combinado no contrato original. Espelha TIPOS_VAGA/MOTIVOS_REPOSICAO em
+// server/utils/constants.js.
+const TIPOS_VAGA_KANBAN = ["Nova", "Reposição"];
+const MOTIVOS_REPOSICAO_KANBAN = ["Desistência do Candidato", "Cliente Demitiu", "Outro"];
+
 function tagStatusPrazo(status) {
   const map = {
     "No Prazo": "tag-nprazo",
@@ -34,7 +41,7 @@ function colunaSortavel(campo, label, ordenacao) {
 function cardVagaHtml(vaga) {
   return `
     <div class="vaga-card prioridade-${vaga.prioridade} ${vaga.emStandBy ? "vaga-card--standby" : ""}" draggable="true" data-id="${vaga.id}">
-      <h4>${vaga.titulo}</h4>
+      <h4>${vaga.titulo}${vaga.tipoVaga === "Reposição" ? ' <span class="tag tag-reposicao" title="Vaga de reposição">🔁 Reposição</span>' : ""}</h4>
       <div class="empresa">${nomeEmpresa(vaga.empresaId)}</div>
       <div class="consultor-responsavel" title="Consultor responsável">🧑‍💼 ${nomeConsultor(vaga.consultorId)}</div>
       <div class="meta-row">
@@ -260,7 +267,7 @@ export async function renderKanban(root) {
               (v) => `
             <tr data-id="${v.id}" style="cursor:pointer;">
               <td>${tagStatusPrazo(v.statusPrazo)}</td>
-              <td>${v.titulo}</td>
+              <td>${v.titulo}${v.tipoVaga === "Reposição" ? ' <span class="tag tag-reposicao" title="Vaga de reposição">🔁 Reposição</span>' : ""}</td>
               <td>${nomeEmpresa(v.empresaId)}</td>
               <td>${store.consultores.find((c) => c.id === v.consultorId)?.nome || "—"}</td>
               <td>${v.etapaAtual}</td>
@@ -300,9 +307,13 @@ export async function renderKanban(root) {
     abrirFormularioVaga(vaga);
   }
 
-  function abrirFormularioVaga(vaga) {
+  async function abrirFormularioVaga(vaga) {
     const editando = !!vaga;
     const podeEditar = !editando || podeGerenciarVagas() || vaga.consultorId === store.usuario.id;
+    const todasVagasParaOrigem = await api.get("/api/vagas");
+    const opcoesOrigem = todasVagasParaOrigem
+      .filter((v) => !editando || v.id !== vaga.id)
+      .sort((a, b) => (b.dataAbertura || "").localeCompare(a.dataAbertura || ""));
 
     abrirModal(`
       <h2>${editando ? "Editar Vaga" : "Nova Vaga"}</h2>
@@ -325,6 +336,34 @@ export async function renderKanban(root) {
             </select>
           </div>
         </div>
+        <div class="form-cols">
+          <div class="form-row">
+            <label>Tipo de vaga</label>
+            <select id="v-tipo" ${podeEditar ? "" : "disabled"}>
+              ${TIPOS_VAGA_KANBAN.map((t) => `<option ${(editando ? vaga.tipoVaga : "Nova") === t ? "selected" : ""}>${t}</option>`).join("")}
+            </select>
+          </div>
+        </div>
+        <div class="form-cols" id="reposicao-campos" style="${(editando ? vaga.tipoVaga : "Nova") === "Reposição" ? "" : "display:none;"}">
+          <div class="form-row">
+            <label>Vaga de origem (que está sendo reposta)</label>
+            <select id="v-vaga-origem" ${podeEditar ? "" : "disabled"}>
+              <option value="">— selecione —</option>
+              ${opcoesOrigem.map((v) => `<option value="${v.id}" ${editando && vaga.vagaOrigemId === v.id ? "selected" : ""}>${v.titulo} (${nomeEmpresa(v.empresaId)})</option>`).join("")}
+            </select>
+          </div>
+          <div class="form-row">
+            <label>Motivo da reposição</label>
+            <select id="v-motivo-reposicao" ${podeEditar ? "" : "disabled"}>
+              ${MOTIVOS_REPOSICAO_KANBAN.map((m) => `<option ${editando && vaga.motivoReposicao === m ? "selected" : ""}>${m}</option>`).join("")}
+            </select>
+          </div>
+        </div>
+        ${
+          editando && vaga.tipoVaga === "Reposição" && vaga.reposicaoInfo && vaga.reposicaoInfo.dentroGarantia !== null
+            ? `<div class="sub" style="margin-top:-6px;">${vaga.reposicaoInfo.dentroGarantia ? "✅ Dentro do prazo de garantia do contrato original — verifique se não deve haver nova cobrança." : "⚠️ Fora do prazo de garantia do contrato original — pode ser cobrada como uma vaga nova."}</div>`
+            : ""
+        }
         <div class="form-cols">
           <div class="form-row">
             <label>Data de abertura</label>
@@ -374,6 +413,14 @@ export async function renderKanban(root) {
 
     document.getElementById("btn-cancelar").addEventListener("click", fecharModal);
 
+    const selectTipo = document.getElementById("v-tipo");
+    const camposReposicao = document.getElementById("reposicao-campos");
+    if (selectTipo) {
+      selectTipo.addEventListener("change", () => {
+        camposReposicao.style.display = selectTipo.value === "Reposição" ? "" : "none";
+      });
+    }
+
     if (editando) {
       const btnCand = document.getElementById("btn-ver-candidatos");
       if (btnCand) btnCand.addEventListener("click", () => { fecharModal(); navegarPara(`#/candidatos/${vaga.id}`); });
@@ -415,6 +462,7 @@ export async function renderKanban(root) {
 
     document.getElementById("form-vaga").addEventListener("submit", async (e) => {
       e.preventDefault();
+      const tipoVaga = document.getElementById("v-tipo").value;
       const payload = {
         titulo: document.getElementById("v-titulo").value.trim(),
         empresaId: document.getElementById("v-empresa").value,
@@ -425,6 +473,9 @@ export async function renderKanban(root) {
         salario: document.getElementById("v-salario").value,
         perfilVaga: document.getElementById("v-perfil").value,
         observacoes: document.getElementById("v-obs").value,
+        tipoVaga,
+        motivoReposicao: tipoVaga === "Reposição" ? document.getElementById("v-motivo-reposicao").value : "",
+        vagaOrigemId: tipoVaga === "Reposição" ? document.getElementById("v-vaga-origem").value || null : null,
       };
       const erroBox = document.getElementById("vaga-form-erro");
       erroBox.classList.add("hidden");

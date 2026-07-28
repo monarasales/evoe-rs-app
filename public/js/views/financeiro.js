@@ -53,6 +53,11 @@ export async function renderFinanceiro(root) {
       `${resumo.vagasAbertasSemContrato} vaga(s) em aberto ainda não têm contrato gerado — não entram no faturamento até você gerar o contrato em Contratos.`
     );
   }
+  if (resumo.qtdReposicaoDentroGarantia > 0) {
+    avisos.push(
+      `${resumo.qtdReposicaoDentroGarantia} vaga(s) de reposição ainda dentro do prazo de garantia do contrato original — confirme com o cliente antes de cobrar novamente (veja a coluna "Reposição" na tabela abaixo).`
+    );
+  }
   avisosEl.innerHTML = avisos.length
     ? avisos.map((a) => `<div class="form-erro" style="background:var(--warning-bg); color:var(--warning); margin-bottom:10px;">${escapeHtml(a)}</div>`).join("")
     : "";
@@ -93,7 +98,7 @@ export async function renderFinanceiro(root) {
       <thead>
         <tr>
           <th>Contrato</th><th>Vaga</th><th>Empresa</th><th>Consultor</th>
-          <th>Valor Total</th><th>1ª Parcela (recebido)</th><th>2ª Parcela (previsto)</th><th>Vencimento 2ª Parcela</th>
+          <th>Valor Total</th><th>1ª Parcela (recebido)</th><th>2ª Parcela (previsto)</th><th>Vencimento 2ª Parcela</th><th>Reposição</th>
         </tr>
       </thead>
       <tbody>
@@ -109,6 +114,13 @@ export async function renderFinanceiro(root) {
             <td>${formatarReal(l.valorParcela1)}</td>
             <td>${formatarReal(l.valorParcela2)}</td>
             <td>${l.dataVencimentoParcela2 ? formatarData(l.dataVencimentoParcela2) : "—"} ${tagVencimento(l.diasParcela2)}</td>
+            <td>${
+              !l.reposicaoInfo
+                ? "—"
+                : l.reposicaoInfo.dentroGarantia
+                ? '<span class="tag tag-atraso" title="Dentro do prazo de garantia — confirme antes de cobrar de novo">🔁 Em garantia</span>'
+                : '<span class="tag tag-reposicao" title="Reposição fora do prazo de garantia">🔁 Reposição</span>'
+            }</td>
           </tr>`
           )
           .join("")}

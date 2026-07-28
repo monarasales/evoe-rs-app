@@ -43,6 +43,13 @@ const ETAPAS_SEM_RETORNO = ["Sem Interesse", "Não Respondeu"];
 
 const PRIORIDADES = ["Alta", "Média", "Baixa"];
 
+// Vaga de Reposição: quando o cliente pede a substituição de um profissional já
+// colocado (desistência do candidato ou desligamento pelo cliente), dentro do
+// prazo de garantia combinado no contrato (prazoReposicaoDias). Ajuda a não
+// cobrar de novo por engano uma vaga que já foi paga na colocação original.
+const TIPOS_VAGA = ["Nova", "Reposição"];
+const MOTIVOS_REPOSICAO = ["Desistência do Candidato", "Cliente Demitiu", "Outro"];
+
 // CRM — Prospects: quem entra em contato querendo cotar serviço, ainda sem ser cliente.
 const SERVICOS_PROSPECT = [
   "Seleção e Recrutamento",
@@ -109,6 +116,8 @@ module.exports = {
   ETAPAS_CANDIDATO,
   ETAPAS_SEM_RETORNO,
   PRIORIDADES,
+  TIPOS_VAGA,
+  MOTIVOS_REPOSICAO,
   PERFIS_ACESSO,
   SERVICOS_PROSPECT,
   ETAPAS_PROSPECT,

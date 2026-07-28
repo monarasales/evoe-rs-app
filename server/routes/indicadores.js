@@ -189,6 +189,12 @@ router.get("/dashboard", requireAuth, (req, res) => {
 
   const totalPareceresEnviados = vagasComCampos.reduce((soma, v) => soma + v.qtdPareceresEnviados, 0);
 
+  // --- Vagas de Reposição: indicador de qualidade da colocação (substituição por
+  // desistência do candidato ou desligamento pelo cliente). Quanto menor a taxa,
+  // melhor a assertividade das seleções entregues.
+  const totalVagasReposicao = vagasComCampos.filter((v) => v.tipoVaga === "Reposição").length;
+  const taxaReposicaoPct = totalVagas ? Math.round((totalVagasReposicao / totalVagas) * 1000) / 10 : 0;
+
   // --- Tempo médio de fechamento GERAL (todas as vagas fechadas no escopo), para o
   // card de indicador em destaque, comparado com o SLA de ${SLA_DIAS_LIMITE} dias.
   const diasFechamentoGeral = vagasFechadas
@@ -211,6 +217,8 @@ router.get("/dashboard", requireAuth, (req, res) => {
     totalVagasFechadas: vagasFechadas.length,
     totalPareceresEnviados,
     tempoMedioFechamentoDias: tempoMedioFechamentoGeral,
+    totalVagasReposicao,
+    taxaReposicaoPct,
     vagasFechadasPorConsultor,
     slaPorConsultor,
     rankingConsultores,

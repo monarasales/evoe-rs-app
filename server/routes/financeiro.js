@@ -8,7 +8,7 @@ const db = require("../db");
 const { requireAuth, requireGestor } = require("../middleware/auth");
 const { calcularParcelas } = require("../utils/financeiro");
 const { ETAPAS_ENCERRADAS } = require("../utils/constants");
-const { hojeStr } = require("../utils/vagaCompute");
+const { hojeStr, computarReposicaoInfo } = require("../utils/vagaCompute");
 
 const router = express.Router();
 
@@ -36,6 +36,14 @@ router.get("/", requireAuth, requireGestor, (req, res) => {
       const consultor = consultores.find((cs) => cs.id === c.consultorId);
       const { valorTotal, valorParcela1, valorParcela2, salarioFaltando } = calcularParcelas(c, vaga);
       const diasParcela2 = diasAte(c.dataVencimentoParcela2);
+
+      let reposicaoInfo = null;
+      if (vaga && vaga.tipoVaga === "Reposição" && vaga.vagaOrigemId) {
+        const vagaOrigem = db.findById("vagas", vaga.vagaOrigemId);
+        const contratoOrigem = vagaOrigem ? contratos.find((co) => co.vagaId === vagaOrigem.id) : null;
+        reposicaoInfo = computarReposicaoInfo(vaga, vagaOrigem, contratoOrigem);
+      }
+
       return {
         contratoId: c.id,
         numero: c.numero,
@@ -51,6 +59,7 @@ router.get("/", requireAuth, requireGestor, (req, res) => {
         dataVencimentoParcela2: c.dataVencimentoParcela2 || null,
         diasParcela2,
         salarioFaltando,
+        reposicaoInfo,
       };
     })
     .sort((a, b) => (a.dataVencimentoParcela2 || "9999-99-99") < (b.dataVencimentoParcela2 || "9999-99-99") ? -1 : 1);
@@ -67,6 +76,7 @@ router.get("/", requireAuth, requireGestor, (req, res) => {
     .filter((l) => l.diasParcela2 !== null && l.diasParcela2 < 0)
     .reduce((soma, l) => soma + l.valorParcela2, 0);
   const qtdSemSalario = linhas.filter((l) => l.salarioFaltando).length;
+  const qtdReposicaoDentroGarantia = linhas.filter((l) => l.reposicaoInfo && l.reposicaoInfo.dentroGarantia).length;
 
   res.json({
     linhas,
@@ -78,6 +88,7 @@ router.get("/", requireAuth, requireGestor, (req, res) => {
       aReceberTotal: Math.round((totalContratado - recebido) * 100) / 100,
       qtdSemSalario,
       vagasAbertasSemContrato,
+      qtdReposicaoDentroGarantia,
     },
   });
 });

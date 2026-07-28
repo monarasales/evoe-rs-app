@@ -1,5 +1,5 @@
 import { api } from "../api.js";
-import { store, showToast } from "../state.js";
+import { store, showToast, nomeConsultor, nomeEmpresa } from "../state.js";
 import { abrirModal, fecharModal } from "../modal.js";
 
 function escapeHtml(str) {
@@ -17,7 +17,14 @@ const ETAPAS_SEM_RETORNO = ["Sem Interesse", "Não Respondeu"];
 const ABAS = [
   { id: "ativos", label: "Candidatos" },
   { id: "banco", label: "Sem Interesse / Sem Retorno" },
+  { id: "produtividade", label: "Produtividade" },
 ];
+
+function diasAtras(n) {
+  const d = new Date();
+  d.setDate(d.getDate() - n);
+  return d.toISOString().slice(0, 10);
+}
 
 export async function renderCandidatos(root, params) {
   let abaAtiva = "ativos";
@@ -35,6 +42,10 @@ export async function renderCandidatos(root, params) {
       <select id="filtro-vaga">
         <option value="">Todas as vagas</option>
       </select>
+      <select id="filtro-consultor-cand">
+        <option value="">Todos os consultores</option>
+        ${store.consultores.map((c) => `<option value="${c.id}">${c.nome}</option>`).join("")}
+      </select>
     </div>
     <div class="tabs" id="candidatos-tabs">
       ${ABAS.map((a) => `<button type="button" class="tab-btn" data-aba="${a.id}">${a.label}</button>`).join("")}
@@ -48,10 +59,21 @@ export async function renderCandidatos(root, params) {
     '<option value="">Todas as vagas</option>' +
     vagas.map((v) => `<option value="${v.id}" ${params.vagaId === v.id ? "selected" : ""}>${v.titulo}</option>`).join("");
 
+  const filtroConsultor = root.querySelector("#filtro-consultor-cand");
   const tabsEl = root.querySelector("#candidatos-tabs");
 
+  function vagasFiltradasPorConsultor() {
+    return filtroConsultor.value ? vagas.filter((v) => v.consultorId === filtroConsultor.value) : vagas;
+  }
+
+  function candidatosVisiveis() {
+    if (!filtroConsultor.value) return todosCandidatos;
+    const vagaIdsDoConsultor = new Set(vagasFiltradasPorConsultor().map((v) => v.id));
+    return todosCandidatos.filter((c) => vagaIdsDoConsultor.has(c.vagaId));
+  }
+
   function contagemBanco() {
-    return todosCandidatos.filter((c) => ETAPAS_SEM_RETORNO.includes(c.etapaCandidato)).length;
+    return candidatosVisiveis().filter((c) => ETAPAS_SEM_RETORNO.includes(c.etapaCandidato)).length;
   }
 
   function marcarAbaAtiva() {
@@ -68,7 +90,7 @@ export async function renderCandidatos(root, params) {
     btn.addEventListener("click", () => {
       abaAtiva = btn.dataset.aba;
       marcarAbaAtiva();
-      renderizarTabela();
+      renderizarConteudo();
     });
   });
 
@@ -76,7 +98,7 @@ export async function renderCandidatos(root, params) {
     const qs = filtroVaga.value ? `?vagaId=${filtroVaga.value}` : "";
     todosCandidatos = await api.get(`/api/candidatos${qs}`);
     marcarAbaAtiva();
-    renderizarTabela();
+    renderizarConteudo();
   }
 
   function vagaTitulo(id) {
@@ -84,9 +106,17 @@ export async function renderCandidatos(root, params) {
     return v ? v.titulo : "—";
   }
 
+  function renderizarConteudo() {
+    if (abaAtiva === "produtividade") {
+      renderizarProdutividade();
+    } else {
+      renderizarTabela();
+    }
+  }
+
   function renderizarTabela() {
     const el = root.querySelector("#candidatos-tabela");
-    const candidatos = todosCandidatos.filter((c) =>
+    const candidatos = candidatosVisiveis().filter((c) =>
       abaAtiva === "banco" ? ETAPAS_SEM_RETORNO.includes(c.etapaCandidato) : !ETAPAS_SEM_RETORNO.includes(c.etapaCandidato)
     );
 
@@ -156,7 +186,167 @@ export async function renderCandidatos(root, params) {
     });
   }
 
+  // ================== Aba: Produtividade ==================
+  // Visão gerencial por consultor: vagas trabalhadas, candidatos por vaga (com a
+  // etapa em que a vaga está), volume no período (para acompanhar ritmo semanal/
+  // mensal) e taxa de assertividade (aprovados pelo cliente / candidatos já
+  // entrevistados) — mede qualidade da triagem, não só volume de candidatos.
+  function metricasConsultor(consultor, periodoDias) {
+    const vagasDoConsultor = vagas.filter((v) => v.consultorId === consultor.id);
+    const vagaIds = new Set(vagasDoConsultor.map((v) => v.id));
+    const candidatosDoConsultor = todosCandidatos.filter((c) => vagaIds.has(c.vagaId));
+
+    const entrevistados = candidatosDoConsultor.filter((c) => !!c.dataEntrevista);
+    const aprovados = candidatosDoConsultor.filter((c) => c.etapaCandidato === "Aprovado pelo Cliente");
+    const assertividadePct = entrevistados.length ? Math.round((aprovados.length / entrevistados.length) * 1000) / 10 : null;
+
+    let candidatosAdicionadosPeriodo = candidatosDoConsultor.length;
+    let entrevistadosPeriodo = entrevistados.length;
+    if (periodoDias) {
+      const corte = diasAtras(periodoDias);
+      candidatosAdicionadosPeriodo = candidatosDoConsultor.filter((c) => (c.createdAt || "").slice(0, 10) >= corte).length;
+      entrevistadosPeriodo = entrevistados.filter((c) => c.dataEntrevista >= corte).length;
+    }
+
+    return {
+      consultor,
+      vagasDoConsultor,
+      totalCandidatos: candidatosDoConsultor.length,
+      totalEntrevistados: entrevistados.length,
+      totalAprovados: aprovados.length,
+      assertividadePct,
+      candidatosAdicionadosPeriodo,
+      entrevistadosPeriodo,
+    };
+  }
+
+  function barraAssertividade(pct) {
+    if (pct === null) return '<span class="sub">sem entrevistas ainda</span>';
+    return `
+      <div class="bar-track" style="width:100px;display:inline-block;vertical-align:middle;">
+        <div class="bar-fill ${pct >= 50 ? "bar-fill-ok" : ""}" style="width:${Math.max(4, pct)}%"></div>
+      </div>
+      <span style="margin-left:8px;">${pct}%</span>
+    `;
+  }
+
+  function renderizarProdutividade() {
+    const el = root.querySelector("#candidatos-tabela");
+    const periodoSelect = document.getElementById("periodo-produtividade");
+    const periodoDias = periodoSelect ? Number(periodoSelect.value) || 0 : 0;
+    const consultoresRelevantes = store.consultores.filter(
+      (c) => (c.perfil === "Recrutador" || c.perfil === "Supervisora") && c.ativo !== false
+    );
+
+    const consultorSelecionadoId = filtroConsultor.value;
+    const consultorSelecionado = consultorSelecionadoId ? consultoresRelevantes.find((c) => c.id === consultorSelecionadoId) : null;
+
+    const cabecalho = `
+      <div class="kanban-toolbar" style="margin-bottom:14px;">
+        <label class="sub" style="margin:0;">Volume no período:</label>
+        <select id="periodo-produtividade">
+          <option value="0" ${periodoDias === 0 ? "selected" : ""}>Total (desde o início)</option>
+          <option value="7" ${periodoDias === 7 ? "selected" : ""}>Últimos 7 dias</option>
+          <option value="30" ${periodoDias === 30 ? "selected" : ""}>Últimos 30 dias</option>
+        </select>
+      </div>
+    `;
+
+    if (!consultorSelecionado) {
+      if (consultoresRelevantes.length === 0) {
+        el.innerHTML = cabecalho + '<div class="empty-state">Nenhum consultor cadastrado ainda.</div>';
+        return;
+      }
+      const linhas = consultoresRelevantes.map((c) => metricasConsultor(c, periodoDias));
+      el.innerHTML = `
+        ${cabecalho}
+        <div class="sub" style="margin-bottom:10px;">Selecione um consultor no filtro acima para ver o detalhe vaga a vaga. A Taxa de Assertividade mede, de todos os candidatos já entrevistados por esse consultor (histórico completo), quantos foram aprovados pelo cliente.</div>
+        <table>
+          <thead>
+            <tr>
+              <th>Consultor</th>
+              <th>Vagas Trabalhadas</th>
+              <th>Total de Candidatos</th>
+              <th>Candidatos no Período</th>
+              <th>Entrevistados no Período</th>
+              <th>Taxa de Assertividade</th>
+            </tr>
+          </thead>
+          <tbody>
+            ${linhas
+              .map(
+                (m) => `
+              <tr class="linha-clicavel" data-id="${m.consultor.id}" style="cursor:pointer;">
+                <td>${escapeHtml(m.consultor.nome)}</td>
+                <td>${m.vagasDoConsultor.length}</td>
+                <td>${m.totalCandidatos}</td>
+                <td>${m.candidatosAdicionadosPeriodo}</td>
+                <td>${m.entrevistadosPeriodo}</td>
+                <td>${barraAssertividade(m.assertividadePct)}</td>
+              </tr>`
+              )
+              .join("")}
+          </tbody>
+        </table>
+      `;
+      el.querySelectorAll(".linha-clicavel").forEach((tr) => {
+        tr.addEventListener("click", () => {
+          filtroConsultor.value = tr.dataset.id;
+          renderizarProdutividade();
+        });
+      });
+    } else {
+      const m = metricasConsultor(consultorSelecionado, periodoDias);
+      el.innerHTML = `
+        ${cabecalho}
+        <h3 class="section-title" style="margin-top:0;">${escapeHtml(consultorSelecionado.nome)}</h3>
+        <div class="kpi-row">
+          <div class="kpi-card"><div class="kpi-label">Vagas Trabalhadas</div><div class="kpi-value">${m.vagasDoConsultor.length}</div></div>
+          <div class="kpi-card"><div class="kpi-label">Total de Candidatos</div><div class="kpi-value">${m.totalCandidatos}</div></div>
+          <div class="kpi-card"><div class="kpi-label">Candidatos no Período</div><div class="kpi-value">${m.candidatosAdicionadosPeriodo}</div></div>
+          <div class="kpi-card"><div class="kpi-label">Entrevistados no Período</div><div class="kpi-value">${m.entrevistadosPeriodo}</div></div>
+          <div class="kpi-card kpi-destaque ${m.assertividadePct !== null && m.assertividadePct >= 50 ? "kpi-destaque-ok" : ""}">
+            <div class="kpi-label">Taxa de Assertividade</div>
+            <div class="kpi-value">${m.assertividadePct === null ? "—" : m.assertividadePct + "%"}</div>
+            <div class="kpi-sub">${m.totalAprovados} aprovados / ${m.totalEntrevistados} entrevistados</div>
+          </div>
+        </div>
+        <h3 class="section-title">Vagas trabalhadas</h3>
+        ${
+          m.vagasDoConsultor.length === 0
+            ? '<div class="empty-state">Nenhuma vaga atribuída a este consultor ainda.</div>'
+            : `<table>
+                <thead><tr><th>Vaga</th><th>Empresa</th><th>Etapa da Vaga</th><th>Candidatos Entrevistados</th><th>Total de Candidatos</th></tr></thead>
+                <tbody>
+                  ${m.vagasDoConsultor
+                    .map((v) => {
+                      const candidatosDaVaga = todosCandidatos.filter((c) => c.vagaId === v.id);
+                      const entrevistadosDaVaga = candidatosDaVaga.filter((c) => !!c.dataEntrevista).length;
+                      return `
+                    <tr>
+                      <td>${escapeHtml(v.titulo)}</td>
+                      <td>${escapeHtml(nomeEmpresa(v.empresaId))}</td>
+                      <td>${escapeHtml(v.etapaAtual)}</td>
+                      <td>${entrevistadosDaVaga}</td>
+                      <td>${candidatosDaVaga.length}</td>
+                    </tr>`;
+                    })
+                    .join("")}
+                </tbody>
+              </table>`
+        }
+      `;
+    }
+
+    const periodoSelectNovo = document.getElementById("periodo-produtividade");
+    if (periodoSelectNovo) periodoSelectNovo.addEventListener("change", renderizarProdutividade);
+  }
+
   filtroVaga.addEventListener("change", carregar);
+  filtroConsultor.addEventListener("change", () => {
+    marcarAbaAtiva();
+    renderizarConteudo();
+  });
   root.querySelector("#btn-novo-candidato").addEventListener("click", () => abrirFormularioCandidato(null));
 
   marcarAbaAtiva();

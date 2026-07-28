@@ -2,8 +2,8 @@ const express = require("express");
 const db = require("../db");
 const { requireAuth } = require("../middleware/auth");
 const { notifyMudancaVaga } = require("../utils/notify");
-const { computeVagaFields, hojeStr } = require("../utils/vagaCompute");
-const { ETAPAS_VAGA, PRIORIDADES } = require("../utils/constants");
+const { computeVagaFields, computarReposicaoInfo, hojeStr } = require("../utils/vagaCompute");
+const { ETAPAS_VAGA, PRIORIDADES, TIPOS_VAGA } = require("../utils/constants");
 
 const router = express.Router();
 
@@ -17,7 +17,12 @@ function podeEditar(req, vaga) {
 
 function comCampos(vaga) {
   const candidatosDaVaga = db.readCollection("candidatos").filter((c) => c.vagaId === vaga.id);
-  return computeVagaFields(vaga, candidatosDaVaga);
+  const vagaOrigem = vaga.tipoVaga === "Reposição" && vaga.vagaOrigemId ? db.findById("vagas", vaga.vagaOrigemId) : null;
+  const contratoOrigem = vagaOrigem ? db.readCollection("contratos").find((c) => c.vagaId === vagaOrigem.id) : null;
+  return {
+    ...computeVagaFields(vaga, candidatosDaVaga),
+    reposicaoInfo: computarReposicaoInfo(vaga, vagaOrigem, contratoOrigem),
+  };
 }
 
 router.get("/", (req, res) => {
@@ -39,7 +44,7 @@ router.get("/:id", (req, res) => {
 });
 
 router.post("/", requireAuth, (req, res) => {
-  const { titulo, perfilVaga, empresaId, consultorId, dataAbertura, prazoFechamento, prioridade, observacoes, salario } = req.body || {};
+  const { titulo, perfilVaga, empresaId, consultorId, dataAbertura, prazoFechamento, prioridade, observacoes, salario, tipoVaga, motivoReposicao, vagaOrigemId } = req.body || {};
 
   if (!titulo || !empresaId || !consultorId || !dataAbertura || !prazoFechamento) {
     return res.status(400).json({ erro: "Título, empresa, consultor, data de abertura e prazo de fechamento são obrigatórios." });
@@ -47,6 +52,10 @@ router.post("/", requireAuth, (req, res) => {
   if (!db.findById("empresas", empresaId)) return res.status(400).json({ erro: "Empresa inválida." });
   if (!db.findById("consultores", consultorId)) return res.status(400).json({ erro: "Consultor inválido." });
   if (prioridade && !PRIORIDADES.includes(prioridade)) return res.status(400).json({ erro: "Prioridade inválida." });
+  if (tipoVaga && !TIPOS_VAGA.includes(tipoVaga)) return res.status(400).json({ erro: "Tipo de vaga inválido." });
+  if (tipoVaga === "Reposição" && vagaOrigemId && !db.findById("vagas", vagaOrigemId)) {
+    return res.status(400).json({ erro: "Vaga de origem da reposição inválida." });
+  }
 
   const vaga = db.insert("vagas", {
     titulo,
@@ -57,6 +66,9 @@ router.post("/", requireAuth, (req, res) => {
     prazoFechamento,
     prioridade: prioridade || "Média",
     salario: Number(salario) || 0,
+    tipoVaga: tipoVaga === "Reposição" ? "Reposição" : "Nova",
+    motivoReposicao: tipoVaga === "Reposição" ? (motivoReposicao || "") : "",
+    vagaOrigemId: tipoVaga === "Reposição" ? (vagaOrigemId || null) : null,
     etapaAtual: ETAPAS_VAGA[0],
     dataEntradaEtapa: hojeStr(),
     dataFechamento: null,
@@ -96,8 +108,12 @@ router.patch("/:id", requireAuth, (req, res) => {
   if (!podeEditar(req, vaga)) {
     return res.status(403).json({ erro: "Você só pode editar vagas atribuídas a você." });
   }
-  const { titulo, perfilVaga, empresaId, consultorId, dataAbertura, prazoFechamento, prioridade, observacoes, salario } = req.body || {};
+  const { titulo, perfilVaga, empresaId, consultorId, dataAbertura, prazoFechamento, prioridade, observacoes, salario, tipoVaga, motivoReposicao, vagaOrigemId } = req.body || {};
   if (prioridade && !PRIORIDADES.includes(prioridade)) return res.status(400).json({ erro: "Prioridade inválida." });
+  if (tipoVaga && !TIPOS_VAGA.includes(tipoVaga)) return res.status(400).json({ erro: "Tipo de vaga inválido." });
+  if (tipoVaga === "Reposição" && vagaOrigemId && !db.findById("vagas", vagaOrigemId)) {
+    return res.status(400).json({ erro: "Vaga de origem da reposição inválida." });
+  }
 
   const atualizado = db.update("vagas", vaga.id, {
     titulo,
@@ -109,6 +125,9 @@ router.patch("/:id", requireAuth, (req, res) => {
     prioridade,
     observacoes,
     salario: salario !== undefined ? Number(salario) || 0 : undefined,
+    tipoVaga,
+    motivoReposicao: tipoVaga === "Nova" ? "" : motivoReposicao,
+    vagaOrigemId: tipoVaga === "Nova" ? null : vagaOrigemId,
     // se o prazo mudou, os alertas de prazo/atraso podem disparar de novo
     ...(prazoFechamento && prazoFechamento !== vaga.prazoFechamento
       ? { alertaPrazoEnviado: false, alertaAtrasoEnviado: false }

@@ -209,6 +209,7 @@ input, textarea, select { font-family: inherit; }
 .tag-atraso { background: var(--danger-bg); color: var(--danger); }
 .tag-encerrada { background: #eceff1; color: var(--text-muted); }
 .tag-standby { background: var(--purple-light); color: var(--purple); }
+.tag-reposicao { background: var(--purple-light); color: var(--purple); font-size: 11px; vertical-align: middle; }
 
 /* ---------- CRM: etapas do Prospect ---------- */
 .tag-prospect-novo { background: var(--purple-light); color: var(--purple); }

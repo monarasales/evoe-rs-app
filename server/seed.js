@@ -115,6 +115,9 @@ function seed() {
     },
   ].map((v) => ({
     ...v,
+    tipoVaga: "Nova",
+    motivoReposicao: "",
+    vagaOrigemId: null,
     alertaSlaProximoEnviado: false,
     alertaSlaEstouradoEnviado: false,
     emStandBy: false,

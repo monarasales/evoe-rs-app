@@ -35,6 +35,7 @@ const LEGENDAS = {
   atraso: "Vagas abertas (fora do Stand By) cujo prazo combinado com o cliente já passou da data.",
   tempoAberto: "Média de dias que as vagas abertas (Backlog + Andamento + Stand By + Atrasadas) já estão em aberto até hoje. Não confunda com o SLA de Fechamento, mais abaixo: aquele mede só as vagas que já foram fechadas.",
   fechadas: "Vagas que chegaram à etapa \"11. Aprovado\" — processo concluído com sucesso. O SLA de Fechamento (mais abaixo na página) mede quanto tempo cada uma levou, do início ao fim.",
+  reposicao: "Vagas marcadas como Reposição (tipo de vaga): o cliente pediu a substituição de um profissional já colocado, seja porque o candidato desistiu, seja porque o cliente desligou a pessoa. Quanto menor a taxa em relação ao total de vagas, melhor a assertividade das colocações da Evoé.",
 };
 
 function tagStatusDash(status) {
@@ -400,6 +401,7 @@ export async function renderDashboard(root) {
       atraso: "Vagas em Atraso",
       tempoAberto: "Vagas em Aberto (base do Tempo Médio)",
       fechadas: "Vagas Fechadas",
+      reposicao: "Vagas de Reposição",
     };
     const LISTAS_INDICADOR = {
       aberto: categorias.abertas,
@@ -409,6 +411,7 @@ export async function renderDashboard(root) {
       atraso: categorias.atraso,
       tempoAberto: categorias.abertas,
       fechadas: categorias.fechadas,
+      reposicao: vagasEscopo.filter((v) => v.tipoVaga === "Reposição"),
     };
     document.querySelectorAll(".clicavel[data-indicador]").forEach((card) => {
       card.addEventListener("click", () => {
@@ -421,6 +424,11 @@ export async function renderDashboard(root) {
       <div class="kpi-card"><div class="kpi-label">Total de Vagas (histórico)</div><div class="kpi-value">${dados.totalVagas}</div></div>
       <div class="kpi-card"><div class="kpi-label">Total de Candidatos</div><div class="kpi-value">${dados.totalCandidatos}</div></div>
       <div class="kpi-card"><div class="kpi-label">Empresas Clientes</div><div class="kpi-value">${dados.totalEmpresas}</div></div>
+      <div class="kpi-card ${dados.totalVagasReposicao > 0 ? "kpi-destaque-alerta clicavel" : ""}" ${dados.totalVagasReposicao > 0 ? 'data-indicador="reposicao" title="Clique para ver a lista"' : ""}>
+        <div class="kpi-label">Vagas de Reposição</div>
+        <div class="kpi-value">${dados.totalVagasReposicao}</div>
+        <div class="kpi-sub">${dados.taxaReposicaoPct}% do total de vagas — quanto menor, melhor a assertividade das colocações</div>
+      </div>
     `;
 
     document.getElementById("chart-consultor").innerHTML = barras(dados.vagasPorConsultor);

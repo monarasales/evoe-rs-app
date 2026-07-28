@@ -81,11 +81,35 @@ function computeVagaFields(vaga, candidatosDaVaga = []) {
   };
 }
 
+/** Para uma vaga de Reposição, verifica se ainda está dentro do prazo de garantia
+ * combinado no contrato da vaga de origem (prazoReposicaoDias) — usado para alertar
+ * no Financeiro que essa reposição pode não gerar cobrança nova ao cliente. Recebe a
+ * vaga de origem e o contrato dela já resolvidos (sem acesso a `db` aqui, para manter
+ * este módulo livre de I/O — quem chama busca no banco e repassa). */
+function computarReposicaoInfo(vaga, vagaOrigem, contratoOrigem) {
+  if (vaga.tipoVaga !== "Reposição" || !vaga.vagaOrigemId) return null;
+  if (!vagaOrigem) return { vagaOrigemTitulo: null, prazoReposicaoDias: null, dentroGarantia: null };
+
+  let dentroGarantia = null;
+  let prazoReposicaoDias = null;
+  if (contratoOrigem && vagaOrigem.dataFechamento) {
+    prazoReposicaoDias = contratoOrigem.prazoReposicaoDias;
+    const diasDesdeFechamento = diasEntre(vagaOrigem.dataFechamento, hojeStr());
+    dentroGarantia = diasDesdeFechamento <= prazoReposicaoDias;
+  }
+  return {
+    vagaOrigemTitulo: vagaOrigem.titulo,
+    prazoReposicaoDias,
+    dentroGarantia,
+  };
+}
+
 module.exports = {
   computeVagaFields,
   classificarSlaFechamento,
   contarPareceresEnviados,
   diasPausadosStandBy,
+  computarReposicaoInfo,
   diasEntre,
   hojeStr,
 };
