@@ -20,10 +20,18 @@ function seed() {
   console.log("[seed] Criando dados iniciais...");
 
   const consultores = [
-    { id: "cons-mariana", nome: "Mariana Souza", email: "mariana.souza@evoerh.com.br", whatsapp: "(85) 99900-1111", perfil: "Gestor", ativo: true },
-    { id: "cons-rafael", nome: "Rafael Lima", email: "rafael.lima@evoerh.com.br", whatsapp: "(85) 99900-2222", perfil: "Recrutador", ativo: true },
-    { id: "cons-camila", nome: "Camila Torres", email: "camila.torres@evoerh.com.br", whatsapp: "(85) 99900-3333", perfil: "Recrutador", ativo: true },
-  ].map((c) => ({ ...c, createdAt: db.nowIso(), updatedAt: db.nowIso() }));
+    { id: "cons-mariana", nome: "Mariana Souza", email: "mariana.souza@evoerh.com.br", whatsapp: "(85) 99900-1111", perfil: "Gestor", ativo: true, dataAdmissao: "2024-01-15", tipoVinculo: "CLT", valorRemuneracao: 6500, beneficios: "Vale Transporte, Vale Refeição R$700, Plano de Saúde" },
+    { id: "cons-rafael", nome: "Rafael Lima", email: "rafael.lima@evoerh.com.br", whatsapp: "(85) 99900-2222", perfil: "Recrutador", ativo: true, dataAdmissao: "2024-06-03", tipoVinculo: "CLT", valorRemuneracao: 2800, beneficios: "Vale Transporte, Vale Refeição R$500" },
+    { id: "cons-camila", nome: "Camila Torres", email: "camila.torres@evoerh.com.br", whatsapp: "(85) 99900-3333", perfil: "Recrutador", ativo: true, dataAdmissao: "2025-02-10", tipoVinculo: "Estágio", valorRemuneracao: 1400, beneficios: "Vale Transporte" },
+  ].map((c) => ({
+    ...c,
+    dataDesligamento: null,
+    cpf: "",
+    dataNascimento: "",
+    endereco: "",
+    createdAt: db.nowIso(),
+    updatedAt: db.nowIso(),
+  }));
   db.writeCollection("consultores", consultores);
 
   const senhaHash = bcrypt.hashSync("evoe123", 10);

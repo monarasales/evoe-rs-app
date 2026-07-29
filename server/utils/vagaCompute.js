@@ -1,4 +1,4 @@
-const { ETAPAS_ENCERRADAS, SLA_DIAS_IDEAL, SLA_DIAS_LIMITE } = require("./constants");
+const { ETAPAS_ENCERRADAS, SLA_DIAS_IDEAL, SLA_DIAS_LIMITE, VALOR_COMISSAO_FECHAMENTO } = require("./constants");
 
 function diasEntre(dataInicioStr, dataFimStr) {
   const inicio = new Date(dataInicioStr + "T00:00:00");
@@ -30,6 +30,24 @@ function classificarSlaFechamento(vaga) {
 
 function contarPareceresEnviados(candidatosDaVaga) {
   return candidatosDaVaga.filter((c) => (c.parecerComportamental || "").trim().length > 0).length;
+}
+
+/** Comissão por fechamento de vaga: elegível quando a vaga fecha (11. Aprovado) dentro
+ * do SLA ideal (SLA_DIAS_IDEAL dias — a mesma faixa "ideal" já usada no ranking de SLA,
+ * sem descontar Stand By) e não é uma vaga de Reposição (substituição já paga na
+ * colocação original não gera comissão nova). O status de pagamento (`paga`) é o único
+ * dado que fica gravado na vaga — o resto é sempre recalculado, então nunca fica
+ * desatualizado mesmo em vagas fechadas antes dessa funcionalidade existir. */
+function computarComissao(vaga) {
+  const sla = classificarSlaFechamento(vaga);
+  const elegivel = vaga.etapaAtual === "11. Aprovado" && vaga.tipoVaga !== "Reposição" && !!sla && sla.nivel === "ideal";
+  return {
+    elegivel,
+    valor: elegivel ? VALOR_COMISSAO_FECHAMENTO : 0,
+    paga: !!vaga.comissaoPaga,
+    pagaEm: vaga.comissaoPagaEm || null,
+    pagaPorId: vaga.comissaoPagaPorId || null,
+  };
 }
 
 /** Quantos dias uma vaga já acumulou em Stand By, somando pausas já encerradas
@@ -77,6 +95,7 @@ function computeVagaFields(vaga, candidatosDaVaga = []) {
     qtdCandidatos: candidatosDaVaga.length,
     qtdPareceresEnviados: contarPareceresEnviados(candidatosDaVaga),
     slaFechamento: classificarSlaFechamento(vaga),
+    comissao: computarComissao(vaga),
     encerrada: ETAPAS_ENCERRADAS.includes(vaga.etapaAtual),
   };
 }
@@ -110,6 +129,7 @@ module.exports = {
   contarPareceresEnviados,
   diasPausadosStandBy,
   computarReposicaoInfo,
+  computarComissao,
   diasEntre,
   hojeStr,
 };

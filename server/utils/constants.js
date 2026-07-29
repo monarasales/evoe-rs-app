@@ -66,6 +66,16 @@ const ETAPAS_PROSPECT = ["Novo", "Em Contato", "Proposta Enviada", "Fechado", "P
 // (equipe/login de consultores, empresas, parâmetros do sistema), que seguem só do Gestor.
 const PERFIS_ACESSO = ["Gestor", "Supervisora", "Recrutador"];
 
+// Funcionários (RH interno da Evoé): tipo de vínculo determina se o valor cadastrado
+// é "Salário" ou "Bolsa Estágio" no formulário, e ajuda a diferenciar quem tem CLT/PJ
+// de quem está em estágio.
+const TIPOS_VINCULO = ["CLT", "PJ", "Estágio", "Outro"];
+
+// Comissão por fechamento de vaga: valor fixo pago ao consultor responsável quando a
+// vaga fecha (11. Aprovado) dentro do SLA ideal (SLA_DIAS_IDEAL dias, ver abaixo).
+// Vagas de Reposição nunca geram comissão, pois não são uma nova colocação vendida.
+const VALOR_COMISSAO_FECHAMENTO = 30;
+
 const DIAS_ALERTA_PRAZO = 3; // dias antes do prazo para disparar "Prazo Próximo do Vencimento"
 
 // Contratos: a 2ª parcela dos honorários vence automaticamente N dias após a 1ª,
@@ -119,6 +129,8 @@ module.exports = {
   TIPOS_VAGA,
   MOTIVOS_REPOSICAO,
   PERFIS_ACESSO,
+  TIPOS_VINCULO,
+  VALOR_COMISSAO_FECHAMENTO,
   SERVICOS_PROSPECT,
   ETAPAS_PROSPECT,
   DIAS_ALERTA_PRAZO,

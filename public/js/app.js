@@ -9,6 +9,7 @@ import { renderNotificacoes } from "./views/notificacoes.js";
 import { renderContratos } from "./views/contratos.js";
 import { renderCrm } from "./views/crm.js";
 import { renderFinanceiro } from "./views/financeiro.js";
+import { renderComissoes } from "./views/comissoes.js";
 
 const loginScreen = document.getElementById("login-screen");
 const mainScreen = document.getElementById("main-screen");
@@ -41,6 +42,7 @@ const NAV_SECOES = [
     itens: [
       { href: "#/crm", label: "CRM", icone: "🤝" },
       { href: "#/financeiro", label: "Financeiro", icone: "💰", somenteGestor: true },
+      { href: "#/comissoes", label: "Comissões", icone: "🏆", somenteGestor: true },
     ],
   },
   {
@@ -158,6 +160,7 @@ function registrarRotas() {
   registrarRota("/contratos", renderContratos);
   registrarRota("/crm", renderCrm);
   registrarRota("/financeiro", renderFinanceiro);
+  registrarRota("/comissoes", renderComissoes);
 }
 
 async function init() {

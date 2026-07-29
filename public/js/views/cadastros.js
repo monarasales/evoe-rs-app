@@ -1,5 +1,5 @@
 import { api } from "../api.js";
-import { store, isGestor, showToast } from "../state.js";
+import { store, isGestor, showToast, formatarData } from "../state.js";
 import { abrirModal, fecharModal } from "../modal.js";
 
 function escapeHtml(str) {
@@ -9,9 +9,21 @@ function escapeHtml(str) {
 }
 
 const ABAS = [
-  { id: "equipe", label: "Equipe e Usuários" },
+  { id: "equipe", label: "Funcionários" },
   { id: "parametros", label: "Parâmetros do Sistema" },
 ];
+
+// Funcionários: tipo de vínculo determina se o valor cadastrado é "Salário" ou
+// "Bolsa Estágio" no formulário. Espelha TIPOS_VINCULO em server/utils/constants.js.
+const TIPOS_VINCULO = ["CLT", "PJ", "Estágio", "Outro"];
+
+function formatarReal(valor) {
+  return (Number(valor) || 0).toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
+}
+
+function rotuloRemuneracao(tipoVinculo) {
+  return tipoVinculo === "Estágio" ? "Bolsa Estágio (R$)" : "Salário (R$)";
+}
 
 export async function renderConfiguracoes(root) {
   let abaAtiva = "equipe";
@@ -20,7 +32,7 @@ export async function renderConfiguracoes(root) {
     <div class="view-header">
       <div>
         <h2>Configurações</h2>
-        <div class="sub">Equipe com acesso ao sistema e parâmetros de operação. O cadastro de empresas clientes agora fica no menu CRM.</div>
+        <div class="sub">Cadastro de funcionários (dados de RH e acesso ao sistema) e parâmetros de operação. O cadastro de empresas clientes fica no menu CRM.</div>
       </div>
     </div>
     <div class="tabs" id="config-tabs">
@@ -49,12 +61,12 @@ export async function renderConfiguracoes(root) {
     else renderAbaParametros();
   }
 
-  // ---------- Aba: Equipe e Usuários ----------
+  // ---------- Aba: Funcionários ----------
   function renderAbaEquipe() {
     conteudo.innerHTML = `
       <div class="view-header" style="margin-bottom:10px;">
-        <div class="sub">Quem tem login no sistema — cada consultor entra com o próprio usuário e senha.</div>
-        ${isGestor() ? '<button id="btn-novo-consultor" class="btn btn-primary btn-sm">+ Novo Consultor</button>' : ""}
+        <div class="sub">Cadastro da equipe: dados de admissão, vínculo, remuneração e benefícios, além do login de acesso ao sistema.</div>
+        ${isGestor() ? '<button id="btn-novo-consultor" class="btn btn-primary btn-sm">+ Novo Funcionário</button>' : ""}
       </div>
       <div id="tabela-consultores"></div>
     `;
@@ -69,7 +81,7 @@ export async function renderConfiguracoes(root) {
     if (!el) return;
     el.innerHTML = `
       <table>
-        <thead><tr><th>Nome</th><th>Perfil</th><th>E-mail</th><th>WhatsApp</th><th>Usuário</th><th>Status</th>${isGestor() ? "<th></th>" : ""}</tr></thead>
+        <thead><tr><th>Nome</th><th>Perfil</th><th>Admissão</th><th>Vínculo</th><th>Remuneração</th><th>Usuário</th><th>Status</th>${isGestor() ? "<th></th>" : ""}</tr></thead>
         <tbody>
           ${consultores
             .map(
@@ -77,8 +89,9 @@ export async function renderConfiguracoes(root) {
             <tr data-id="${c.id}">
               <td>${escapeHtml(c.nome)}</td>
               <td>${c.perfil}</td>
-              <td>${escapeHtml(c.email)}</td>
-              <td>${escapeHtml(c.whatsapp)}</td>
+              <td>${c.dataAdmissao ? formatarData(c.dataAdmissao) : "—"}</td>
+              <td>${escapeHtml(c.tipoVinculo || "—")}</td>
+              <td>${c.valorRemuneracao ? formatarReal(c.valorRemuneracao) : "—"}</td>
               <td>${c.username ? escapeHtml(c.username) : '<span class="sub">sem login</span>'}</td>
               <td><span class="tag ${c.ativo ? "tag-nprazo" : "tag-encerrada"}">${c.ativo ? "Ativo" : "Inativo"}</span></td>
               ${
@@ -122,8 +135,9 @@ export async function renderConfiguracoes(root) {
 
   function abrirFormularioConsultor(consultor) {
     const editando = !!consultor;
+    const vinculoInicial = (editando && consultor.tipoVinculo) || "CLT";
     abrirModal(`
-      <h2>${editando ? "Editar Consultor" : "Novo Consultor"}</h2>
+      <h2>${editando ? "Editar Funcionário" : "Novo Funcionário"}</h2>
       <form id="form-consultor">
         <div class="form-row"><label>Nome</label><input type="text" id="cs-nome" required value="${editando ? escapeHtml(consultor.nome) : ""}" /></div>
         <div class="form-cols">
@@ -144,6 +158,32 @@ export async function renderConfiguracoes(root) {
             <label style="margin:0;">Ativo</label>
           </div>
         </div>
+
+        <h3 class="section-title" style="margin-top:18px;">Dados de RH</h3>
+        <div class="form-cols">
+          <div class="form-row"><label>Data de admissão</label><input type="date" id="cs-admissao" value="${editando ? (consultor.dataAdmissao || "") : ""}" /></div>
+          <div class="form-row">
+            <label>Tipo de vínculo</label>
+            <select id="cs-vinculo">
+              ${TIPOS_VINCULO.map((t) => `<option ${vinculoInicial === t ? "selected" : ""}>${t}</option>`).join("")}
+            </select>
+          </div>
+        </div>
+        <div class="form-cols">
+          <div class="form-row"><label id="cs-remuneracao-label">${rotuloRemuneracao(vinculoInicial)}</label><input type="number" min="0" step="0.01" id="cs-remuneracao" value="${editando ? (consultor.valorRemuneracao || "") : ""}" /></div>
+          <div class="form-row"><label>CPF</label><input type="text" id="cs-cpf" value="${editando ? escapeHtml(consultor.cpf || "") : ""}" /></div>
+        </div>
+        <div class="form-row"><label>Benefícios</label><input type="text" id="cs-beneficios" placeholder="ex: Vale Transporte, Vale Refeição R$600, Plano de Saúde" value="${editando ? escapeHtml(consultor.beneficios || "") : ""}" /></div>
+        <div class="form-cols">
+          <div class="form-row"><label>Data de nascimento</label><input type="date" id="cs-nascimento" value="${editando ? (consultor.dataNascimento || "") : ""}" /></div>
+          <div class="form-row"><label>Endereço</label><input type="text" id="cs-endereco" value="${editando ? escapeHtml(consultor.endereco || "") : ""}" /></div>
+        </div>
+        <div class="form-row" id="cs-desligamento-row" style="${!editando || consultor.ativo ? "display:none;" : ""}">
+          <label>Data de desligamento</label>
+          <input type="date" id="cs-desligamento" value="${editando ? (consultor.dataDesligamento || "") : ""}" />
+        </div>
+
+        <h3 class="section-title" style="margin-top:18px;">Acesso ao Sistema</h3>
         ${
           !editando
             ? `
@@ -161,19 +201,36 @@ export async function renderConfiguracoes(root) {
         <div id="consultor-form-erro" class="form-erro hidden"></div>
         <div class="modal-close-row">
           <button type="button" id="btn-cancelar-cs" class="btn btn-outline">Fechar</button>
-          <button type="submit" class="btn btn-primary">${editando ? "Salvar" : "Criar consultor"}</button>
+          <button type="submit" class="btn btn-primary">${editando ? "Salvar" : "Criar funcionário"}</button>
         </div>
       </form>
     `);
     document.getElementById("btn-cancelar-cs").addEventListener("click", fecharModal);
+
+    document.getElementById("cs-vinculo").addEventListener("change", (ev) => {
+      document.getElementById("cs-remuneracao-label").textContent = rotuloRemuneracao(ev.target.value);
+    });
+    document.getElementById("cs-ativo").addEventListener("change", (ev) => {
+      document.getElementById("cs-desligamento-row").style.display = ev.target.checked ? "none" : "";
+    });
+
     document.getElementById("form-consultor").addEventListener("submit", async (ev) => {
       ev.preventDefault();
+      const ativo = document.getElementById("cs-ativo").checked;
       const payload = {
         nome: document.getElementById("cs-nome").value.trim(),
         email: document.getElementById("cs-email").value.trim(),
         whatsapp: document.getElementById("cs-whatsapp").value.trim(),
         perfil: document.getElementById("cs-perfil").value,
-        ativo: document.getElementById("cs-ativo").checked,
+        ativo,
+        dataAdmissao: document.getElementById("cs-admissao").value,
+        tipoVinculo: document.getElementById("cs-vinculo").value,
+        valorRemuneracao: document.getElementById("cs-remuneracao").value,
+        cpf: document.getElementById("cs-cpf").value.trim(),
+        beneficios: document.getElementById("cs-beneficios").value.trim(),
+        dataNascimento: document.getElementById("cs-nascimento").value,
+        endereco: document.getElementById("cs-endereco").value.trim(),
+        dataDesligamento: ativo ? null : (document.getElementById("cs-desligamento").value || null),
       };
       const username = document.getElementById("cs-username").value.trim();
       const senha = document.getElementById("cs-senha").value;
@@ -196,7 +253,7 @@ export async function renderConfiguracoes(root) {
           await api.patch(`/api/consultores/${consultor.id}/credenciais`, { username, senha });
         }
 
-        showToast("Consultor salvo.", "sucesso");
+        showToast("Funcionário salvo.", "sucesso");
         fecharModal();
         carregarConsultores();
         const consultores = await api.get("/api/consultores");

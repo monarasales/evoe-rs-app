@@ -81,6 +81,9 @@ router.post("/", requireAuth, (req, res) => {
     dataInicioStandBy: null,
     diasStandByAcumulados: 0,
     motivoStandBy: "",
+    comissaoPaga: false,
+    comissaoPagaEm: null,
+    comissaoPagaPorId: null,
   });
 
   db.insert("historico", {

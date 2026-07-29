@@ -2,7 +2,7 @@ const express = require("express");
 const bcrypt = require("bcryptjs");
 const db = require("../db");
 const { requireGestor } = require("../middleware/auth");
-const { PERFIS_ACESSO } = require("../utils/constants");
+const { PERFIS_ACESSO, TIPOS_VINCULO } = require("../utils/constants");
 
 const router = express.Router();
 
@@ -24,9 +24,15 @@ router.get("/:id", (req, res) => {
 
 // Apenas Gestor pode criar/editar consultores (gestão de equipe).
 router.post("/", requireGestor, (req, res) => {
-  const { nome, email, whatsapp, perfil, ativo, username, senha } = req.body || {};
+  const {
+    nome, email, whatsapp, perfil, ativo, username, senha,
+    dataAdmissao, tipoVinculo, valorRemuneracao, beneficios, cpf, dataNascimento, endereco,
+  } = req.body || {};
   if (!nome || !email || !perfil || !PERFIS_ACESSO.includes(perfil)) {
     return res.status(400).json({ erro: "Nome, e-mail e perfil (Gestor/Recrutador) são obrigatórios." });
+  }
+  if (tipoVinculo && !TIPOS_VINCULO.includes(tipoVinculo)) {
+    return res.status(400).json({ erro: "Tipo de vínculo inválido." });
   }
 
   // Valida o usuário de login ANTES de criar o consultor, para nunca deixar um
@@ -48,6 +54,14 @@ router.post("/", requireGestor, (req, res) => {
     whatsapp: whatsapp || "",
     perfil,
     ativo: ativo !== false,
+    dataAdmissao: dataAdmissao || "",
+    dataDesligamento: null,
+    tipoVinculo: tipoVinculo || "CLT",
+    valorRemuneracao: Number(valorRemuneracao) || 0,
+    beneficios: beneficios || "",
+    cpf: cpf || "",
+    dataNascimento: dataNascimento || "",
+    endereco: endereco || "",
   });
 
   if (usernameNormalizado) {
@@ -62,11 +76,22 @@ router.post("/", requireGestor, (req, res) => {
 });
 
 router.patch("/:id", requireGestor, (req, res) => {
-  const { nome, email, whatsapp, perfil, ativo } = req.body || {};
+  const {
+    nome, email, whatsapp, perfil, ativo,
+    dataAdmissao, dataDesligamento, tipoVinculo, valorRemuneracao, beneficios, cpf, dataNascimento, endereco,
+  } = req.body || {};
   if (perfil && !PERFIS_ACESSO.includes(perfil)) {
     return res.status(400).json({ erro: "Perfil inválido." });
   }
-  const atualizado = db.update("consultores", req.params.id, { nome, email, whatsapp, perfil, ativo });
+  if (tipoVinculo && !TIPOS_VINCULO.includes(tipoVinculo)) {
+    return res.status(400).json({ erro: "Tipo de vínculo inválido." });
+  }
+  const atualizado = db.update("consultores", req.params.id, {
+    nome, email, whatsapp, perfil, ativo,
+    dataAdmissao, dataDesligamento, tipoVinculo,
+    valorRemuneracao: valorRemuneracao !== undefined ? Number(valorRemuneracao) || 0 : undefined,
+    beneficios, cpf, dataNascimento, endereco,
+  });
   if (!atualizado) return res.status(404).json({ erro: "Consultor não encontrado." });
   res.json(atualizado);
 });
