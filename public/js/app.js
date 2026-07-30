@@ -70,16 +70,18 @@ function montarNav() {
 }
 
 async function carregarCachesBasicos() {
-  const [consultores, empresas, etapasVaga, etapasCandidato] = await Promise.all([
+  const [consultores, empresas, etapasVaga, etapasCandidato, motivosListaNegra] = await Promise.all([
     api.get("/api/consultores"),
     api.get("/api/empresas"),
     api.get("/api/vagas/etapas"),
     api.get("/api/candidatos/etapas"),
+    api.get("/api/candidatos/motivos-lista-negra"),
   ]);
   store.consultores = consultores;
   store.empresas = empresas;
   store.etapasVaga = etapasVaga;
   store.etapasCandidato = etapasCandidato;
+  store.motivosListaNegra = motivosListaNegra;
 }
 
 async function atualizarBadgeNotificacoes() {

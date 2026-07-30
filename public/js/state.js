@@ -7,6 +7,7 @@ export const store = {
   empresas: [],
   etapasVaga: [],
   etapasCandidato: [],
+  motivosListaNegra: [],
 };
 
 export function isGestor() {

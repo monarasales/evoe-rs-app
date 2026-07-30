@@ -26,6 +26,10 @@ const ETAPAS_CANDIDATO = [
   "Entrevistado",
   "Aprovado na Entrevista",
   "Reprovado na Entrevista",
+  // O consultor entrevistou e viu que o candidato não tem aderência ao perfil da
+  // vaga (formação, experiência, requisitos) — diferente de "Sem Interesse" (o
+  // candidato que desistiu) e de "Não Respondeu" (não conseguimos retorno dele).
+  "Sem Aderência ao Perfil",
   "Referência OK",
   "Referência com Ressalva",
   "Parecer Comportamental OK",
@@ -36,10 +40,24 @@ const ETAPAS_CANDIDATO = [
   "Desistiu",
 ];
 
-// Banco de Talentos: candidatos contatados que não demonstraram interesse na vaga
-// ou não deram retorno — ficam numa aba separada dos candidatos ativos/engajados,
+// Banco de Talentos: candidatos que não seguem para essa vaga específica (não
+// demonstraram interesse, não deram retorno, foram reprovados na entrevista ou não
+// têm aderência ao perfil) — ficam numa aba separada dos candidatos ativos/engajados,
 // mas continuam cadastrados para eventual reaproveitamento em vagas futuras.
-const ETAPAS_SEM_RETORNO = ["Sem Interesse", "Não Respondeu"];
+const ETAPAS_SEM_RETORNO = ["Sem Interesse", "Não Respondeu", "Reprovado na Entrevista", "Sem Aderência ao Perfil"];
+
+// Lista Negra: candidato marcado como não recomendado para futuras vagas, com motivo
+// categorizado — independe da etapa (pode acontecer até depois de aprovado, ex: mau
+// comportamento já dentro da empresa durante o período de experiência). Serve de
+// alerta para o consultor não reaproveitar por engano um candidato problemático.
+const MOTIVOS_LISTA_NEGRA = [
+  "Falta de conduta ou postura",
+  "Não comprometimento",
+  "Falta na entrevista (não compareceu)",
+  "Desistência da vaga após aprovação da empresa",
+  "Conduta inadequada na empresa (gerou reposição)",
+  "Outro",
+];
 
 const PRIORIDADES = ["Alta", "Média", "Baixa"];
 
@@ -136,6 +154,7 @@ module.exports = {
   ETAPAS_ENCERRADAS,
   ETAPAS_CANDIDATO,
   ETAPAS_SEM_RETORNO,
+  MOTIVOS_LISTA_NEGRA,
   PRIORIDADES,
   TIPOS_VAGA,
   MOTIVOS_REPOSICAO,

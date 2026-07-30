@@ -8,15 +8,16 @@ function escapeHtml(str) {
   return div.innerHTML;
 }
 
-// Banco de Talentos: candidatos que já foram contatados mas não têm interesse na
-// vaga ou não deram retorno ficam numa aba separada dos candidatos engajados
-// (convocados, entrevistados etc.), mas continuam cadastrados para reaproveitar
-// em vagas futuras. Espelha ETAPAS_SEM_RETORNO em server/utils/constants.js.
-const ETAPAS_SEM_RETORNO = ["Sem Interesse", "Não Respondeu"];
+// Banco de Talentos: candidatos que não seguem para essa vaga específica (sem
+// interesse, sem retorno, reprovados na entrevista ou sem aderência ao perfil) ficam
+// numa aba separada dos candidatos engajados (convocados, entrevistados etc.), mas
+// continuam cadastrados para reaproveitar em vagas futuras. Espelha ETAPAS_SEM_RETORNO
+// em server/utils/constants.js.
+const ETAPAS_SEM_RETORNO = ["Sem Interesse", "Não Respondeu", "Reprovado na Entrevista", "Sem Aderência ao Perfil"];
 
 const ABAS = [
   { id: "ativos", label: "Candidatos" },
-  { id: "banco", label: "Sem Interesse / Sem Retorno" },
+  { id: "banco", label: "Banco de Talentos" },
   { id: "produtividade", label: "Produtividade" },
 ];
 
@@ -75,6 +76,10 @@ export async function renderCandidatos(root, params) {
       <select id="filtro-consultor-cand">
         <option value="">Todos os consultores</option>
       </select>
+      <label class="checkbox-row" style="margin:0;">
+        <input type="checkbox" id="filtro-lista-negra" />
+        <span>🚫 Só Lista Negra</span>
+      </label>
     </div>
     <div class="sub" id="info-vaga-selecionada" style="margin:-8px 0 4px;"></div>
     <div class="tabs" id="candidatos-tabs">
@@ -87,6 +92,7 @@ export async function renderCandidatos(root, params) {
   const filtroVaga = root.querySelector("#filtro-vaga");
   const ordenarVaga = root.querySelector("#ordenar-vaga");
   const filtroConsultor = root.querySelector("#filtro-consultor-cand");
+  const filtroListaNegra = root.querySelector("#filtro-lista-negra");
   const buscaInput = root.querySelector("#busca-candidato");
   const infoVagaEl = root.querySelector("#info-vaga-selecionada");
   const tabsEl = root.querySelector("#candidatos-tabs");
@@ -153,6 +159,7 @@ export async function renderCandidatos(root, params) {
     }
     const busca = normalizar(buscaInput.value.trim());
     if (busca) lista = lista.filter((c) => normalizar(c.nome).includes(busca));
+    if (filtroListaNegra.checked) lista = lista.filter((c) => c.listaNegra);
     return lista;
   }
 
@@ -165,7 +172,7 @@ export async function renderCandidatos(root, params) {
       btn.classList.toggle("ativo", btn.dataset.aba === abaAtiva);
       if (btn.dataset.aba === "banco") {
         const qtd = contagemBanco();
-        btn.textContent = qtd > 0 ? `Sem Interesse / Sem Retorno (${qtd})` : "Sem Interesse / Sem Retorno";
+        btn.textContent = qtd > 0 ? `Banco de Talentos (${qtd})` : "Banco de Talentos";
       }
     });
   }
@@ -209,6 +216,14 @@ export async function renderCandidatos(root, params) {
     return v ? `Vaga cadastrada no sistema em ${formatarDataCurta(v.createdAt)}` : "";
   }
 
+  // Aviso visual — não bloqueia nada, só avisa o consultor pra ele decidir com
+  // informação antes de reaproveitar esse candidato numa vaga nova.
+  function tagListaNegra(c) {
+    if (!c.listaNegra) return "";
+    const titulo = `Lista Negra — ${c.motivoListaNegra}${c.obsListaNegra ? `: ${c.obsListaNegra}` : ""}`;
+    return ` <span class="tag tag-atrasada" title="${escapeHtml(titulo)}">🚫 Lista Negra</span>`;
+  }
+
   function renderizarTabela() {
     const el = root.querySelector("#candidatos-tabela");
     const candidatos = ordenarPorNome(
@@ -220,7 +235,7 @@ export async function renderCandidatos(root, params) {
     if (candidatos.length === 0) {
       el.innerHTML =
         abaAtiva === "banco"
-          ? '<div class="empty-state">Nenhum candidato sem interesse ou sem retorno por aqui.</div>'
+          ? '<div class="empty-state">Nenhum candidato no Banco de Talentos por aqui.</div>'
           : '<div class="empty-state">Nenhum candidato encontrado.</div>';
       return;
     }
@@ -230,7 +245,7 @@ export async function renderCandidatos(root, params) {
     if (abaAtiva === "banco") {
       el.innerHTML = `
         ${contador}
-        <div class="sub" style="margin-bottom:10px;">Candidatos contatados que não tiveram interesse na vaga ou não responderam — ficam aqui para futuro reaproveitamento, sem poluir o funil ativo.</div>
+        <div class="sub" style="margin-bottom:10px;">Candidatos que não seguem para a vaga em que foram cadastrados — sem interesse, sem retorno, reprovados na entrevista ou sem aderência ao perfil — ficam aqui para futuro reaproveitamento, sem poluir o funil ativo.</div>
         <table>
           <thead>
             <tr><th>Nome</th><th>Vaga</th><th>Situação</th><th>Telefone</th><th></th></tr>
@@ -240,7 +255,7 @@ export async function renderCandidatos(root, params) {
               .map(
                 (c) => `
               <tr data-id="${c.id}">
-                <td>${escapeHtml(c.nome)}${c.curriculoArquivo ? ' <span title="Tem currículo anexado">📎</span>' : ""}</td>
+                <td>${escapeHtml(c.nome)}${c.curriculoArquivo ? ' <span title="Tem currículo anexado">📎</span>' : ""}${tagListaNegra(c)}</td>
                 <td title="${vagaCadastroTitle(c.vagaId)}">${escapeHtml(vagaTitulo(c.vagaId))}</td>
                 <td>${escapeHtml(c.etapaCandidato)}</td>
                 <td>${escapeHtml(c.telefone) || "—"}</td>
@@ -269,7 +284,7 @@ export async function renderCandidatos(root, params) {
               .map(
                 (c) => `
               <tr data-id="${c.id}">
-                <td>${escapeHtml(c.nome)}${c.curriculoArquivo ? ' <span title="Tem currículo anexado">📎</span>' : ""}</td>
+                <td>${escapeHtml(c.nome)}${c.curriculoArquivo ? ' <span title="Tem currículo anexado">📎</span>' : ""}${tagListaNegra(c)}</td>
                 <td title="${vagaCadastroTitle(c.vagaId)}">${escapeHtml(vagaTitulo(c.vagaId))}</td>
                 <td>${escapeHtml(c.etapaCandidato)}</td>
                 <td>${c.jusbrasilOk ? "✅" : "—"}</td>
@@ -461,6 +476,10 @@ export async function renderCandidatos(root, params) {
     marcarAbaAtiva();
     renderizarConteudo();
   });
+  filtroListaNegra.addEventListener("change", () => {
+    marcarAbaAtiva();
+    renderizarConteudo();
+  });
   let buscaDebounce;
   buscaInput.addEventListener("input", () => {
     clearTimeout(buscaDebounce);
@@ -483,6 +502,7 @@ export async function renderCandidatos(root, params) {
           <label>Nome</label>
           <input type="text" id="c-nome" required value="${editando ? escapeHtml(candidato.nome) : ""}" />
         </div>
+        <div id="c-aviso-lista-negra" class="form-erro hidden" style="background:var(--warning-bg); color:var(--warning);"></div>
         <div class="form-cols">
           <div class="form-row">
             <label>E-mail</label>
@@ -504,7 +524,7 @@ export async function renderCandidatos(root, params) {
           <select id="c-etapa">
             ${store.etapasCandidato.map((e) => `<option ${editando && candidato.etapaCandidato === e ? "selected" : ""}>${e}</option>`).join("")}
           </select>
-          <div class="sub" style="margin-top:4px;">Use "Sem Interesse" ou "Não Respondeu" para mandar o candidato para a aba de Banco de Talentos sem excluí-lo.</div>
+          <div class="sub" style="margin-top:4px;">"Sem Interesse" (o candidato desistiu), "Não Respondeu" (sem retorno dele), "Reprovado na Entrevista" ou "Sem Aderência ao Perfil" (entrevistamos, mas não bate com a vaga) mandam o candidato para o Banco de Talentos sem excluí-lo.</div>
         </div>
         ${
           editando
@@ -536,6 +556,23 @@ export async function renderCandidatos(root, params) {
           <label>Parecer comportamental</label>
           <textarea id="c-parecer">${escapeHtml(candidato.parecerComportamental || "")}</textarea>
         </div>
+        <div class="form-row checkbox-row">
+          <input type="checkbox" id="c-lista-negra" ${candidato.listaNegra ? "checked" : ""} />
+          <label style="margin:0;">🚫 Marcar na Lista Negra (candidato não recomendado para futuras vagas)</label>
+        </div>
+        <div id="c-lista-negra-detalhe" style="${candidato.listaNegra ? "" : "display:none;"}">
+          <div class="form-row">
+            <label>Motivo</label>
+            <select id="c-motivo-lista-negra">
+              ${store.motivosListaNegra.map((m) => `<option ${candidato.motivoListaNegra === m ? "selected" : ""}>${m}</option>`).join("")}
+            </select>
+          </div>
+          <div class="form-row">
+            <label>Detalhes (opcional)</label>
+            <textarea id="c-obs-lista-negra" placeholder="ex: não compareceu à entrevista na empresa em 12/06, sem avisar">${escapeHtml(candidato.obsListaNegra || "")}</textarea>
+          </div>
+          ${candidato.dataListaNegra ? `<div class="sub" style="margin-top:-6px;">Marcado em ${formatarDataCurta(candidato.dataListaNegra)}.</div>` : ""}
+        </div>
         <div class="form-row">
           <label>Currículo</label>
           <div id="curriculo-status"></div>
@@ -555,7 +592,37 @@ export async function renderCandidatos(root, params) {
 
     document.getElementById("btn-cancelar-c").addEventListener("click", fecharModal);
 
+    // Ao cadastrar um candidato novo, avisa (sem bloquear) se já existe alguém com
+    // esse nome marcado na Lista Negra — evita reaproveitar por engano um candidato
+    // problemático de outra vaga, já que cada vaga tem seu próprio registro.
+    if (!editando) {
+      const nomeInput = document.getElementById("c-nome");
+      const avisoEl = document.getElementById("c-aviso-lista-negra");
+      const verificarListaNegra = () => {
+        const nomeDigitado = normalizar(nomeInput.value.trim());
+        if (!nomeDigitado) {
+          avisoEl.classList.add("hidden");
+          return;
+        }
+        const encontrado = todosCandidatos.find((c) => c.listaNegra && normalizar(c.nome) === nomeDigitado);
+        if (encontrado) {
+          avisoEl.textContent = `⚠️ Já existe um candidato chamado "${encontrado.nome}" na Lista Negra (motivo: ${encontrado.motivoListaNegra}). Confira antes de prosseguir.`;
+          avisoEl.classList.remove("hidden");
+        } else {
+          avisoEl.classList.add("hidden");
+        }
+      };
+      nomeInput.addEventListener("input", verificarListaNegra);
+      nomeInput.addEventListener("blur", verificarListaNegra);
+    }
+
     if (editando) {
+      const chkListaNegra = document.getElementById("c-lista-negra");
+      const detalheListaNegra = document.getElementById("c-lista-negra-detalhe");
+      chkListaNegra.addEventListener("change", () => {
+        detalheListaNegra.style.display = chkListaNegra.checked ? "" : "none";
+      });
+
       document.getElementById("btn-excluir-candidato").addEventListener("click", async () => {
         if (!confirm("Excluir este candidato?")) return;
         try {
@@ -630,6 +697,7 @@ export async function renderCandidatos(root, params) {
       };
       try {
         if (editando) {
+          const listaNegra = document.getElementById("c-lista-negra").checked;
           const extra = {
             dataEntrevista: document.getElementById("c-data-entrevista").value || null,
             dataEntrevistaEmpresa: document.getElementById("c-data-entrevista-empresa").value || null,
@@ -637,6 +705,9 @@ export async function renderCandidatos(root, params) {
             jusbrasilOk: document.getElementById("c-jusbrasil").checked,
             obsReferencia: document.getElementById("c-obs-referencia").value,
             parecerComportamental: document.getElementById("c-parecer").value,
+            listaNegra,
+            motivoListaNegra: listaNegra ? document.getElementById("c-motivo-lista-negra").value : "",
+            obsListaNegra: document.getElementById("c-obs-lista-negra").value,
           };
           await api.patch(`/api/candidatos/${candidato.id}`, { ...payloadBase, ...extra });
           showToast("Candidato atualizado.", "sucesso");

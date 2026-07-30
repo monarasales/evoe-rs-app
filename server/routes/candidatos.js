@@ -4,8 +4,9 @@ const path = require("path");
 const db = require("../db");
 const { requireAuth } = require("../middleware/auth");
 const { notify } = require("../utils/notify");
-const { ETAPAS_CANDIDATO } = require("../utils/constants");
+const { ETAPAS_CANDIDATO, MOTIVOS_LISTA_NEGRA } = require("../utils/constants");
 const { uploadCurriculo, UPLOADS_DIR } = require("../utils/uploads");
+const { hojeStr } = require("../utils/vagaCompute");
 
 const router = express.Router();
 
@@ -33,6 +34,10 @@ router.get("/", (req, res) => {
 
 router.get("/etapas", (req, res) => {
   res.json(ETAPAS_CANDIDATO);
+});
+
+router.get("/motivos-lista-negra", (req, res) => {
+  res.json(MOTIVOS_LISTA_NEGRA);
 });
 
 router.get("/:id", (req, res) => {
@@ -64,6 +69,12 @@ router.post("/", requireAuth, (req, res) => {
     obsReferencia: "",
     parecerComportamental: "",
     dataRetornoCliente: null,
+    // Lista Negra: candidato não recomendado para futuras vagas — independe da etapa,
+    // pode ser marcado a qualquer momento (ver rota PATCH).
+    listaNegra: false,
+    motivoListaNegra: "",
+    obsListaNegra: "",
+    dataListaNegra: null,
   });
   res.status(201).json(candidato);
 });
@@ -74,13 +85,31 @@ router.patch("/:id", requireAuth, (req, res) => {
   const vaga = db.findById("vagas", candidato.vagaId);
   if (!podeEditar(req, vaga)) return res.status(403).json({ erro: "Você só pode editar candidatos de vagas atribuídas a você." });
 
-  const { nome, email, telefone, etapaCandidato, dataEntrevista, dataEntrevistaEmpresa, jusbrasilOk, obsReferencia, parecerComportamental, dataRetornoCliente } = req.body || {};
+  const {
+    nome, email, telefone, etapaCandidato, dataEntrevista, dataEntrevistaEmpresa,
+    jusbrasilOk, obsReferencia, parecerComportamental, dataRetornoCliente,
+    listaNegra, motivoListaNegra, obsListaNegra,
+  } = req.body || {};
   if (etapaCandidato && !ETAPAS_CANDIDATO.includes(etapaCandidato)) {
     return res.status(400).json({ erro: "Etapa de candidato inválida." });
   }
+  if (listaNegra && !MOTIVOS_LISTA_NEGRA.includes(motivoListaNegra)) {
+    return res.status(400).json({ erro: "Selecione o motivo da Lista Negra." });
+  }
+
+  // Data da marcação: registra automaticamente na primeira vez que entra na Lista
+  // Negra; some quando o candidato é retirado de lá (motivo/observação também).
+  const entrandoAgora = listaNegra === true && !candidato.listaNegra;
+  const patchListaNegra =
+    listaNegra === undefined
+      ? {}
+      : listaNegra
+      ? { listaNegra: true, motivoListaNegra, obsListaNegra: obsListaNegra || "", dataListaNegra: entrandoAgora ? hojeStr() : candidato.dataListaNegra }
+      : { listaNegra: false, motivoListaNegra: "", obsListaNegra: "", dataListaNegra: null };
 
   const atualizado = db.update("candidatos", candidato.id, {
     nome, email, telefone, etapaCandidato, dataEntrevista, dataEntrevistaEmpresa, jusbrasilOk, obsReferencia, parecerComportamental, dataRetornoCliente,
+    ...patchListaNegra,
   });
 
   if (etapaCandidato === "Aprovado pelo Cliente" && candidato.etapaCandidato !== "Aprovado pelo Cliente" && vaga) {
