@@ -1,5 +1,5 @@
 import { api } from "../api.js";
-import { formatarData, isGestor, showToast } from "../state.js";
+import { formatarData, isGestor, podeGerenciarVagas, nomeConsultor, showToast } from "../state.js";
 
 function escapeHtml(str) {
   const div = document.createElement("div");
@@ -22,8 +22,10 @@ function mesLabel(anoMes) {
 }
 
 export async function renderComissoes(root) {
-  if (!isGestor()) {
-    root.innerHTML = '<div class="empty-state">Esta área é restrita ao perfil Gestor.</div>';
+  // Supervisora participa do fluxo (solicita o pagamento da comissão da equipe),
+  // mas só o Gestor aprova/marca como paga — controle fica nos botões de cada linha.
+  if (!podeGerenciarVagas()) {
+    root.innerHTML = '<div class="empty-state">Esta área é restrita a Gestor e Supervisora.</div>';
     return;
   }
 
@@ -34,6 +36,7 @@ export async function renderComissoes(root) {
         <div class="sub">R$ 30 por vaga fechada dentro do prazo ideal de 10 dias. Vagas de Reposição não geram comissão nova.</div>
       </div>
     </div>
+    <div id="comissoes-avisos"></div>
     <div class="kpi-row" id="comissoes-kpis"></div>
     <div class="kanban-toolbar" style="margin-top:16px;">
       <select id="filtro-mes-comissao">
@@ -88,17 +91,32 @@ export async function renderComissoes(root) {
 
   function renderizarTudo() {
     const filtradas = linhasFiltradas();
+    renderizarAvisos();
     renderizarKpis();
     renderizarResumoConsultor(filtradas);
     renderizarTabela(filtradas);
   }
 
+  function renderizarAvisos() {
+    const el = root.querySelector("#comissoes-avisos");
+    if (isGestor() && resumoGeral.qtdAguardandoAprovacao > 0) {
+      el.innerHTML = `<div class="form-erro" style="background:var(--warning-bg); color:var(--warning); margin-bottom:10px;">${resumoGeral.qtdAguardandoAprovacao} comissão(ões) solicitada(s) pela equipe aguardando sua aprovação — ${formatarReal(resumoGeral.valorAguardandoAprovacao)} no total.</div>`;
+    } else {
+      el.innerHTML = "";
+    }
+  }
+
   function renderizarKpis() {
     root.querySelector("#comissoes-kpis").innerHTML = `
+      <div class="kpi-card kpi-destaque ${resumoGeral.qtdAguardandoAprovacao > 0 ? "kpi-destaque-alerta" : ""}">
+        <div class="kpi-label">Aguardando Aprovação</div>
+        <div class="kpi-value">${formatarReal(resumoGeral.valorAguardandoAprovacao)}</div>
+        <div class="kpi-sub">${resumoGeral.qtdAguardandoAprovacao} solicitação(ões) da equipe</div>
+      </div>
       <div class="kpi-card kpi-destaque ${resumoGeral.qtdPendente > 0 ? "kpi-destaque-alerta" : ""}">
         <div class="kpi-label">Pendente de Pagamento</div>
         <div class="kpi-value">${formatarReal(resumoGeral.valorPendente)}</div>
-        <div class="kpi-sub">${resumoGeral.qtdPendente} comissão(ões)</div>
+        <div class="kpi-sub">${resumoGeral.qtdPendente} comissão(ões) — inclui as ainda não solicitadas</div>
       </div>
       <div class="kpi-card kpi-destaque kpi-destaque-ok">
         <div class="kpi-label">Pago Este Mês</div>
@@ -155,6 +173,41 @@ export async function renderComissoes(root) {
     `;
   }
 
+  function statusTag(l) {
+    if (l.comissao.paga) {
+      return `<span class="tag tag-nprazo">Paga em ${formatarData(l.comissao.pagaEm)}</span>`;
+    }
+    if (l.comissao.solicitada) {
+      return `<span class="tag tag-atraso" title="Solicitado por ${escapeHtml(nomeConsultor(l.comissao.solicitadaPorId))} em ${formatarData(l.comissao.solicitadaEm)}">Aguardando aprovação</span>`;
+    }
+    return '<span class="tag tag-standby">Elegível — não solicitada</span>';
+  }
+
+  // Botões de ação variam por estado da comissão (elegível / solicitada / paga) e
+  // por perfil (Supervisora só solicita; só o Gestor aprova, recusa ou paga direto).
+  // Isso é o que evita pagar a mesma comissão duas vezes: uma vez solicitada, some o
+  // botão de solicitar de novo até o Gestor decidir (aprovar ou recusar).
+  function acoesLinha(l) {
+    if (l.comissao.paga) {
+      return isGestor()
+        ? `<button class="btn btn-outline btn-sm btn-desmarcar" data-id="${l.vagaId}">Desmarcar</button>`
+        : "—";
+    }
+    if (l.comissao.solicitada) {
+      if (isGestor()) {
+        return `
+          <button class="btn btn-primary btn-sm btn-aprovar" data-id="${l.vagaId}">Aprovar e Pagar</button>
+          <button class="btn btn-outline btn-sm btn-recusar" data-id="${l.vagaId}" style="color:#c0392b;">Recusar</button>
+        `;
+      }
+      return '<span class="sub">Aguardando o Gestor</span>';
+    }
+    if (isGestor()) {
+      return `<button class="btn btn-outline btn-sm btn-marcar-paga" data-id="${l.vagaId}">Marcar como Paga</button>`;
+    }
+    return `<button class="btn btn-primary btn-sm btn-solicitar" data-id="${l.vagaId}">Solicitar Pagamento</button>`;
+  }
+
   function renderizarTabela(filtradas) {
     const el = root.querySelector("#comissoes-tabela");
     if (filtradas.length === 0) {
@@ -177,18 +230,8 @@ export async function renderComissoes(root) {
               <td>${formatarData(l.dataFechamento)}</td>
               <td>${l.diasFechamento}d</td>
               <td>${formatarReal(l.comissao.valor)}</td>
-              <td>
-                ${
-                  l.comissao.paga
-                    ? `<span class="tag tag-nprazo">Paga em ${formatarData(l.comissao.pagaEm)}</span>`
-                    : '<span class="tag tag-atraso">Pendente</span>'
-                }
-              </td>
-              <td>
-                <button class="btn btn-outline btn-sm btn-toggle-comissao" data-paga="${l.comissao.paga ? "1" : "0"}">
-                  ${l.comissao.paga ? "Desmarcar" : "Marcar como Paga"}
-                </button>
-              </td>
+              <td>${statusTag(l)}</td>
+              <td style="white-space:nowrap;">${acoesLinha(l)}</td>
             </tr>`
             )
             .join("")}
@@ -196,13 +239,53 @@ export async function renderComissoes(root) {
       </table>
     `;
 
-    el.querySelectorAll(".btn-toggle-comissao").forEach((btn) => {
+    el.querySelectorAll(".btn-solicitar").forEach((btn) => {
       btn.addEventListener("click", async (e) => {
-        const vagaId = e.target.closest("tr").dataset.id;
-        const pagaAtualmente = btn.dataset.paga === "1";
+        const vagaId = e.target.dataset.id;
         try {
-          await api.patch(`/api/comissoes/${vagaId}/marcar-paga`, { paga: !pagaAtualmente });
-          showToast(pagaAtualmente ? "Comissão desmarcada." : "Comissão marcada como paga.", "sucesso");
+          await api.patch(`/api/comissoes/${vagaId}/solicitar`, {});
+          showToast("Pagamento solicitado — o Gestor foi notificado.", "sucesso");
+          await carregar();
+        } catch (err) {
+          showToast(err.message, "erro");
+        }
+      });
+    });
+
+    el.querySelectorAll(".btn-aprovar").forEach((btn) => {
+      btn.addEventListener("click", async (e) => {
+        const vagaId = e.target.dataset.id;
+        try {
+          await api.patch(`/api/comissoes/${vagaId}/marcar-paga`, { paga: true });
+          showToast("Comissão aprovada e marcada como paga.", "sucesso");
+          await carregar();
+        } catch (err) {
+          showToast(err.message, "erro");
+        }
+      });
+    });
+
+    el.querySelectorAll(".btn-recusar").forEach((btn) => {
+      btn.addEventListener("click", async (e) => {
+        const vagaId = e.target.dataset.id;
+        const motivo = prompt("Motivo da recusa (opcional):") || "";
+        try {
+          await api.patch(`/api/comissoes/${vagaId}/recusar`, { motivo });
+          showToast("Solicitação recusada.", "sucesso");
+          await carregar();
+        } catch (err) {
+          showToast(err.message, "erro");
+        }
+      });
+    });
+
+    el.querySelectorAll(".btn-marcar-paga, .btn-desmarcar").forEach((btn) => {
+      btn.addEventListener("click", async (e) => {
+        const vagaId = e.target.dataset.id;
+        const paga = e.target.classList.contains("btn-marcar-paga");
+        try {
+          await api.patch(`/api/comissoes/${vagaId}/marcar-paga`, { paga });
+          showToast(paga ? "Comissão marcada como paga." : "Comissão desmarcada.", "sucesso");
           await carregar();
         } catch (err) {
           showToast(err.message, "erro");

@@ -26,4 +26,14 @@ function requireGestor(req, res, next) {
   next();
 }
 
-module.exports = { attachUser, requireAuth, requireGestor };
+// Supervisora tem o mesmo nível de acesso do Gestor em algumas áreas operacionais
+// (ex: solicitar comissão da equipe), mas a aprovação final/pagamento continua só
+// com o Gestor (requireGestor).
+function requireGestorOuSupervisora(req, res, next) {
+  if (!req.consultor || (req.consultor.perfil !== "Gestor" && req.consultor.perfil !== "Supervisora")) {
+    return res.status(403).json({ erro: "Apenas Gestor ou Supervisora podem executar esta ação." });
+  }
+  next();
+}
+
+module.exports = { attachUser, requireAuth, requireGestor, requireGestorOuSupervisora };

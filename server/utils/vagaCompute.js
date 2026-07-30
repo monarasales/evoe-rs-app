@@ -37,13 +37,22 @@ function contarPareceresEnviados(candidatosDaVaga) {
  * sem descontar Stand By) e não é uma vaga de Reposição (substituição já paga na
  * colocação original não gera comissão nova). O status de pagamento (`paga`) é o único
  * dado que fica gravado na vaga — o resto é sempre recalculado, então nunca fica
- * desatualizado mesmo em vagas fechadas antes dessa funcionalidade existir. */
+ * desatualizado mesmo em vagas fechadas antes dessa funcionalidade existir.
+ *
+ * Fluxo de solicitação/aprovação (evita pagar em duplicidade): a Supervisora
+ * solicita o pagamento de uma comissão elegível (`solicitada`), o Gestor recebe
+ * notificação e aprova (marca como paga) ou recusa (volta para elegível, liberando
+ * uma nova solicitação). Enquanto `solicitada` e não `paga`, o sistema não deixa
+ * solicitar de novo — só um pedido em aberto por vez. */
 function computarComissao(vaga) {
   const sla = classificarSlaFechamento(vaga);
   const elegivel = vaga.etapaAtual === "11. Aprovado" && vaga.tipoVaga !== "Reposição" && !!sla && sla.nivel === "ideal";
   return {
     elegivel,
     valor: elegivel ? VALOR_COMISSAO_FECHAMENTO : 0,
+    solicitada: !!vaga.comissaoSolicitada,
+    solicitadaEm: vaga.comissaoSolicitadaEm || null,
+    solicitadaPorId: vaga.comissaoSolicitadaPorId || null,
     paga: !!vaga.comissaoPaga,
     pagaEm: vaga.comissaoPagaEm || null,
     pagaPorId: vaga.comissaoPagaPorId || null,

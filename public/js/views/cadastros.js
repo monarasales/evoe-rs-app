@@ -139,10 +139,10 @@ export async function renderConfiguracoes(root) {
     abrirModal(`
       <h2>${editando ? "Editar Funcionário" : "Novo Funcionário"}</h2>
       <form id="form-consultor">
-        <div class="form-row"><label>Nome</label><input type="text" id="cs-nome" required value="${editando ? escapeHtml(consultor.nome) : ""}" /></div>
+        <div class="form-row"><label>Nome completo</label><input type="text" id="cs-nome" required value="${editando ? escapeHtml(consultor.nome) : ""}" /></div>
         <div class="form-cols">
           <div class="form-row"><label>E-mail</label><input type="email" id="cs-email" required value="${editando ? escapeHtml(consultor.email) : ""}" /></div>
-          <div class="form-row"><label>WhatsApp</label><input type="text" id="cs-whatsapp" value="${editando ? escapeHtml(consultor.whatsapp) : ""}" /></div>
+          <div class="form-row"><label>Telefone / WhatsApp</label><input type="text" id="cs-whatsapp" value="${editando ? escapeHtml(consultor.whatsapp) : ""}" /></div>
         </div>
         <div class="form-cols">
           <div class="form-row">

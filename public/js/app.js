@@ -1,5 +1,5 @@
 import { api } from "./api.js";
-import { store, showToast, isGestor } from "./state.js";
+import { store, showToast, isGestor, podeGerenciarVagas } from "./state.js";
 import { registrarRota, setRaiz, iniciarRouter, navegarPara } from "./router.js";
 import { renderKanban } from "./views/kanban.js";
 import { renderCandidatos } from "./views/candidatos.js";
@@ -42,7 +42,7 @@ const NAV_SECOES = [
     itens: [
       { href: "#/crm", label: "CRM", icone: "🤝" },
       { href: "#/financeiro", label: "Financeiro", icone: "💰", somenteGestor: true },
-      { href: "#/comissoes", label: "Comissões", icone: "🏆", somenteGestor: true },
+      { href: "#/comissoes", label: "Comissões", icone: "🏆", somenteGestorOuSupervisora: true },
     ],
   },
   {
@@ -56,7 +56,9 @@ const NAV_SECOES = [
 
 function montarNav() {
   mainNav.innerHTML = NAV_SECOES.map((secao) => {
-    const itensVisiveis = secao.itens.filter((l) => !l.somenteGestor || isGestor());
+    const itensVisiveis = secao.itens.filter(
+      (l) => (!l.somenteGestor || isGestor()) && (!l.somenteGestorOuSupervisora || podeGerenciarVagas())
+    );
     if (itensVisiveis.length === 0) return "";
     return `
       ${secao.titulo ? `<div class="sidebar-nav-titulo">${secao.titulo}</div>` : ""}
