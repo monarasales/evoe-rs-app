@@ -32,6 +32,25 @@ function formatarTamanho(bytes) {
   return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
 }
 
+function formatarDataCurta(iso) {
+  if (!iso) return "—";
+  const [ano, mes, dia] = iso.slice(0, 10).split("-");
+  return `${dia}/${mes}/${ano}`;
+}
+
+// Compara ignorando maiúsculas/minúsculas e acentos, para a busca por nome e a
+// ordenação alfabética não dependerem de o texto estar digitado "igualzinho".
+function normalizar(str) {
+  return (str || "")
+    .normalize("NFD")
+    .replace(/[̀-ͯ]/g, "")
+    .toLowerCase();
+}
+
+function ordenarPorNome(lista) {
+  return lista.slice().sort((a, b) => normalizar(a.nome).localeCompare(normalizar(b.nome), "pt-BR"));
+}
+
 export async function renderCandidatos(root, params) {
   let abaAtiva = "ativos";
   let todosCandidatos = [];
@@ -45,14 +64,19 @@ export async function renderCandidatos(root, params) {
       <button id="btn-novo-candidato" class="btn btn-primary">+ Novo Candidato</button>
     </div>
     <div class="kanban-toolbar">
+      <input type="text" id="busca-candidato" placeholder="🔎 Buscar candidato por nome..." style="min-width:220px;" />
       <select id="filtro-vaga">
         <option value="">Todas as vagas</option>
       </select>
+      <select id="ordenar-vaga" title="Ordem das vagas na lista acima">
+        <option value="cadastro">Vagas: cadastro mais recente</option>
+        <option value="alfabetica">Vagas: ordem alfabética</option>
+      </select>
       <select id="filtro-consultor-cand">
         <option value="">Todos os consultores</option>
-        ${store.consultores.map((c) => `<option value="${c.id}">${c.nome}</option>`).join("")}
       </select>
     </div>
+    <div class="sub" id="info-vaga-selecionada" style="margin:-8px 0 4px;"></div>
     <div class="tabs" id="candidatos-tabs">
       ${ABAS.map((a) => `<button type="button" class="tab-btn" data-aba="${a.id}">${a.label}</button>`).join("")}
     </div>
@@ -61,21 +85,75 @@ export async function renderCandidatos(root, params) {
 
   const vagas = await api.get("/api/vagas");
   const filtroVaga = root.querySelector("#filtro-vaga");
-  filtroVaga.innerHTML =
-    '<option value="">Todas as vagas</option>' +
-    vagas.map((v) => `<option value="${v.id}" ${params.vagaId === v.id ? "selected" : ""}>${v.titulo}</option>`).join("");
-
+  const ordenarVaga = root.querySelector("#ordenar-vaga");
   const filtroConsultor = root.querySelector("#filtro-consultor-cand");
+  const buscaInput = root.querySelector("#busca-candidato");
+  const infoVagaEl = root.querySelector("#info-vaga-selecionada");
   const tabsEl = root.querySelector("#candidatos-tabs");
+
+  // Quantidade de candidatos por vaga/consultor, mostrada direto nas opções dos
+  // filtros — dá pro consultor enxergar seu próprio volume sem precisar abrir a
+  // aba Produtividade. Sempre calculada sobre TODOS os candidatos cadastrados,
+  // independente do filtro em uso no momento.
+  function qtdPorVaga(vagaId) {
+    return todosCandidatos.filter((c) => c.vagaId === vagaId).length;
+  }
+  function qtdPorConsultor(consultorId) {
+    const vagaIds = new Set(vagas.filter((v) => v.consultorId === consultorId).map((v) => v.id));
+    return todosCandidatos.filter((c) => vagaIds.has(c.vagaId)).length;
+  }
+
+  function vagasOrdenadas() {
+    if (ordenarVaga.value === "alfabetica") {
+      return vagas.slice().sort((a, b) => normalizar(a.titulo).localeCompare(normalizar(b.titulo), "pt-BR"));
+    }
+    // "cadastro": mais recém-cadastradas no sistema primeiro.
+    return vagas.slice().sort((a, b) => (b.createdAt || "").localeCompare(a.createdAt || ""));
+  }
+
+  let vagaIdInicial = params.vagaId || "";
+  function montarOpcoesVaga() {
+    const selecionada = filtroVaga.value || vagaIdInicial;
+    vagaIdInicial = ""; // só usa a vaga vinda da URL na primeira montagem das opções
+    filtroVaga.innerHTML =
+      '<option value="">Todas as vagas</option>' +
+      vagasOrdenadas()
+        .map((v) => `<option value="${v.id}" ${selecionada === v.id ? "selected" : ""}>${escapeHtml(v.titulo)} (${qtdPorVaga(v.id)})</option>`)
+        .join("");
+  }
+
+  function montarOpcoesConsultor() {
+    const selecionado = filtroConsultor.value;
+    filtroConsultor.innerHTML =
+      '<option value="">Todos os consultores</option>' +
+      store.consultores
+        .map((c) => `<option value="${c.id}" ${selecionado === c.id ? "selected" : ""}>${escapeHtml(c.nome)} (${qtdPorConsultor(c.id)})</option>`)
+        .join("");
+  }
+
+  function atualizarInfoVagaSelecionada() {
+    if (!filtroVaga.value) {
+      infoVagaEl.textContent = "";
+      return;
+    }
+    const v = vagas.find((x) => x.id === filtroVaga.value);
+    infoVagaEl.textContent = v ? `Vaga "${v.titulo}" cadastrada no sistema em ${formatarDataCurta(v.createdAt)}.` : "";
+  }
 
   function vagasFiltradasPorConsultor() {
     return filtroConsultor.value ? vagas.filter((v) => v.consultorId === filtroConsultor.value) : vagas;
   }
 
   function candidatosVisiveis() {
-    if (!filtroConsultor.value) return todosCandidatos;
-    const vagaIdsDoConsultor = new Set(vagasFiltradasPorConsultor().map((v) => v.id));
-    return todosCandidatos.filter((c) => vagaIdsDoConsultor.has(c.vagaId));
+    let lista = todosCandidatos;
+    if (filtroVaga.value) lista = lista.filter((c) => c.vagaId === filtroVaga.value);
+    if (filtroConsultor.value) {
+      const vagaIdsDoConsultor = new Set(vagasFiltradasPorConsultor().map((v) => v.id));
+      lista = lista.filter((c) => vagaIdsDoConsultor.has(c.vagaId));
+    }
+    const busca = normalizar(buscaInput.value.trim());
+    if (busca) lista = lista.filter((c) => normalizar(c.nome).includes(busca));
+    return lista;
   }
 
   function contagemBanco() {
@@ -101,8 +179,14 @@ export async function renderCandidatos(root, params) {
   });
 
   async function carregar() {
-    const qs = filtroVaga.value ? `?vagaId=${filtroVaga.value}` : "";
-    todosCandidatos = await api.get(`/api/candidatos${qs}`);
+    // Busca a lista completa (sem filtro no servidor) e filtra tudo no navegador —
+    // dataset pequeno, evita ida e volta ao servidor a cada troca de filtro e
+    // deixa as contagens por vaga/consultor sempre corretas, mesmo com um filtro
+    // diferente selecionado.
+    todosCandidatos = await api.get("/api/candidatos");
+    montarOpcoesVaga();
+    montarOpcoesConsultor();
+    atualizarInfoVagaSelecionada();
     marcarAbaAtiva();
     renderizarConteudo();
   }
@@ -120,10 +204,17 @@ export async function renderCandidatos(root, params) {
     }
   }
 
+  function vagaCadastroTitle(id) {
+    const v = vagas.find((x) => x.id === id);
+    return v ? `Vaga cadastrada no sistema em ${formatarDataCurta(v.createdAt)}` : "";
+  }
+
   function renderizarTabela() {
     const el = root.querySelector("#candidatos-tabela");
-    const candidatos = candidatosVisiveis().filter((c) =>
-      abaAtiva === "banco" ? ETAPAS_SEM_RETORNO.includes(c.etapaCandidato) : !ETAPAS_SEM_RETORNO.includes(c.etapaCandidato)
+    const candidatos = ordenarPorNome(
+      candidatosVisiveis().filter((c) =>
+        abaAtiva === "banco" ? ETAPAS_SEM_RETORNO.includes(c.etapaCandidato) : !ETAPAS_SEM_RETORNO.includes(c.etapaCandidato)
+      )
     );
 
     if (candidatos.length === 0) {
@@ -134,8 +225,11 @@ export async function renderCandidatos(root, params) {
       return;
     }
 
+    const contador = `<div class="sub" style="margin-bottom:8px;">${candidatos.length} candidato(s) nesta lista — em ordem alfabética.</div>`;
+
     if (abaAtiva === "banco") {
       el.innerHTML = `
+        ${contador}
         <div class="sub" style="margin-bottom:10px;">Candidatos contatados que não tiveram interesse na vaga ou não responderam — ficam aqui para futuro reaproveitamento, sem poluir o funil ativo.</div>
         <table>
           <thead>
@@ -147,7 +241,7 @@ export async function renderCandidatos(root, params) {
                 (c) => `
               <tr data-id="${c.id}">
                 <td>${escapeHtml(c.nome)}${c.curriculoArquivo ? ' <span title="Tem currículo anexado">📎</span>' : ""}</td>
-                <td>${escapeHtml(vagaTitulo(c.vagaId))}</td>
+                <td title="${vagaCadastroTitle(c.vagaId)}">${escapeHtml(vagaTitulo(c.vagaId))}</td>
                 <td>${escapeHtml(c.etapaCandidato)}</td>
                 <td>${escapeHtml(c.telefone) || "—"}</td>
                 <td><button class="btn btn-outline btn-sm btn-editar">Abrir</button></td>
@@ -159,9 +253,16 @@ export async function renderCandidatos(root, params) {
       `;
     } else {
       el.innerHTML = `
+        ${contador}
         <table>
           <thead>
-            <tr><th>Nome</th><th>Vaga</th><th>Etapa</th><th>Jusbrasil</th><th>Parecer</th><th>Entrevista</th><th></th></tr>
+            <tr>
+              <th>Nome</th><th>Vaga</th><th>Etapa</th><th>Jusbrasil</th><th>Parecer</th>
+              <th title="Data da entrevista com a RH/Evoé">Entr. RH</th>
+              <th title="Data da entrevista com a empresa cliente">Entr. Empresa</th>
+              <th title="Data do retorno/decisão da empresa">Retorno</th>
+              <th></th>
+            </tr>
           </thead>
           <tbody>
             ${candidatos
@@ -169,11 +270,13 @@ export async function renderCandidatos(root, params) {
                 (c) => `
               <tr data-id="${c.id}">
                 <td>${escapeHtml(c.nome)}${c.curriculoArquivo ? ' <span title="Tem currículo anexado">📎</span>' : ""}</td>
-                <td>${escapeHtml(vagaTitulo(c.vagaId))}</td>
+                <td title="${vagaCadastroTitle(c.vagaId)}">${escapeHtml(vagaTitulo(c.vagaId))}</td>
                 <td>${escapeHtml(c.etapaCandidato)}</td>
                 <td>${c.jusbrasilOk ? "✅" : "—"}</td>
                 <td>${(c.parecerComportamental || "").trim() ? "✅" : "—"}</td>
-                <td>${c.dataEntrevista || "—"}</td>
+                <td>${formatarDataCurta(c.dataEntrevista)}</td>
+                <td>${formatarDataCurta(c.dataEntrevistaEmpresa)}</td>
+                <td>${formatarDataCurta(c.dataRetornoCliente)}</td>
                 <td><button class="btn btn-outline btn-sm btn-editar">Abrir</button></td>
               </tr>`
               )
@@ -348,10 +451,23 @@ export async function renderCandidatos(root, params) {
     if (periodoSelectNovo) periodoSelectNovo.addEventListener("change", renderizarProdutividade);
   }
 
-  filtroVaga.addEventListener("change", carregar);
+  filtroVaga.addEventListener("change", () => {
+    atualizarInfoVagaSelecionada();
+    marcarAbaAtiva();
+    renderizarConteudo();
+  });
+  ordenarVaga.addEventListener("change", montarOpcoesVaga);
   filtroConsultor.addEventListener("change", () => {
     marcarAbaAtiva();
     renderizarConteudo();
+  });
+  let buscaDebounce;
+  buscaInput.addEventListener("input", () => {
+    clearTimeout(buscaDebounce);
+    buscaDebounce = setTimeout(() => {
+      marcarAbaAtiva();
+      renderizarConteudo();
+    }, 150);
   });
   root.querySelector("#btn-novo-candidato").addEventListener("click", () => abrirFormularioCandidato(null));
 
@@ -393,15 +509,20 @@ export async function renderCandidatos(root, params) {
         ${
           editando
             ? `
+        <div class="sub" style="margin-top:-2px; margin-bottom:2px;">Datas do sub-funil — cada uma marca um momento diferente:</div>
         <div class="form-cols">
           <div class="form-row">
-            <label>Data da entrevista</label>
+            <label>Entrevista com a RH (Evoé)</label>
             <input type="date" id="c-data-entrevista" value="${candidato.dataEntrevista || ""}" />
           </div>
           <div class="form-row">
-            <label>Data retorno do cliente</label>
-            <input type="date" id="c-data-retorno" value="${candidato.dataRetornoCliente || ""}" />
+            <label>Entrevista com a empresa (cliente)</label>
+            <input type="date" id="c-data-entrevista-empresa" value="${candidato.dataEntrevistaEmpresa || ""}" />
           </div>
+        </div>
+        <div class="form-row">
+          <label>Retorno da empresa (aprovado/reprovado pelo cliente)</label>
+          <input type="date" id="c-data-retorno" value="${candidato.dataRetornoCliente || ""}" />
         </div>
         <div class="form-row checkbox-row">
           <input type="checkbox" id="c-jusbrasil" ${candidato.jusbrasilOk ? "checked" : ""} />
@@ -511,6 +632,7 @@ export async function renderCandidatos(root, params) {
         if (editando) {
           const extra = {
             dataEntrevista: document.getElementById("c-data-entrevista").value || null,
+            dataEntrevistaEmpresa: document.getElementById("c-data-entrevista-empresa").value || null,
             dataRetornoCliente: document.getElementById("c-data-retorno").value || null,
             jusbrasilOk: document.getElementById("c-jusbrasil").checked,
             obsReferencia: document.getElementById("c-obs-referencia").value,

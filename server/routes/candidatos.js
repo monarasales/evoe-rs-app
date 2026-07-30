@@ -54,7 +54,12 @@ router.post("/", requireAuth, (req, res) => {
     telefone: telefone || "",
     vagaId,
     etapaCandidato: etapaCandidato && ETAPAS_CANDIDATO.includes(etapaCandidato) ? etapaCandidato : "Inscrito",
+    // Três momentos distintos do sub-funil, para não misturar "conversamos com o
+    // candidato" (RH/Evoé) com "o cliente entrevistou" (empresa) e "o cliente decidiu"
+    // (retorno): dataEntrevista = entrevista com a RH/Evoé; dataEntrevistaEmpresa =
+    // entrevista com a empresa cliente; dataRetornoCliente = retorno/decisão da empresa.
     dataEntrevista: null,
+    dataEntrevistaEmpresa: null,
     jusbrasilOk: false,
     obsReferencia: "",
     parecerComportamental: "",
@@ -69,13 +74,13 @@ router.patch("/:id", requireAuth, (req, res) => {
   const vaga = db.findById("vagas", candidato.vagaId);
   if (!podeEditar(req, vaga)) return res.status(403).json({ erro: "Você só pode editar candidatos de vagas atribuídas a você." });
 
-  const { nome, email, telefone, etapaCandidato, dataEntrevista, jusbrasilOk, obsReferencia, parecerComportamental, dataRetornoCliente } = req.body || {};
+  const { nome, email, telefone, etapaCandidato, dataEntrevista, dataEntrevistaEmpresa, jusbrasilOk, obsReferencia, parecerComportamental, dataRetornoCliente } = req.body || {};
   if (etapaCandidato && !ETAPAS_CANDIDATO.includes(etapaCandidato)) {
     return res.status(400).json({ erro: "Etapa de candidato inválida." });
   }
 
   const atualizado = db.update("candidatos", candidato.id, {
-    nome, email, telefone, etapaCandidato, dataEntrevista, jusbrasilOk, obsReferencia, parecerComportamental, dataRetornoCliente,
+    nome, email, telefone, etapaCandidato, dataEntrevista, dataEntrevistaEmpresa, jusbrasilOk, obsReferencia, parecerComportamental, dataRetornoCliente,
   });
 
   if (etapaCandidato === "Aprovado pelo Cliente" && candidato.etapaCandidato !== "Aprovado pelo Cliente" && vaga) {
