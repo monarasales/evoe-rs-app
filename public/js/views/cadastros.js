@@ -1,6 +1,7 @@
 import { api } from "../api.js";
 import { store, isGestor, showToast, formatarData } from "../state.js";
 import { abrirModal, fecharModal } from "../modal.js";
+import { isoParaBr, brParaIso, isoValida, aplicarMascaraData } from "../dateMask.js";
 
 function escapeHtml(str) {
   const div = document.createElement("div");
@@ -161,7 +162,10 @@ export async function renderConfiguracoes(root) {
 
         <h3 class="section-title" style="margin-top:18px;">Dados de RH</h3>
         <div class="form-cols">
-          <div class="form-row"><label>Data de admissão</label><input type="date" id="cs-admissao" value="${editando ? (consultor.dataAdmissao || "") : ""}" /></div>
+          <div class="form-row">
+            <label>Data de admissão</label>
+            <input type="text" inputmode="numeric" placeholder="dd/mm/aaaa" maxlength="10" id="cs-admissao" value="${editando ? isoParaBr(consultor.dataAdmissao) : ""}" />
+          </div>
           <div class="form-row">
             <label>Tipo de vínculo</label>
             <select id="cs-vinculo">
@@ -175,12 +179,15 @@ export async function renderConfiguracoes(root) {
         </div>
         <div class="form-row"><label>Benefícios</label><input type="text" id="cs-beneficios" placeholder="ex: Vale Transporte, Vale Refeição R$600, Plano de Saúde" value="${editando ? escapeHtml(consultor.beneficios || "") : ""}" /></div>
         <div class="form-cols">
-          <div class="form-row"><label>Data de nascimento</label><input type="date" id="cs-nascimento" value="${editando ? (consultor.dataNascimento || "") : ""}" /></div>
+          <div class="form-row">
+            <label>Data de nascimento</label>
+            <input type="text" inputmode="numeric" placeholder="dd/mm/aaaa" maxlength="10" id="cs-nascimento" value="${editando ? isoParaBr(consultor.dataNascimento) : ""}" />
+          </div>
           <div class="form-row"><label>Endereço</label><input type="text" id="cs-endereco" value="${editando ? escapeHtml(consultor.endereco || "") : ""}" /></div>
         </div>
         <div class="form-row" id="cs-desligamento-row" style="${!editando || consultor.ativo ? "display:none;" : ""}">
           <label>Data de desligamento</label>
-          <input type="date" id="cs-desligamento" value="${editando ? (consultor.dataDesligamento || "") : ""}" />
+          <input type="text" inputmode="numeric" placeholder="dd/mm/aaaa" maxlength="10" id="cs-desligamento" value="${editando ? isoParaBr(consultor.dataDesligamento) : ""}" />
         </div>
 
         <h3 class="section-title" style="margin-top:18px;">Acesso ao Sistema</h3>
@@ -207,6 +214,10 @@ export async function renderConfiguracoes(root) {
     `);
     document.getElementById("btn-cancelar-cs").addEventListener("click", fecharModal);
 
+    aplicarMascaraData(document.getElementById("cs-admissao"));
+    aplicarMascaraData(document.getElementById("cs-nascimento"));
+    aplicarMascaraData(document.getElementById("cs-desligamento"));
+
     document.getElementById("cs-vinculo").addEventListener("change", (ev) => {
       document.getElementById("cs-remuneracao-label").textContent = rotuloRemuneracao(ev.target.value);
     });
@@ -216,6 +227,35 @@ export async function renderConfiguracoes(root) {
 
     document.getElementById("form-consultor").addEventListener("submit", async (ev) => {
       ev.preventDefault();
+      const erroEl = document.getElementById("consultor-form-erro");
+      erroEl.classList.add("hidden");
+
+      // Datas digitadas em dd/mm/aaaa (ver dateMask.js) — cada campo só vira ISO se
+      // estiver com os 8 dígitos e for uma data válida; campo vazio vira "" normalmente,
+      // mas dígitos incompletos ou uma data inexistente (ex: 31/02) barram o envio em
+      // vez de salvar algo errado ou incompleto sem avisar.
+      const camposData = [
+        { id: "cs-admissao", label: "Data de admissão", obrigatorio: false },
+        { id: "cs-nascimento", label: "Data de nascimento", obrigatorio: false },
+        { id: "cs-desligamento", label: "Data de desligamento", obrigatorio: false },
+      ];
+      const datasIso = {};
+      for (const campo of camposData) {
+        const digitado = document.getElementById(campo.id).value.trim();
+        if (!digitado) {
+          datasIso[campo.id] = "";
+          continue;
+        }
+        const digitos = digitado.replace(/\D/g, "");
+        const iso = brParaIso(digitado);
+        if (digitos.length < 8 || !isoValida(iso)) {
+          erroEl.textContent = `${campo.label}: "${digitado}" não é uma data válida. Use o formato dd/mm/aaaa.`;
+          erroEl.classList.remove("hidden");
+          return;
+        }
+        datasIso[campo.id] = iso;
+      }
+
       const ativo = document.getElementById("cs-ativo").checked;
       const payload = {
         nome: document.getElementById("cs-nome").value.trim(),
@@ -223,14 +263,14 @@ export async function renderConfiguracoes(root) {
         whatsapp: document.getElementById("cs-whatsapp").value.trim(),
         perfil: document.getElementById("cs-perfil").value,
         ativo,
-        dataAdmissao: document.getElementById("cs-admissao").value,
+        dataAdmissao: datasIso["cs-admissao"],
         tipoVinculo: document.getElementById("cs-vinculo").value,
         valorRemuneracao: document.getElementById("cs-remuneracao").value,
         cpf: document.getElementById("cs-cpf").value.trim(),
         beneficios: document.getElementById("cs-beneficios").value.trim(),
-        dataNascimento: document.getElementById("cs-nascimento").value,
+        dataNascimento: datasIso["cs-nascimento"],
         endereco: document.getElementById("cs-endereco").value.trim(),
-        dataDesligamento: ativo ? null : (document.getElementById("cs-desligamento").value || null),
+        dataDesligamento: ativo ? null : (datasIso["cs-desligamento"] || null),
       };
       const username = document.getElementById("cs-username").value.trim();
       const senha = document.getElementById("cs-senha").value;
@@ -238,7 +278,6 @@ export async function renderConfiguracoes(root) {
         payload.username = username;
         payload.senha = senha;
       }
-      const erroEl = document.getElementById("consultor-form-erro");
       try {
         let consultorSalvo;
         if (editando) consultorSalvo = await api.patch(`/api/consultores/${consultor.id}`, payload);
