@@ -34,7 +34,7 @@ router.get("/", requireAuth, requireGestor, (req, res) => {
       const vaga = db.findById("vagas", c.vagaId);
       const empresa = empresas.find((e) => e.id === c.empresaId);
       const consultor = consultores.find((cs) => cs.id === c.consultorId);
-      const { valorTotal, valorParcela1, valorParcela2, salarioFaltando } = calcularParcelas(c, vaga);
+      const { valorTotal, valorParcela1, valorParcela2, salarioFaltando, ehPermuta } = calcularParcelas(c, vaga);
       const diasParcela2 = diasAte(c.dataVencimentoParcela2);
 
       let reposicaoInfo = null;
@@ -59,6 +59,7 @@ router.get("/", requireAuth, requireGestor, (req, res) => {
         dataVencimentoParcela2: c.dataVencimentoParcela2 || null,
         diasParcela2,
         salarioFaltando,
+        ehPermuta,
         reposicaoInfo,
       };
     })
@@ -67,12 +68,19 @@ router.get("/", requireAuth, requireGestor, (req, res) => {
   const vagasComContrato = new Set(contratos.map((c) => c.vagaId));
   const vagasAbertasSemContrato = vagasAbertas.filter((v) => !vagasComContrato.has(v.id)).length;
 
-  const recebido = linhas.reduce((soma, l) => soma + l.valorParcela1, 0);
-  const totalContratado = linhas.reduce((soma, l) => soma + l.valorTotal, 0);
-  const previsto30dias = linhas
+  // Contratos em Permuta não são recebimento em dinheiro: ficam de fora do fluxo de
+  // caixa (recebido/previsto/vencido), mas entram no valor total contratado (book) à
+  // parte, para não subestimar nem confundir com receita em espécie.
+  const linhasCash = linhas.filter((l) => !l.ehPermuta);
+  const linhasPermuta = linhas.filter((l) => l.ehPermuta);
+
+  const recebido = linhasCash.reduce((soma, l) => soma + l.valorParcela1, 0);
+  const totalContratadoCash = linhasCash.reduce((soma, l) => soma + l.valorTotal, 0);
+  const totalPermuta = linhasPermuta.reduce((soma, l) => soma + l.valorTotal, 0);
+  const previsto30dias = linhasCash
     .filter((l) => l.diasParcela2 !== null && l.diasParcela2 >= 0 && l.diasParcela2 <= 30)
     .reduce((soma, l) => soma + l.valorParcela2, 0);
-  const vencidoNaoRecebido = linhas
+  const vencidoNaoRecebido = linhasCash
     .filter((l) => l.diasParcela2 !== null && l.diasParcela2 < 0)
     .reduce((soma, l) => soma + l.valorParcela2, 0);
   const qtdSemSalario = linhas.filter((l) => l.salarioFaltando).length;
@@ -84,8 +92,10 @@ router.get("/", requireAuth, requireGestor, (req, res) => {
       recebido: Math.round(recebido * 100) / 100,
       previsto30dias: Math.round(previsto30dias * 100) / 100,
       vencidoNaoRecebido: Math.round(vencidoNaoRecebido * 100) / 100,
-      totalContratado: Math.round(totalContratado * 100) / 100,
-      aReceberTotal: Math.round((totalContratado - recebido) * 100) / 100,
+      totalContratado: Math.round((totalContratadoCash + totalPermuta) * 100) / 100,
+      totalPermuta: Math.round(totalPermuta * 100) / 100,
+      qtdPermuta: linhasPermuta.length,
+      aReceberTotal: Math.round((totalContratadoCash - recebido) * 100) / 100,
       qtdSemSalario,
       vagasAbertasSemContrato,
       qtdReposicaoDentroGarantia,

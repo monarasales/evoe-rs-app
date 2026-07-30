@@ -1,7 +1,7 @@
 const express = require("express");
 const db = require("../db");
 const { requireAuth, requireGestor } = require("../middleware/auth");
-const { CONTRATO_PADRAO, DIAS_PARCELA2_APOS_PARCELA1 } = require("../utils/constants");
+const { CONTRATO_PADRAO, DIAS_PARCELA2_APOS_PARCELA1, TIPOS_COBRANCA_CONTRATO } = require("../utils/constants");
 const { calcularParcelas } = require("../utils/financeiro");
 const { gerarContratoPdfBuffer } = require("../utils/contratoPdf");
 const { gerarContratoDocxBuffer } = require("../utils/contratoDocx");
@@ -14,16 +14,18 @@ function comDetalhes(contrato) {
   const empresa = db.findById("empresas", contrato.empresaId);
   const vaga = db.findById("vagas", contrato.vagaId);
   const consultor = contrato.consultorId ? db.findById("consultores", contrato.consultorId) : null;
-  const { valorTotal, valorParcela1, valorParcela2, salarioFaltando } = calcularParcelas(contrato, vaga);
+  const { valorTotal, valorParcela1, valorParcela2, salarioFaltando, ehPermuta } = calcularParcelas(contrato, vaga);
   return {
     ...contrato,
     empresaNome: empresa ? empresa.nome : "—",
     vagaTitulo: vaga ? vaga.titulo : "—",
+    vagaSalario: vaga ? vaga.salario || 0 : 0,
     consultorNome: consultor ? consultor.nome : "—",
     valorTotalContrato: valorTotal,
     valorParcela1,
     valorParcela2,
     salarioFaltando,
+    ehPermuta,
   };
 }
 
@@ -56,6 +58,8 @@ function montarDadosContrato(contrato) {
     tipoCobranca: contrato.tipoCobranca || "Percentual",
     percentualHonorarios: contrato.percentualHonorarios,
     valorFixo: contrato.valorFixo || 0,
+    valorPermuta: contrato.valorPermuta || 0,
+    descricaoPermuta: contrato.descricaoPermuta || "",
     parcelaInicialPct: contrato.parcelaInicialPct,
     parcelaFechamentoPct: contrato.parcelaFechamentoPct,
     prazoReposicaoDias: contrato.prazoReposicaoDias,
@@ -84,6 +88,8 @@ function extrairCamposEditaveis(body) {
     tipoCobranca,
     percentualHonorarios,
     valorFixo,
+    valorPermuta,
+    descricaoPermuta,
     parcelaInicialPct,
     parcelaFechamentoPct,
     prazoReposicaoDias,
@@ -103,9 +109,11 @@ function extrairCamposEditaveis(body) {
 
   return {
     cargoObjeto: cargoObjeto !== undefined ? cargoObjeto : undefined,
-    tipoCobranca: tipoCobranca === "ValorFixo" ? "ValorFixo" : "Percentual",
+    tipoCobranca: TIPOS_COBRANCA_CONTRATO.includes(tipoCobranca) ? tipoCobranca : "Percentual",
     percentualHonorarios: Number(percentualHonorarios) || CONTRATO_PADRAO.percentualHonorarios,
     valorFixo: Number(valorFixo) || 0,
+    valorPermuta: Number(valorPermuta) || 0,
+    descricaoPermuta: descricaoPermuta || "",
     parcelaInicialPct: Number(parcelaInicialPct) || CONTRATO_PADRAO.parcelaInicialPct,
     parcelaFechamentoPct: Number(parcelaFechamentoPct) || CONTRATO_PADRAO.parcelaFechamentoPct,
     prazoReposicaoDias: Number(prazoReposicaoDias) || CONTRATO_PADRAO.prazoReposicaoDias,

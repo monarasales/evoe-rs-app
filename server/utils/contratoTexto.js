@@ -136,6 +136,11 @@ function montarContrato(dados) {
             letra: "I.",
             texto: `Pela prestação dos serviços contratados, a CONTRATANTE pagará à CONTRATADA o valor fixo de ${formatarReal(dados.valorFixo)} pela vaga trabalhada, independentemente do salário do cargo. Sendo que a primeira parcela a ser paga no percentual de ${dados.parcelaInicialPct}% desse valor para iniciar o serviço e os outros ${dados.parcelaFechamentoPct}% no fechamento da vaga.`,
           }
+        : dados.tipoCobranca === "Permuta"
+        ? {
+            letra: "I.",
+            texto: `Pela prestação dos serviços contratados, as partes acordam o pagamento em regime de permuta, no valor correspondente a ${formatarReal(dados.valorPermuta)}${dados.descricaoPermuta ? `, referente a ${dados.descricaoPermuta}` : ""}, em substituição ao pagamento em espécie. Sendo que a primeira parcela a ser paga no percentual de ${dados.parcelaInicialPct}% desse valor para iniciar o serviço e os outros ${dados.parcelaFechamentoPct}% no fechamento da vaga.`,
+          }
         : {
             letra: "I.",
             texto: `Pela prestação dos serviços contratados, a CONTRATANTE pagará à CONTRATADA um percentual por vaga trabalhada de ${dados.percentualHonorarios}% em cima do salário. Sendo que a primeira parcela a ser paga no percentual de ${dados.parcelaInicialPct}% para iniciar o serviço e os outros ${dados.parcelaFechamentoPct}% no fechamento da vaga. Vagas que a porcentagem aplicada em cima do salário o resultado for menos que um salário-mínimo, aplicamos a cobrança da vaga o valor do salário-mínimo vigente.`,

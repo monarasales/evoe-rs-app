@@ -107,12 +107,20 @@ const EVOE_DADOS = {
   foro: "Fortaleza/CE",
 };
 
+// Tipo de cobrança dos honorários do contrato: "Percentual" (calculado automaticamente
+// sobre o salário cadastrado na vaga), "ValorFixo" (negociado direto com o cliente) ou
+// "Permuta" (pago em troca de produto/serviço em vez de dinheiro — não entra nos
+// totais de caixa do Financeiro, só no valor contratado total).
+const TIPOS_COBRANCA_CONTRATO = ["Percentual", "ValorFixo", "Permuta"];
+
 // Valores padrão das cláusulas variáveis do contrato (todos editáveis por contrato
 // na tela de Contratos, conforme pedido da usuária — servem só de ponto de partida).
 const CONTRATO_PADRAO = {
-  tipoCobranca: "Percentual", // "Percentual" (sobre o salário) ou "ValorFixo" (negociado com o cliente)
+  tipoCobranca: "Percentual",
   percentualHonorarios: 90,
   valorFixo: 0,
+  valorPermuta: 0,
+  descricaoPermuta: "",
   parcelaInicialPct: 50,
   parcelaFechamentoPct: 50,
   prazoReposicaoDias: 60,
@@ -131,6 +139,7 @@ module.exports = {
   PERFIS_ACESSO,
   TIPOS_VINCULO,
   VALOR_COMISSAO_FECHAMENTO,
+  TIPOS_COBRANCA_CONTRATO,
   SERVICOS_PROSPECT,
   ETAPAS_PROSPECT,
   DIAS_ALERTA_PRAZO,

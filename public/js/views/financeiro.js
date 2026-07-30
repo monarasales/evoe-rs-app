@@ -58,6 +58,11 @@ export async function renderFinanceiro(root) {
       `${resumo.qtdReposicaoDentroGarantia} vaga(s) de reposição ainda dentro do prazo de garantia do contrato original — confirme com o cliente antes de cobrar novamente (veja a coluna "Reposição" na tabela abaixo).`
     );
   }
+  if (resumo.qtdPermuta > 0) {
+    avisos.push(
+      `${resumo.qtdPermuta} contrato(s) em regime de Permuta — não é dinheiro em caixa, por isso não entram em "Já Recebido", "Previsto" nem "Vencido". O valor deles aparece separado no card "Em Permuta".`
+    );
+  }
   avisosEl.innerHTML = avisos.length
     ? avisos.map((a) => `<div class="form-erro" style="background:var(--warning-bg); color:var(--warning); margin-bottom:10px;">${escapeHtml(a)}</div>`).join("")
     : "";
@@ -81,11 +86,21 @@ export async function renderFinanceiro(root) {
     <div class="kpi-card">
       <div class="kpi-label">Total Contratado (vagas abertas)</div>
       <div class="kpi-value">${formatarReal(resumo.totalContratado)}</div>
+      <div class="kpi-sub">Inclui os ${formatarReal(resumo.totalPermuta)} em Permuta abaixo</div>
     </div>
     <div class="kpi-card">
-      <div class="kpi-label">Ainda a Receber</div>
+      <div class="kpi-label">Ainda a Receber (em dinheiro)</div>
       <div class="kpi-value">${formatarReal(resumo.aReceberTotal)}</div>
     </div>
+    ${
+      resumo.qtdPermuta > 0
+        ? `<div class="kpi-card">
+            <div class="kpi-label">Em Permuta (não é caixa)</div>
+            <div class="kpi-value">${formatarReal(resumo.totalPermuta)}</div>
+            <div class="kpi-sub">${resumo.qtdPermuta} contrato(s)</div>
+          </div>`
+        : ""
+    }
   `;
 
   const tabelaEl = root.querySelector("#financeiro-tabela");
@@ -97,7 +112,7 @@ export async function renderFinanceiro(root) {
     <table>
       <thead>
         <tr>
-          <th>Contrato</th><th>Vaga</th><th>Empresa</th><th>Consultor</th>
+          <th>Contrato</th><th>Vaga</th><th>Empresa</th><th>Consultor</th><th>Tipo</th>
           <th>Valor Total</th><th>1ª Parcela (recebido)</th><th>2ª Parcela (previsto)</th><th>Vencimento 2ª Parcela</th><th>Reposição</th>
         </tr>
       </thead>
@@ -110,9 +125,10 @@ export async function renderFinanceiro(root) {
             <td>${escapeHtml(l.vagaTitulo)}</td>
             <td>${escapeHtml(l.empresaNome)}</td>
             <td>${escapeHtml(l.consultorNome)}</td>
+            <td>${l.ehPermuta ? '<span class="tag tag-standby">Permuta</span>' : (l.tipoCobranca === "ValorFixo" ? "Valor Fixo" : "Percentual")}</td>
             <td>${l.salarioFaltando ? '<span class="sub">sem salário</span>' : formatarReal(l.valorTotal)}</td>
-            <td>${formatarReal(l.valorParcela1)}</td>
-            <td>${formatarReal(l.valorParcela2)}</td>
+            <td>${formatarReal(l.valorParcela1)}${l.ehPermuta ? ' <span class="sub">(permuta)</span>' : ""}</td>
+            <td>${formatarReal(l.valorParcela2)}${l.ehPermuta ? ' <span class="sub">(permuta)</span>' : ""}</td>
             <td>${l.dataVencimentoParcela2 ? formatarData(l.dataVencimentoParcela2) : "—"} ${tagVencimento(l.diasParcela2)}</td>
             <td>${
               !l.reposicaoInfo

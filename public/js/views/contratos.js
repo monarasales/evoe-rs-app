@@ -12,6 +12,8 @@ const PADRAO = {
   tipoCobranca: "Percentual",
   percentualHonorarios: 90,
   valorFixo: 0,
+  valorPermuta: 0,
+  descricaoPermuta: "",
   parcelaInicialPct: 50,
   parcelaFechamentoPct: 50,
   prazoReposicaoDias: 60,
@@ -183,7 +185,7 @@ export async function renderContratos(root) {
     const vagas = await api.get("/api/vagas");
     const vagasOrdenadas = [...vagas].sort((a, b) => (a.dataAbertura < b.dataAbertura ? 1 : -1));
     const c = contratoExistente || PADRAO;
-    const tipoFixo = editando && c.tipoCobranca === "ValorFixo";
+    const tipoInicial = editando ? (c.tipoCobranca || "Percentual") : "Percentual";
 
     abrirModal(`
       <h2>${editando ? `Editar Contrato ${escapeHtml(c.numero)}` : "Novo Contrato"}</h2>
@@ -215,20 +217,26 @@ export async function renderContratos(root) {
         <div class="section-title" style="margin-top:6px;">Honorários</div>
         <div class="form-row">
           <label>Tipo de cobrança</label>
-          <div style="display:flex; gap:16px; align-items:center; margin-top:4px;">
+          <div style="display:flex; gap:16px; align-items:center; margin-top:4px; flex-wrap:wrap;">
             <label style="display:flex; align-items:center; gap:6px; font-weight:normal;">
-              <input type="radio" name="ct-tipo-cobranca" value="Percentual" ${!tipoFixo ? "checked" : ""} /> Percentual sobre o salário
+              <input type="radio" name="ct-tipo-cobranca" value="Percentual" ${tipoInicial === "Percentual" ? "checked" : ""} /> Percentual sobre o salário
             </label>
             <label style="display:flex; align-items:center; gap:6px; font-weight:normal;">
-              <input type="radio" name="ct-tipo-cobranca" value="ValorFixo" ${tipoFixo ? "checked" : ""} /> Valor fixo (negociado)
+              <input type="radio" name="ct-tipo-cobranca" value="ValorFixo" ${tipoInicial === "ValorFixo" ? "checked" : ""} /> Valor fixo (negociado)
+            </label>
+            <label style="display:flex; align-items:center; gap:6px; font-weight:normal;">
+              <input type="radio" name="ct-tipo-cobranca" value="Permuta" ${tipoInicial === "Permuta" ? "checked" : ""} /> Permuta
             </label>
           </div>
         </div>
+        <div id="ct-preview-valor" class="card" style="margin:10px 0; padding:12px 14px;"></div>
         <div class="form-cols">
           <div class="form-row" id="ct-row-percentual"><label>Percentual sobre o salário (%)</label><input type="number" id="ct-percentual" min="1" max="200" value="${editando ? c.percentualHonorarios : PADRAO.percentualHonorarios}" /></div>
           <div class="form-row" id="ct-row-valorfixo"><label>Valor fixo (R$)</label><input type="number" id="ct-valorfixo" min="0" step="0.01" value="${editando ? c.valorFixo || 0 : PADRAO.valorFixo}" /></div>
+          <div class="form-row" id="ct-row-valorpermuta"><label>Valor da permuta (R$)</label><input type="number" id="ct-valorpermuta" min="0" step="0.01" value="${editando ? c.valorPermuta || 0 : PADRAO.valorPermuta}" /></div>
           <div class="form-row"><label>Prazo de reposição (dias)</label><input type="number" id="ct-reposicao" min="1" value="${editando ? c.prazoReposicaoDias : PADRAO.prazoReposicaoDias}" /></div>
         </div>
+        <div class="form-row" id="ct-row-descricaopermuta"><label>O que está sendo permutado</label><input type="text" id="ct-descricaopermuta" placeholder="ex: divulgação da vaga em troca de material publicitário" value="${editando ? escapeHtml(c.descricaoPermuta || "") : ""}" /></div>
         <div class="form-cols">
           <div class="form-row"><label>1ª parcela — início do serviço (%)</label><input type="number" id="ct-parcela1" min="0" max="100" value="${editando ? c.parcelaInicialPct : PADRAO.parcelaInicialPct}" /></div>
           <div class="form-row"><label>2ª parcela — fechamento da vaga (%)</label><input type="number" id="ct-parcela2" min="0" max="100" value="${editando ? c.parcelaFechamentoPct : PADRAO.parcelaFechamentoPct}" /></div>
@@ -261,15 +269,72 @@ export async function renderContratos(root) {
 
     document.getElementById("btn-cancelar-ct").addEventListener("click", fecharModal);
 
+    const selectVaga = document.getElementById("ct-vaga");
+
     const rowPercentual = document.getElementById("ct-row-percentual");
     const rowValorFixo = document.getElementById("ct-row-valorfixo");
+    const rowValorPermuta = document.getElementById("ct-row-valorpermuta");
+    const rowDescricaoPermuta = document.getElementById("ct-row-descricaopermuta");
     const radiosTipo = document.querySelectorAll('input[name="ct-tipo-cobranca"]');
     const atualizarVisibilidadeCobranca = () => {
       const tipo = document.querySelector('input[name="ct-tipo-cobranca"]:checked').value;
-      rowPercentual.style.display = tipo === "ValorFixo" ? "none" : "";
+      rowPercentual.style.display = tipo === "Percentual" ? "" : "none";
       rowValorFixo.style.display = tipo === "ValorFixo" ? "" : "none";
+      rowValorPermuta.style.display = tipo === "Permuta" ? "" : "none";
+      rowDescricaoPermuta.style.display = tipo === "Permuta" ? "" : "none";
+      atualizarPreviewValor();
     };
     radiosTipo.forEach((r) => r.addEventListener("change", atualizarVisibilidadeCobranca));
+
+    // Calcula e mostra ao vivo o valor total estimado do contrato, puxando o salário
+    // já cadastrado na vaga quando o tipo de cobrança é "Percentual" — assim a usuária
+    // vê o resultado do cálculo (salário × percentual) na hora, sem precisar salvar
+    // para descobrir o valor.
+    const previewEl = document.getElementById("ct-preview-valor");
+    function vagaSelecionada() {
+      if (editando) return { salario: c.vagaSalario || 0, titulo: c.vagaTitulo };
+      const vaga = vagas.find((v) => v.id === selectVaga.value);
+      return vaga ? { salario: vaga.salario || 0, titulo: vaga.titulo } : null;
+    }
+    function atualizarPreviewValor() {
+      const tipo = document.querySelector('input[name="ct-tipo-cobranca"]:checked').value;
+      const vagaInfo = vagaSelecionada();
+      let valorTotal = 0;
+      let detalhe = "";
+
+      if (tipo === "Percentual") {
+        const pct = Number(document.getElementById("ct-percentual").value) || 0;
+        if (!vagaInfo) {
+          detalhe = "Selecione a vaga para calcular.";
+        } else if (!vagaInfo.salario) {
+          detalhe = `Cadastre o salário do cargo na vaga "${vagaInfo.titulo}" (Funil de Vagas) para o sistema calcular automaticamente.`;
+        } else {
+          valorTotal = Math.round(((vagaInfo.salario * pct) / 100) * 100) / 100;
+          detalhe = `${formatarReal(vagaInfo.salario)} (salário da vaga) × ${pct}%`;
+        }
+      } else if (tipo === "ValorFixo") {
+        valorTotal = Number(document.getElementById("ct-valorfixo").value) || 0;
+        detalhe = "Valor fixo negociado com o cliente.";
+      } else {
+        valorTotal = Number(document.getElementById("ct-valorpermuta").value) || 0;
+        detalhe = "Valor da permuta — não é dinheiro em caixa, entra só como valor contratado.";
+      }
+
+      const parcela1Pct = Number(document.getElementById("ct-parcela1").value) || 0;
+      const parcela2Pct = Number(document.getElementById("ct-parcela2").value) || 0;
+      const valorParcela1 = Math.round(((valorTotal * parcela1Pct) / 100) * 100) / 100;
+      const valorParcela2 = Math.round(((valorTotal * parcela2Pct) / 100) * 100) / 100;
+
+      previewEl.innerHTML = `
+        <div class="kpi-label">Valor total estimado do contrato</div>
+        <div class="kpi-value">${formatarReal(valorTotal)}</div>
+        <div class="sub" style="margin-top:2px;">${detalhe}</div>
+        ${valorTotal > 0 ? `<div class="sub" style="margin-top:6px;">1ª parcela: <strong>${formatarReal(valorParcela1)}</strong> · 2ª parcela: <strong>${formatarReal(valorParcela2)}</strong></div>` : ""}
+      `;
+    }
+    ["ct-percentual", "ct-valorfixo", "ct-valorpermuta", "ct-parcela1", "ct-parcela2"].forEach((id) => {
+      document.getElementById(id).addEventListener("input", atualizarPreviewValor);
+    });
     atualizarVisibilidadeCobranca();
 
     // Vencimento da 2ª parcela = vencimento da 1ª + 30 dias, recalculado sempre que a
@@ -284,7 +349,6 @@ export async function renderContratos(root) {
       inputVencP2.value = somarDias(inputVencP1.value, 30);
     });
 
-    const selectVaga = document.getElementById("ct-vaga");
     if (selectVaga) {
       const avisoEmpresa = document.getElementById("ct-aviso-empresa");
       selectVaga.addEventListener("change", () => {
@@ -300,6 +364,7 @@ export async function renderContratos(root) {
         } else {
           avisoEmpresa.classList.add("hidden");
         }
+        atualizarPreviewValor();
       });
     }
 
@@ -311,6 +376,8 @@ export async function renderContratos(root) {
         tipoCobranca: document.querySelector('input[name="ct-tipo-cobranca"]:checked').value,
         percentualHonorarios: document.getElementById("ct-percentual").value,
         valorFixo: document.getElementById("ct-valorfixo").value,
+        valorPermuta: document.getElementById("ct-valorpermuta").value,
+        descricaoPermuta: document.getElementById("ct-descricaopermuta").value.trim(),
         prazoReposicaoDias: document.getElementById("ct-reposicao").value,
         parcelaInicialPct: document.getElementById("ct-parcela1").value,
         parcelaFechamentoPct: document.getElementById("ct-parcela2").value,
