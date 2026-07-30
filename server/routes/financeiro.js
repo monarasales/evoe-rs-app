@@ -49,6 +49,7 @@ router.get("/", requireAuth, requireGestor, (req, res) => {
         numero: c.numero,
         vagaId: c.vagaId,
         vagaTitulo: vaga ? vaga.titulo : "—",
+        vagaSalario: vaga ? vaga.salario || 0 : 0,
         empresaNome: empresa ? empresa.nome : "—",
         consultorNome: consultor ? consultor.nome : "—",
         tipoCobranca: c.tipoCobranca,
@@ -60,6 +61,7 @@ router.get("/", requireAuth, requireGestor, (req, res) => {
         diasParcela2,
         salarioFaltando,
         ehPermuta,
+        ehAjusteManual: c.valorManualOverride !== null && c.valorManualOverride !== undefined,
         reposicaoInfo,
       };
     })

@@ -6,9 +6,18 @@
  * salário do cargo cadastrado na vaga, ou valor de permuta (pago em troca de produto/
  * serviço, não em dinheiro). Se a cobrança for por percentual e a vaga ainda não tiver
  * salário preenchido, devolve 0 e sinaliza salarioFaltando — a tela avisa a usuária
- * para completar o cadastro da vaga em vez de fingir que o valor é zero mesmo. */
+ * para completar o cadastro da vaga em vez de fingir que o valor é zero mesmo.
+ *
+ * Se o contrato tiver um ajuste manual (valorManualOverride, definido pela tela de
+ * Financeiro), esse valor vale sempre, por cima do cálculo automático — útil para
+ * contratos antigos ou negociados fora do padrão, onde o cálculo automático não
+ * reflete o que realmente foi cobrado. O ajuste só afeta os números do Financeiro,
+ * não o texto do contrato gerado em PDF/Word. */
 function calcularValorContrato(contrato, vaga) {
   if (!contrato) return { valorTotal: 0, salarioFaltando: false, ehPermuta: false };
+  if (contrato.valorManualOverride !== null && contrato.valorManualOverride !== undefined) {
+    return { valorTotal: Number(contrato.valorManualOverride) || 0, salarioFaltando: false, ehPermuta: contrato.tipoCobranca === "Permuta" };
+  }
   if (contrato.tipoCobranca === "ValorFixo") {
     return { valorTotal: Number(contrato.valorFixo) || 0, salarioFaltando: false, ehPermuta: false };
   }

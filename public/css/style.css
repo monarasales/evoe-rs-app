@@ -162,6 +162,11 @@ input, textarea, select { font-family: inherit; }
 .btn-block { width: 100%; padding: 12px; }
 .btn-sm { padding: 6px 12px; font-size: 12.5px; }
 .btn:disabled { opacity: 0.5; cursor: default; }
+.btn-icone {
+  border: none; background: transparent; color: var(--text-muted); cursor: pointer;
+  font-size: 13px; padding: 2px 4px; border-radius: 5px; line-height: 1; vertical-align: middle;
+}
+.btn-icone:hover { color: var(--navy); background: #eaedf2; }
 
 /* ---------- Abas (Configurações) ---------- */
 .tabs { display: flex; gap: 4px; background: #eaedf2; border-radius: 10px; padding: 4px; margin-bottom: 20px; width: fit-content; }

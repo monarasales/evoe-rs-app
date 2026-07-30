@@ -26,6 +26,7 @@ function comDetalhes(contrato) {
     valorParcela2,
     salarioFaltando,
     ehPermuta,
+    ehAjusteManual: contrato.valorManualOverride !== null && contrato.valorManualOverride !== undefined,
   };
 }
 
@@ -179,6 +180,27 @@ router.patch("/:id", requireAuth, requireGestor, (req, res) => {
     campos.dataVencimentoParcela2 !== contrato.dataVencimentoParcela2 ? false : contrato.lembreteParcela2Enviado;
 
   const atualizado = db.update("contratos", contrato.id, { ...campos, status: contrato.status, lembreteParcela2Enviado });
+  res.json(comDetalhes(atualizado));
+});
+
+// Ajuste manual do valor total só para fins financeiros — usado quando o cálculo
+// automático (percentual x salário, valor fixo ou permuta) não reflete a realidade,
+// por exemplo um contrato antigo lançado fora do padrão. Não altera nenhum outro
+// campo do contrato nem o texto gerado em PDF/Word, só os números do Financeiro.
+router.patch("/:id/ajuste-financeiro", requireAuth, requireGestor, (req, res) => {
+  const contrato = db.findById("contratos", req.params.id);
+  if (!contrato) return res.status(404).json({ erro: "Contrato não encontrado." });
+
+  const { valorManualOverride } = req.body || {};
+  let valor = null;
+  if (valorManualOverride !== null && valorManualOverride !== undefined && valorManualOverride !== "") {
+    valor = Number(valorManualOverride);
+    if (Number.isNaN(valor) || valor < 0) {
+      return res.status(400).json({ erro: "Informe um valor numérico válido (ou deixe em branco para voltar ao cálculo automático)." });
+    }
+  }
+
+  const atualizado = db.update("contratos", contrato.id, { valorManualOverride: valor });
   res.json(comDetalhes(atualizado));
 });
 

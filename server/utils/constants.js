@@ -126,6 +126,9 @@ const CONTRATO_PADRAO = {
   prazoReposicaoDias: 60,
   vigenciaDias: 90,
   prazoRescisaoAvisoDias: 30,
+  // Ajuste manual do valor total, feito pela tela de Financeiro (não pelo formulário de
+  // edição do contrato) — null significa "usar o cálculo automático normalmente".
+  valorManualOverride: null,
 };
 
 module.exports = {
