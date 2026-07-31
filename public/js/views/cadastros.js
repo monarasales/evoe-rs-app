@@ -18,6 +18,13 @@ const ABAS = [
 // "Bolsa Estágio" no formulário. Espelha TIPOS_VINCULO em server/utils/constants.js.
 const TIPOS_VINCULO = ["CLT", "PJ", "Estágio", "Outro"];
 
+// Controle de Ponto: só se aplica a quem tem tipoVinculo "Estágio" — por isso os
+// campos de modalidade/endereço de trabalho/horário só aparecem no formulário quando
+// esse vínculo está selecionado. Espelha MODALIDADES_TRABALHO/DIAS_SEMANA em
+// server/utils/constants.js.
+const MODALIDADES_TRABALHO = ["Presencial", "Home Office"];
+const DIAS_SEMANA = ["Segunda", "Terça", "Quarta", "Quinta", "Sexta", "Sábado", "Domingo"];
+
 function formatarReal(valor) {
   return (Number(valor) || 0).toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
 }
@@ -183,11 +190,47 @@ export async function renderConfiguracoes(root) {
             <label>Data de nascimento</label>
             <input type="text" inputmode="numeric" placeholder="dd/mm/aaaa" maxlength="10" id="cs-nascimento" value="${editando ? isoParaBr(consultor.dataNascimento) : ""}" />
           </div>
-          <div class="form-row"><label>Endereço</label><input type="text" id="cs-endereco" value="${editando ? escapeHtml(consultor.endereco || "") : ""}" /></div>
+          <div class="form-row"><label id="cs-endereco-label">Endereço Residencial</label><input type="text" id="cs-endereco" value="${editando ? escapeHtml(consultor.endereco || "") : ""}" /></div>
         </div>
         <div class="form-row" id="cs-desligamento-row" style="${!editando || consultor.ativo ? "display:none;" : ""}">
           <label>Data de desligamento</label>
           <input type="text" inputmode="numeric" placeholder="dd/mm/aaaa" maxlength="10" id="cs-desligamento" value="${editando ? isoParaBr(consultor.dataDesligamento) : ""}" />
+        </div>
+
+        <div id="cs-ponto-section" style="${vinculoInicial === "Estágio" ? "" : "display:none;"}">
+          <h3 class="section-title" style="margin-top:18px;">Controle de Ponto</h3>
+          <div class="sub" style="margin-top:-6px; margin-bottom:8px;">Entrada batida automaticamente ao logar; saída batida pelo próprio estagiário. A localização é comparada com o endereço abaixo, dentro de uma margem de ~500m.</div>
+          <div class="form-cols">
+            <div class="form-row">
+              <label>Modalidade</label>
+              <select id="cs-modalidade">
+                ${MODALIDADES_TRABALHO.map((m) => `<option ${(editando ? consultor.modalidadeTrabalho : "Presencial") === m ? "selected" : ""}>${m}</option>`).join("")}
+              </select>
+            </div>
+            <div class="form-row" id="cs-endereco-trabalho-row">
+              <label>Endereço de Trabalho (local presencial)</label>
+              <input type="text" id="cs-endereco-trabalho" value="${editando ? escapeHtml(consultor.enderecoTrabalho || "") : ""}" />
+            </div>
+          </div>
+          <div class="form-row">
+            <label>Dias de trabalho</label>
+            <div class="checkbox-row" style="flex-wrap:wrap; gap:4px 14px;">
+              ${DIAS_SEMANA.map((d) => {
+                const marcado = editando && consultor.horarioEsperado && consultor.horarioEsperado.dias && consultor.horarioEsperado.dias.includes(d);
+                return `<label style="display:inline-flex; align-items:center; gap:4px; font-weight:400;"><input type="checkbox" class="cs-horario-dia" value="${d}" ${marcado ? "checked" : ""} /> ${d}</label>`;
+              }).join("")}
+            </div>
+          </div>
+          <div class="form-cols">
+            <div class="form-row">
+              <label>Entrada esperada</label>
+              <input type="time" id="cs-horario-entrada" value="${editando && consultor.horarioEsperado ? consultor.horarioEsperado.entrada || "" : "08:00"}" />
+            </div>
+            <div class="form-row">
+              <label>Saída esperada</label>
+              <input type="time" id="cs-horario-saida" value="${editando && consultor.horarioEsperado ? consultor.horarioEsperado.saida || "" : "14:00"}" />
+            </div>
+          </div>
         </div>
 
         <h3 class="section-title" style="margin-top:18px;">Acesso ao Sistema</h3>
@@ -220,10 +263,17 @@ export async function renderConfiguracoes(root) {
 
     document.getElementById("cs-vinculo").addEventListener("change", (ev) => {
       document.getElementById("cs-remuneracao-label").textContent = rotuloRemuneracao(ev.target.value);
+      document.getElementById("cs-ponto-section").style.display = ev.target.value === "Estágio" ? "" : "none";
     });
     document.getElementById("cs-ativo").addEventListener("change", (ev) => {
       document.getElementById("cs-desligamento-row").style.display = ev.target.checked ? "none" : "";
     });
+    const atualizarVisibilidadeEnderecoTrabalho = () => {
+      const modalidade = document.getElementById("cs-modalidade").value;
+      document.getElementById("cs-endereco-trabalho-row").style.display = modalidade === "Home Office" ? "none" : "";
+    };
+    document.getElementById("cs-modalidade").addEventListener("change", atualizarVisibilidadeEnderecoTrabalho);
+    atualizarVisibilidadeEnderecoTrabalho();
 
     document.getElementById("form-consultor").addEventListener("submit", async (ev) => {
       ev.preventDefault();
@@ -257,6 +307,20 @@ export async function renderConfiguracoes(root) {
       }
 
       const ativo = document.getElementById("cs-ativo").checked;
+      const tipoVinculo = document.getElementById("cs-vinculo").value;
+
+      // Controle de Ponto só se aplica a estagiários — para os demais vínculos,
+      // envia horarioEsperado null (não usa) mesmo que os campos escondidos tenham
+      // algum valor residual no formulário.
+      const horarioEsperado =
+        tipoVinculo === "Estágio"
+          ? {
+              dias: Array.from(document.querySelectorAll(".cs-horario-dia:checked")).map((el) => el.value),
+              entrada: document.getElementById("cs-horario-entrada").value,
+              saida: document.getElementById("cs-horario-saida").value,
+            }
+          : null;
+
       const payload = {
         nome: document.getElementById("cs-nome").value.trim(),
         email: document.getElementById("cs-email").value.trim(),
@@ -264,13 +328,16 @@ export async function renderConfiguracoes(root) {
         perfil: document.getElementById("cs-perfil").value,
         ativo,
         dataAdmissao: datasIso["cs-admissao"],
-        tipoVinculo: document.getElementById("cs-vinculo").value,
+        tipoVinculo,
         valorRemuneracao: document.getElementById("cs-remuneracao").value,
         cpf: document.getElementById("cs-cpf").value.trim(),
         beneficios: document.getElementById("cs-beneficios").value.trim(),
         dataNascimento: datasIso["cs-nascimento"],
         endereco: document.getElementById("cs-endereco").value.trim(),
         dataDesligamento: ativo ? null : (datasIso["cs-desligamento"] || null),
+        modalidadeTrabalho: document.getElementById("cs-modalidade").value,
+        enderecoTrabalho: document.getElementById("cs-endereco-trabalho").value.trim(),
+        horarioEsperado,
       };
       const username = document.getElementById("cs-username").value.trim();
       const senha = document.getElementById("cs-senha").value;
@@ -292,7 +359,17 @@ export async function renderConfiguracoes(root) {
           await api.patch(`/api/consultores/${consultor.id}/credenciais`, { username, senha });
         }
 
-        showToast("Funcionário salvo.", "sucesso");
+        // Avisa se algum endereço usado no Controle de Ponto não foi localizado
+        // automaticamente — a checagem de distância não vai funcionar para ele até
+        // o texto do endereço ser ajustado (ex: mais completo, com bairro/cidade).
+        const enderecoSemGeo = tipoVinculo === "Estágio" && payload.endereco && !consultorSalvo.enderecoLat;
+        const enderecoTrabalhoSemGeo =
+          tipoVinculo === "Estágio" && payload.modalidadeTrabalho === "Presencial" && payload.enderecoTrabalho && !consultorSalvo.enderecoTrabalhoLat;
+        if (enderecoSemGeo || enderecoTrabalhoSemGeo) {
+          showToast("Funcionário salvo, mas não conseguimos localizar automaticamente o endereço informado — tente deixá-lo mais completo (bairro, cidade). A checagem de localização do ponto fica desativada até lá.", "erro");
+        } else {
+          showToast("Funcionário salvo.", "sucesso");
+        }
         fecharModal();
         carregarConsultores();
         const consultores = await api.get("/api/consultores");

@@ -21,6 +21,12 @@ export function podeGerenciarVagas() {
   return store.usuario && (store.usuario.perfil === "Gestor" || store.usuario.perfil === "Supervisora");
 }
 
+// Controle de Ponto: hoje só se aplica a quem tem tipoVinculo "Estágio" (o campo
+// vem junto no login/`/api/auth/me`, ver server/routes/auth.js).
+export function ehEstagiario() {
+  return !!(store.usuario && store.usuario.tipoVinculo === "Estágio");
+}
+
 export function showToast(mensagem, tipo = "") {
   const toast = document.getElementById("toast");
   toast.textContent = mensagem;

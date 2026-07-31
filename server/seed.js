@@ -29,6 +29,18 @@ function seed() {
     cpf: "",
     dataNascimento: "",
     endereco: "",
+    enderecoLat: null,
+    enderecoLng: null,
+    // Controle de Ponto (estagiários): endereço de trabalho, modalidade e horário
+    // esperado. Deixa um horário de exemplo para a Camila (Estágio) já navegar com
+    // dado; os endereços ficam vazios aqui de propósito (não chama geocodificação
+    // durante o seed) — dá pra completar depois em Configurações > Funcionários.
+    enderecoTrabalho: "",
+    enderecoTrabalhoLat: null,
+    enderecoTrabalhoLng: null,
+    modalidadeTrabalho: "Presencial",
+    horarioEsperado:
+      c.tipoVinculo === "Estágio" ? { dias: ["Segunda", "Terça", "Quarta", "Quinta", "Sexta"], entrada: "08:00", saida: "14:00" } : null,
     createdAt: db.nowIso(),
     updatedAt: db.nowIso(),
   }));

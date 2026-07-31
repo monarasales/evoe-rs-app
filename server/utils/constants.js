@@ -89,6 +89,17 @@ const PERFIS_ACESSO = ["Gestor", "Supervisora", "Recrutador"];
 // de quem está em estágio.
 const TIPOS_VINCULO = ["CLT", "PJ", "Estágio", "Outro"];
 
+// Controle de Ponto (estagiários): registra automaticamente a entrada no login e a
+// saída manualmente (botão "Bater Saída"), com localização e comparação de horas
+// trabalhadas x esperadas. Hoje se aplica só a quem tem tipoVinculo "Estágio".
+const DIAS_SEMANA = ["Domingo", "Segunda", "Terça", "Quarta", "Quinta", "Sexta", "Sábado"];
+const MODALIDADES_TRABALHO = ["Presencial", "Home Office"];
+
+// Distância (em metros) tolerada entre a batida do ponto e o endereço de referência
+// (de trabalho, se Presencial; residencial, se Home Office) antes de marcar como
+// "fora do local esperado" — dá uma margem para imprecisão normal do GPS do celular/notebook.
+const TOLERANCIA_PONTO_METROS = 500;
+
 // Comissão por fechamento de vaga: valor fixo pago ao consultor responsável quando a
 // vaga fecha (11. Aprovado) dentro do SLA ideal (SLA_DIAS_IDEAL dias, ver abaixo).
 // Vagas de Reposição nunca geram comissão, pois não são uma nova colocação vendida.
@@ -160,6 +171,9 @@ module.exports = {
   MOTIVOS_REPOSICAO,
   PERFIS_ACESSO,
   TIPOS_VINCULO,
+  DIAS_SEMANA,
+  MODALIDADES_TRABALHO,
+  TOLERANCIA_PONTO_METROS,
   VALOR_COMISSAO_FECHAMENTO,
   TIPOS_COBRANCA_CONTRATO,
   SERVICOS_PROSPECT,

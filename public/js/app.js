@@ -1,5 +1,5 @@
 import { api } from "./api.js";
-import { store, showToast, isGestor, podeGerenciarVagas } from "./state.js";
+import { store, showToast, isGestor, podeGerenciarVagas, ehEstagiario } from "./state.js";
 import { registrarRota, setRaiz, iniciarRouter, navegarPara } from "./router.js";
 import { renderKanban } from "./views/kanban.js";
 import { renderCandidatos } from "./views/candidatos.js";
@@ -10,6 +10,8 @@ import { renderContratos } from "./views/contratos.js";
 import { renderCrm } from "./views/crm.js";
 import { renderFinanceiro } from "./views/financeiro.js";
 import { renderComissoes } from "./views/comissoes.js";
+import { renderPonto } from "./views/ponto.js";
+import { obterLocalizacao } from "./geo.js";
 
 const loginScreen = document.getElementById("login-screen");
 const mainScreen = document.getElementById("main-screen");
@@ -43,6 +45,7 @@ const NAV_SECOES = [
       { href: "#/crm", label: "CRM", icone: "🤝" },
       { href: "#/financeiro", label: "Financeiro", icone: "💰", somenteGestor: true },
       { href: "#/comissoes", label: "Comissões", icone: "🏆", somenteGestorOuSupervisora: true },
+      { href: "#/ponto", label: "Controle de Ponto", icone: "🕒", somentePonto: true },
     ],
   },
   {
@@ -57,7 +60,10 @@ const NAV_SECOES = [
 function montarNav() {
   mainNav.innerHTML = NAV_SECOES.map((secao) => {
     const itensVisiveis = secao.itens.filter(
-      (l) => (!l.somenteGestor || isGestor()) && (!l.somenteGestorOuSupervisora || podeGerenciarVagas())
+      (l) =>
+        (!l.somenteGestor || isGestor()) &&
+        (!l.somenteGestorOuSupervisora || podeGerenciarVagas()) &&
+        (!l.somentePonto || podeGerenciarVagas() || ehEstagiario())
     );
     if (itensVisiveis.length === 0) return "";
     return `
@@ -106,6 +112,37 @@ function mostrarApp() {
   montarNav();
 }
 
+const btnPontoWidget = document.getElementById("btn-ponto-widget");
+const pontoWidgetTexto = document.getElementById("ponto-widget-texto");
+
+btnPontoWidget.addEventListener("click", () => navegarPara("#/ponto"));
+
+// Controle de Ponto: mostra na sidebar o horário da entrada batida automaticamente
+// no login (ver server/routes/auth.js) e, se o navegador ceder a localização,
+// anexa ela ao registro de hoje — tudo em segundo plano, sem travar o uso do
+// sistema mesmo se o estagiário negar a permissão de localização.
+async function inicializarPontoDoDia() {
+  if (!ehEstagiario()) {
+    btnPontoWidget.classList.add("hidden");
+    return;
+  }
+  btnPontoWidget.classList.remove("hidden");
+  try {
+    const hoje = await api.get("/api/ponto/hoje");
+    if (!hoje) return;
+    pontoWidgetTexto.textContent = hoje.horaSaida ? `Ponto: ${hoje.horaEntrada}–${hoje.horaSaida}` : `Entrada: ${hoje.horaEntrada}`;
+
+    if (hoje.entradaLat == null) {
+      const localizacao = await obterLocalizacao();
+      if (localizacao) {
+        await api.patch("/api/ponto/hoje/entrada-localizacao", localizacao);
+      }
+    }
+  } catch (e) {
+    /* silencioso: ponto é um extra, não pode travar o login por falha aqui */
+  }
+}
+
 function mostrarLogin() {
   mainScreen.classList.add("hidden");
   loginScreen.classList.remove("hidden");
@@ -140,6 +177,7 @@ async function bootAposLogin() {
   await carregarCachesBasicos();
   mostrarApp();
   atualizarBadgeNotificacoes();
+  inicializarPontoDoDia();
   navegarPara("#/dashboard");
   iniciarRouter();
   setInterval(atualizarBadgeNotificacoes, 30000);
@@ -165,6 +203,7 @@ function registrarRotas() {
   registrarRota("/crm", renderCrm);
   registrarRota("/financeiro", renderFinanceiro);
   registrarRota("/comissoes", renderComissoes);
+  registrarRota("/ponto", renderPonto);
 }
 
 async function init() {
@@ -176,6 +215,7 @@ async function init() {
     await carregarCachesBasicos();
     mostrarApp();
     atualizarBadgeNotificacoes();
+    inicializarPontoDoDia();
     iniciarRouter();
     setInterval(atualizarBadgeNotificacoes, 30000);
   } else {
