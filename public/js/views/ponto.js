@@ -1,5 +1,5 @@
 import { api } from "../api.js";
-import { store, showToast, podeGerenciarVagas, usaControlePonto } from "../state.js";
+import { store, showToast, podeGerenciarVagas, usaControlePonto, isGestor } from "../state.js";
 import { obterLocalizacao, linkMapa } from "../geo.js";
 import { abrirModal, fecharModal } from "../modal.js";
 
@@ -68,6 +68,8 @@ export async function renderPonto(root) {
 // ================== Modais de correção (Gestor/Supervisora) ==================
 
 // Corrige uma batida existente (esqueceu de bater, bateu no horário errado, etc).
+// Só o Gestor tem acesso a essa tela (ver botão "Editar" mais abaixo) — a Supervisora
+// continua vendo os relatórios normalmente, só não altera os horários registrados.
 function abrirModalEditarPonto(registro, nomeConsultor, aoSalvar) {
   abrirModal(`
     <h2>Corrigir Ponto — ${escapeHtml(nomeConsultor)}</h2>
@@ -77,7 +79,11 @@ function abrirModalEditarPonto(registro, nomeConsultor, aoSalvar) {
         <div class="form-row"><label>Entrada</label><input type="time" id="ep-entrada" value="${registro.horaEntrada || ""}" required /></div>
         <div class="form-row"><label>Saída</label><input type="time" id="ep-saida" value="${registro.horaSaida || ""}" /></div>
       </div>
-      <div class="sub" style="margin-top:-6px;">Deixe a saída em branco se ainda não foi batida. A localização registrada originalmente não muda.</div>
+      <div class="form-cols">
+        <div class="form-row"><label>Saída p/ almoço</label><input type="time" id="ep-pausa-saida" value="${registro.pausaSaida || ""}" /></div>
+        <div class="form-row"><label>Volta do almoço</label><input type="time" id="ep-pausa-entrada" value="${registro.pausaEntrada || ""}" /></div>
+      </div>
+      <div class="sub" style="margin-top:-6px;">Deixe em branco o que ainda não foi batido (ou não se aplica). A localização registrada originalmente não muda.</div>
       <div id="editar-ponto-erro" class="form-erro hidden"></div>
       <div class="modal-close-row">
         <button type="button" id="btn-cancelar-ep" class="btn btn-outline">Fechar</button>
@@ -94,6 +100,8 @@ function abrirModalEditarPonto(registro, nomeConsultor, aoSalvar) {
       await api.patch(`/api/ponto/${registro.id}`, {
         horaEntrada: document.getElementById("ep-entrada").value,
         horaSaida: document.getElementById("ep-saida").value || null,
+        pausaSaida: document.getElementById("ep-pausa-saida").value || null,
+        pausaEntrada: document.getElementById("ep-pausa-entrada").value || null,
       });
       showToast("Ponto corrigido.", "sucesso");
       fecharModal();
@@ -167,7 +175,7 @@ async function renderGestor(root) {
           <option value="0">Este mês</option>
           <option value="-1">Mês passado</option>
         </select>
-        <button id="btn-ponto-manual" class="btn btn-outline btn-sm">+ Registrar manualmente</button>
+        ${isGestor() ? '<button id="btn-ponto-manual" class="btn btn-outline btn-sm">+ Registrar manualmente</button>' : ""}
       </div>
     </div>
     <div id="ponto-conteudo"></div>
@@ -239,7 +247,7 @@ async function renderGestor(root) {
         registros.length === 0
           ? '<div class="empty-state">Nenhuma batida de ponto neste período.</div>'
           : `<table>
-              <thead><tr><th>Data</th><th>Dia</th><th>Entrada</th><th>Saída</th><th>Trabalhadas</th><th>Esperadas</th><th>Saldo</th><th></th></tr></thead>
+              <thead><tr><th>Data</th><th>Dia</th><th>Entrada</th><th>Almoço</th><th>Saída</th><th>Trabalhadas</th><th>Esperadas</th><th>Saldo</th><th></th></tr></thead>
               <tbody>
                 ${registros
                   .map(
@@ -248,11 +256,12 @@ async function renderGestor(root) {
                     <td>${formatarDataCurta(p.data)}${p.corrigidoManualmente || p.lancadoManualmente ? ' <span title="Corrigido/lançado manualmente">✏️</span>' : ""}</td>
                     <td>${p.diaSemana}</td>
                     <td>${localizacaoCelula(p.horaEntrada, p.entradaLat, p.entradaLng, p.entradaForaDoLocal, p.entradaDistanciaMetros, p.entradaReferencia)}</td>
+                    <td>${p.pausaSaida || p.pausaEntrada ? `${p.pausaSaida || "—"} → ${p.pausaEntrada || "—"}` : "—"}</td>
                     <td>${localizacaoCelula(p.horaSaida, p.saidaLat, p.saidaLng, p.saidaForaDoLocal, p.saidaDistanciaMetros, p.saidaReferencia)}</td>
                     <td>${p.horasTrabalhadas != null ? p.horasTrabalhadas + "h" : "—"}</td>
                     <td>${p.horasEsperadas}h</td>
                     <td>${p.horasTrabalhadas != null ? tagSaldo(p.saldoHoras) : "—"}</td>
-                    <td><button class="btn btn-outline btn-sm btn-editar-ponto">Editar</button></td>
+                    <td>${isGestor() ? '<button class="btn btn-outline btn-sm btn-editar-ponto">Editar</button>' : ""}</td>
                   </tr>`
                   )
                   .join("")}
@@ -277,25 +286,35 @@ async function renderGestor(root) {
     carregar();
   });
 
-  root.querySelector("#btn-ponto-manual").addEventListener("click", () => {
-    const consultores = (ultimoResumo && ultimoResumo.resumo.map((r) => r.consultor)) || [];
-    if (consultores.length === 0) {
-      showToast('Ninguém com Controle de Ponto habilitado ainda. Marque "Usa Controle de Ponto" no cadastro da pessoa primeiro.', "erro");
-      return;
-    }
-    abrirModalPontoManual(consultores, carregar);
-  });
+  const btnPontoManual = root.querySelector("#btn-ponto-manual");
+  if (btnPontoManual) {
+    btnPontoManual.addEventListener("click", () => {
+      const consultores = (ultimoResumo && ultimoResumo.resumo.map((r) => r.consultor)) || [];
+      if (consultores.length === 0) {
+        showToast('Ninguém com Controle de Ponto habilitado ainda. Marque "Usa Controle de Ponto" no cadastro da pessoa primeiro.', "erro");
+        return;
+      }
+      abrirModalPontoManual(consultores, carregar);
+    });
+  }
 
   await carregar();
 }
 
 // ================== Visão do próprio funcionário ("Meu Ponto") ==================
 async function renderMeuPonto(root) {
+  // store.consultores já vem carregado no boot — usado só para saber se o MEU
+  // horário esperado tem pausa de almoço configurada (ex: a Fernanda tem, outras
+  // pessoas podem não ter) e decidir se mostra os botões de pausa.
+  const meuRegistro = store.consultores.find((c) => c.id === store.usuario.id);
+  const pausaMinutos = meuRegistro && meuRegistro.horarioEsperado ? Number(meuRegistro.horarioEsperado.pausaAlmocoMinutos) || 0 : 0;
+  const temPausa = pausaMinutos > 0;
+
   root.innerHTML = `
     <div class="view-header">
       <div>
         <h2>Meu Ponto</h2>
-        <div class="sub">A entrada é batida automaticamente quando você faz login. Não esqueça de bater a saída ao final do expediente.</div>
+        <div class="sub">A entrada é batida automaticamente quando você faz login. Não esqueça de bater${temPausa ? " a saída/volta do almoço e" : ""} a saída ao final do expediente.</div>
       </div>
     </div>
     <div id="ponto-hoje-card" class="card" style="margin-bottom:18px;"></div>
@@ -315,6 +334,7 @@ async function renderMeuPonto(root) {
       cardEl.innerHTML = '<div class="sub">Nenhuma batida de ponto hoje ainda — ela é registrada automaticamente no login.</div>';
       return;
     }
+    const aguardandoVoltaAlmoco = temPausa && hoje.pausaSaida && !hoje.pausaEntrada;
     cardEl.innerHTML = `
       <div class="kpi-row">
         <div class="kpi-card">
@@ -322,10 +342,33 @@ async function renderMeuPonto(root) {
           <div class="kpi-value">${hoje.horaEntrada}</div>
           ${hoje.entradaForaDoLocal ? '<div class="sub" style="color:var(--danger); margin-top:4px;">⚠️ Fora do local esperado</div>' : ""}
         </div>
+        ${
+          temPausa
+            ? `<div class="kpi-card">
+                <div class="kpi-label">Almoço</div>
+                <div class="kpi-value" style="font-size:16px;">${hoje.pausaSaida || "—"} → ${hoje.pausaEntrada || "—"}</div>
+                ${
+                  !hoje.horaSaida && !hoje.pausaSaida
+                    ? '<button id="btn-pausa-saida" class="btn btn-outline btn-sm" style="margin-top:8px;">Sair para o Almoço</button>'
+                    : ""
+                }
+                ${
+                  !hoje.horaSaida && aguardandoVoltaAlmoco
+                    ? '<button id="btn-pausa-entrada" class="btn btn-outline btn-sm" style="margin-top:8px;">Voltar do Almoço</button>'
+                    : ""
+                }
+              </div>`
+            : ""
+        }
         <div class="kpi-card">
           <div class="kpi-label">Saída de hoje</div>
           <div class="kpi-value">${hoje.horaSaida || "—"}</div>
-          ${!hoje.horaSaida ? '<button id="btn-bater-saida" class="btn btn-primary btn-sm" style="margin-top:8px;">Bater Saída</button>' : ""}
+          ${
+            !hoje.horaSaida && !aguardandoVoltaAlmoco
+              ? '<button id="btn-bater-saida" class="btn btn-primary btn-sm" style="margin-top:8px;">Bater Saída</button>'
+              : ""
+          }
+          ${aguardandoVoltaAlmoco ? '<div class="sub" style="margin-top:8px;">Bata a volta do almoço antes de sair.</div>' : ""}
         </div>
         <div class="kpi-card">
           <div class="kpi-label">Horas hoje</div>
@@ -351,6 +394,40 @@ async function renderMeuPonto(root) {
         }
       });
     }
+    const btnPausaSaida = cardEl.querySelector("#btn-pausa-saida");
+    if (btnPausaSaida) {
+      btnPausaSaida.addEventListener("click", async () => {
+        btnPausaSaida.disabled = true;
+        btnPausaSaida.textContent = "Registrando...";
+        try {
+          const localizacao = await obterLocalizacao();
+          await api.post("/api/ponto/pausa-saida", localizacao || {});
+          showToast("Saída para o almoço registrada.", "sucesso");
+          carregar();
+        } catch (err) {
+          showToast(err.message, "erro");
+          btnPausaSaida.disabled = false;
+          btnPausaSaida.textContent = "Sair para o Almoço";
+        }
+      });
+    }
+    const btnPausaEntrada = cardEl.querySelector("#btn-pausa-entrada");
+    if (btnPausaEntrada) {
+      btnPausaEntrada.addEventListener("click", async () => {
+        btnPausaEntrada.disabled = true;
+        btnPausaEntrada.textContent = "Registrando...";
+        try {
+          const localizacao = await obterLocalizacao();
+          await api.post("/api/ponto/pausa-entrada", localizacao || {});
+          showToast("Volta do almoço registrada.", "sucesso");
+          carregar();
+        } catch (err) {
+          showToast(err.message, "erro");
+          btnPausaEntrada.disabled = false;
+          btnPausaEntrada.textContent = "Voltar do Almoço";
+        }
+      });
+    }
   }
 
   function renderizarHistorico(registros) {
@@ -361,7 +438,7 @@ async function renderMeuPonto(root) {
     }
     el.innerHTML = `
       <table>
-        <thead><tr><th>Data</th><th>Dia</th><th>Entrada</th><th>Saída</th><th>Trabalhadas</th><th>Esperadas</th><th>Saldo</th></tr></thead>
+        <thead><tr><th>Data</th><th>Dia</th><th>Entrada</th><th>Almoço</th><th>Saída</th><th>Trabalhadas</th><th>Esperadas</th><th>Saldo</th></tr></thead>
         <tbody>
           ${registros
             .map(
@@ -370,6 +447,7 @@ async function renderMeuPonto(root) {
               <td>${formatarDataCurta(p.data)}</td>
               <td>${p.diaSemana}</td>
               <td>${localizacaoCelula(p.horaEntrada, p.entradaLat, p.entradaLng, p.entradaForaDoLocal, p.entradaDistanciaMetros, p.entradaReferencia)}</td>
+              <td>${p.pausaSaida || p.pausaEntrada ? `${p.pausaSaida || "—"} → ${p.pausaEntrada || "—"}` : "—"}</td>
               <td>${localizacaoCelula(p.horaSaida, p.saidaLat, p.saidaLng, p.saidaForaDoLocal, p.saidaDistanciaMetros, p.saidaReferencia)}</td>
               <td>${p.horasTrabalhadas != null ? p.horasTrabalhadas + "h" : "—"}</td>
               <td>${p.horasEsperadas}h</td>

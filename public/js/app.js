@@ -48,7 +48,16 @@ const NAV_SECOES = [
       { href: "#/crm", label: "CRM", icone: "🤝", somenteGestor: true },
       { href: "#/financeiro", label: "Financeiro", icone: "💰", somenteGestor: true },
       { href: "#/comissoes", label: "Comissões", icone: "🏆", somenteGestorOuSupervisora: true },
+    ],
+  },
+  {
+    // Agrupa tudo que é "sobre a própria pessoa/equipe" num único lugar — o Ponto
+    // de todo mundo (para quem gerencia) ou o próprio (para quem bate ponto), e o
+    // cadastro pessoal de cada um, incluindo o da Gestora.
+    titulo: "Colaborador",
+    itens: [
       { href: "#/ponto", label: "Controle de Ponto", icone: "🕒", somentePonto: true },
+      { href: "#/meu-cadastro", label: "Meu Cadastro", icone: "🪪" },
     ],
   },
   {
@@ -56,7 +65,6 @@ const NAV_SECOES = [
     itens: [
       { href: "#/contratos", label: "Contratos", icone: "📝" },
       { href: "#/configuracoes", label: "Configurações", icone: "⚙️" },
-      { href: "#/meu-cadastro", label: "Meu Cadastro", icone: "🪪" },
     ],
   },
 ];

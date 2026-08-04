@@ -4,6 +4,7 @@
 // o Controle de Ponto, que usa esses dois endereços pra saber de onde a batida veio.
 import { api } from "../api.js";
 import { store, showToast, usaControlePonto } from "../state.js";
+import { campoEnderecoHtml, aplicarBuscaCep, montarEnderecoDosCampos } from "../enderecoCampo.js";
 
 function escapeHtml(str) {
   const div = document.createElement("div");
@@ -41,8 +42,8 @@ export async function renderMeuCadastro(root) {
 
       <form id="form-meu-cadastro">
         <div class="form-row"><label>Telefone / WhatsApp</label><input type="text" id="mc-whatsapp" value="${escapeHtml(eu.whatsapp || "")}" /></div>
-        <div class="form-row"><label>Endereço Residencial</label><input type="text" id="mc-endereco" placeholder="Rua, número, bairro, cidade/UF" value="${escapeHtml(eu.endereco || "")}" /></div>
-        <div class="form-row"><label>Endereço de Trabalho</label><input type="text" id="mc-endereco-trabalho" placeholder="Rua, número, bairro, cidade/UF" value="${escapeHtml(eu.enderecoTrabalho || "")}" /></div>
+        ${campoEnderecoHtml("mc-end", "Endereço Residencial", eu.endereco)}
+        ${campoEnderecoHtml("mc-endt", "Endereço de Trabalho", eu.enderecoTrabalho)}
         ${
           usaControlePonto()
             ? '<div class="sub" style="margin-top:-6px; margin-bottom:10px;">Preencha os dois — em dias de home office ou no escritório, o sistema identifica sozinho qual dos dois bateu mais perto.</div>'
@@ -54,12 +55,15 @@ export async function renderMeuCadastro(root) {
     </div>
   `;
 
+  aplicarBuscaCep("mc-end");
+  aplicarBuscaCep("mc-endt");
+
   document.getElementById("form-meu-cadastro").addEventListener("submit", async (ev) => {
     ev.preventDefault();
     const payload = {
       whatsapp: document.getElementById("mc-whatsapp").value.trim(),
-      endereco: document.getElementById("mc-endereco").value.trim(),
-      enderecoTrabalho: document.getElementById("mc-endereco-trabalho").value.trim(),
+      endereco: montarEnderecoDosCampos("mc-end", eu.endereco),
+      enderecoTrabalho: montarEnderecoDosCampos("mc-endt", eu.enderecoTrabalho),
     };
     try {
       const atualizado = await api.patch("/api/consultores/me", payload);

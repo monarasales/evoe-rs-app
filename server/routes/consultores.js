@@ -9,18 +9,25 @@ const { usaControlePonto } = require("../utils/pontoCompute");
 const router = express.Router();
 
 // Valida a estrutura do horário esperado (usado no Controle de Ponto): { dias:
-// ["Segunda", ...], entrada: "08:00", saida: "14:00" }. Aceita null/undefined
-// (funcionário sem horário cadastrado ainda) — só valida quando algo foi enviado.
+// ["Segunda", ...], entrada: "08:00", saida: "14:00", pausaAlmocoMinutos: 60 }.
+// pausaAlmocoMinutos é opcional (0/ausente = sem pausa de almoço nesse horário).
+// Aceita null/undefined (funcionário sem horário cadastrado ainda) — só valida
+// quando algo foi enviado.
 function horarioValido(horario) {
   if (horario == null) return true;
   if (typeof horario !== "object") return false;
-  const { dias, entrada, saida } = horario;
+  const { dias, entrada, saida, pausaAlmocoMinutos } = horario;
   if (!Array.isArray(dias) || dias.some((d) => !DIAS_SEMANA.includes(d))) return false;
   const horaRegex = /^([01]\d|2[0-3]):([0-5]\d)$/;
   if (!horaRegex.test(entrada || "") || !horaRegex.test(saida || "")) return false;
   const [he, me] = entrada.split(":").map(Number);
   const [hs, ms] = saida.split(":").map(Number);
-  return hs * 60 + ms > he * 60 + me;
+  if (hs * 60 + ms <= he * 60 + me) return false;
+  if (pausaAlmocoMinutos !== undefined && pausaAlmocoMinutos !== null) {
+    const minutos = Number(pausaAlmocoMinutos);
+    if (!Number.isInteger(minutos) || minutos < 0 || minutos >= hs * 60 + ms - (he * 60 + me)) return false;
+  }
+  return true;
 }
 
 // Geocodifica endereço residencial e/ou de trabalho quando mudam (só para quem usa

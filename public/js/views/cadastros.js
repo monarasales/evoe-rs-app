@@ -2,6 +2,7 @@ import { api } from "../api.js";
 import { store, isGestor, showToast, formatarData } from "../state.js";
 import { abrirModal, fecharModal } from "../modal.js";
 import { isoParaBr, brParaIso, isoValida, aplicarMascaraData } from "../dateMask.js";
+import { campoEnderecoHtml, aplicarBuscaCep, montarEnderecoDosCampos } from "../enderecoCampo.js";
 
 function escapeHtml(str) {
   const div = document.createElement("div");
@@ -95,7 +96,7 @@ export async function renderConfiguracoes(root) {
     if (!el) return;
     el.innerHTML = `
       <table>
-        <thead><tr><th>Nome</th><th>Perfil</th><th>Admissão</th><th>Vínculo</th><th>Remuneração</th><th>Usuário</th><th>Status</th>${isGestor() ? "<th></th>" : ""}</tr></thead>
+        <thead><tr><th>Nome</th><th>Perfil</th><th>Admissão</th><th>Vínculo</th><th>Remuneração</th><th>Usuário</th><th>Status</th><th>Ponto</th>${isGestor() ? "<th></th>" : ""}</tr></thead>
         <tbody>
           ${consultores
             .map(
@@ -108,6 +109,7 @@ export async function renderConfiguracoes(root) {
               <td>${c.valorRemuneracao ? formatarReal(c.valorRemuneracao) : "—"}</td>
               <td>${c.username ? escapeHtml(c.username) : '<span class="sub">sem login</span>'}</td>
               <td><span class="tag ${c.ativo ? "tag-nprazo" : "tag-encerrada"}">${c.ativo ? "Ativo" : "Inativo"}</span></td>
+              <td>${controlaPontoInicial(c) ? '<span class="tag tag-nprazo">🕒 Ligado</span>' : '<span class="sub">Desligado</span>'}</td>
               ${
                 isGestor()
                   ? `<td style="white-space:nowrap;">
@@ -192,13 +194,11 @@ export async function renderConfiguracoes(root) {
           <div class="form-row"><label>CPF</label><input type="text" id="cs-cpf" value="${editando ? escapeHtml(consultor.cpf || "") : ""}" /></div>
         </div>
         <div class="form-row"><label>Benefícios</label><input type="text" id="cs-beneficios" placeholder="ex: Vale Transporte, Vale Refeição R$600, Plano de Saúde" value="${editando ? escapeHtml(consultor.beneficios || "") : ""}" /></div>
-        <div class="form-cols">
-          <div class="form-row">
-            <label>Data de nascimento</label>
-            <input type="text" inputmode="numeric" placeholder="dd/mm/aaaa" maxlength="10" id="cs-nascimento" value="${editando ? isoParaBr(consultor.dataNascimento) : ""}" />
-          </div>
-          <div class="form-row"><label id="cs-endereco-label">Endereço Residencial</label><input type="text" id="cs-endereco" value="${editando ? escapeHtml(consultor.endereco || "") : ""}" /></div>
+        <div class="form-row">
+          <label>Data de nascimento</label>
+          <input type="text" inputmode="numeric" placeholder="dd/mm/aaaa" maxlength="10" id="cs-nascimento" value="${editando ? isoParaBr(consultor.dataNascimento) : ""}" style="max-width:180px;" />
         </div>
+        ${campoEnderecoHtml("cs-end", "Endereço Residencial", editando ? consultor.endereco : "")}
         <div class="form-row" id="cs-desligamento-row" style="${!editando || consultor.ativo ? "display:none;" : ""}">
           <label>Data de desligamento</label>
           <input type="text" inputmode="numeric" placeholder="dd/mm/aaaa" maxlength="10" id="cs-desligamento" value="${editando ? isoParaBr(consultor.dataDesligamento) : ""}" />
@@ -214,9 +214,8 @@ export async function renderConfiguracoes(root) {
             Entrada batida automaticamente ao logar; saída batida pela própria pessoa. Preencha os dois endereços abaixo —
             em dias de home office ou no escritório, o sistema identifica sozinho de qual dos dois a batida veio (margem de ~500m).
           </div>
-          <div class="form-row" id="cs-endereco-trabalho-row">
-            <label>Endereço de Trabalho</label>
-            <input type="text" id="cs-endereco-trabalho" placeholder="Rua, número, bairro, cidade/UF" value="${editando ? escapeHtml(consultor.enderecoTrabalho || "") : ""}" />
+          <div id="cs-endereco-trabalho-row">
+            ${campoEnderecoHtml("cs-endt", "Endereço de Trabalho", editando ? consultor.enderecoTrabalho : "")}
           </div>
           <div class="sub" style="margin-top:-6px; margin-bottom:10px;">O Endereço Residencial (acima, em Dados de RH) também é usado como referência.</div>
           <div class="form-row">
@@ -237,7 +236,12 @@ export async function renderConfiguracoes(root) {
               <label>Saída esperada</label>
               <input type="time" id="cs-horario-saida" value="${editando && consultor.horarioEsperado ? consultor.horarioEsperado.saida || "" : "14:00"}" />
             </div>
+            <div class="form-row">
+              <label>Pausa de almoço (min)</label>
+              <input type="number" min="0" step="5" id="cs-horario-pausa" placeholder="ex: 60" value="${editando && consultor.horarioEsperado && consultor.horarioEsperado.pausaAlmocoMinutos ? consultor.horarioEsperado.pausaAlmocoMinutos : ""}" />
+            </div>
           </div>
+          <div class="sub" style="margin-top:-6px;">Deixe em branco ou 0 se a pessoa não tem pausa de almoço batida no ponto.</div>
         </div>
 
         <h3 class="section-title" style="margin-top:18px;">Acesso ao Sistema</h3>
@@ -267,6 +271,8 @@ export async function renderConfiguracoes(root) {
     aplicarMascaraData(document.getElementById("cs-admissao"));
     aplicarMascaraData(document.getElementById("cs-nascimento"));
     aplicarMascaraData(document.getElementById("cs-desligamento"));
+    aplicarBuscaCep("cs-end");
+    aplicarBuscaCep("cs-endt");
 
     document.getElementById("cs-vinculo").addEventListener("change", (ev) => {
       document.getElementById("cs-remuneracao-label").textContent = rotuloRemuneracao(ev.target.value);
@@ -315,11 +321,14 @@ export async function renderConfiguracoes(root) {
 
       // Controle de Ponto: quando desligado, envia horarioEsperado null (não usa)
       // mesmo que os campos escondidos tenham algum valor residual no formulário.
+      // pausaAlmocoMinutos vazio/0 = sem pausa de almoço batida no ponto.
+      const pausaDigitada = document.getElementById("cs-horario-pausa").value;
       const horarioEsperado = controlaPonto
         ? {
             dias: Array.from(document.querySelectorAll(".cs-horario-dia:checked")).map((el) => el.value),
             entrada: document.getElementById("cs-horario-entrada").value,
             saida: document.getElementById("cs-horario-saida").value,
+            pausaAlmocoMinutos: pausaDigitada ? Number(pausaDigitada) : 0,
           }
         : null;
 
@@ -335,10 +344,10 @@ export async function renderConfiguracoes(root) {
         cpf: document.getElementById("cs-cpf").value.trim(),
         beneficios: document.getElementById("cs-beneficios").value.trim(),
         dataNascimento: datasIso["cs-nascimento"],
-        endereco: document.getElementById("cs-endereco").value.trim(),
+        endereco: montarEnderecoDosCampos("cs-end", editando ? consultor.endereco : ""),
         dataDesligamento: ativo ? null : (datasIso["cs-desligamento"] || null),
         controlaPonto,
-        enderecoTrabalho: document.getElementById("cs-endereco-trabalho").value.trim(),
+        enderecoTrabalho: montarEnderecoDosCampos("cs-endt", editando ? consultor.enderecoTrabalho : ""),
         horarioEsperado,
       };
       const username = document.getElementById("cs-username").value.trim();
@@ -430,6 +439,20 @@ export async function renderConfiguracoes(root) {
           <div class="form-row"><button type="submit" class="btn btn-primary btn-sm">Salvar</button></div>
         </form>
         <div id="pn-erro" class="form-erro hidden"></div>
+      </div>
+
+      <div class="section-title" style="margin-top:22px;">Controle de Ponto — Raio de Tolerância</div>
+      <div class="card" style="max-width:480px;">
+        <div class="sub" style="margin-bottom:10px;">
+          Distância máxima (em metros) entre a localização batida e o endereço cadastrado (residencial ou de trabalho) mais
+          próximo para não avisar "Fora do local". Aumente esse valor se estiver aparecendo aviso indevido com frequência —
+          o GPS de notebook/desktop costuma ser bem menos preciso do que o de celular.
+        </div>
+        <form id="form-tolerancia-ponto" class="form-cols" style="align-items:end;">
+          <div class="form-row"><label>Raio de tolerância (metros)</label><input type="number" min="50" step="50" id="tp-raio" value="${cfg.toleranciaPontoMetros}" /></div>
+          <div class="form-row"><button type="submit" class="btn btn-primary btn-sm">Salvar</button></div>
+        </form>
+        <div id="tp-erro" class="form-erro hidden"></div>
       </div>`
           : ""
       }
@@ -445,6 +468,21 @@ export async function renderConfiguracoes(root) {
           showToast("Número salvo.", "sucesso");
         } catch (err) {
           const box = conteudo.querySelector("#pn-erro");
+          box.textContent = err.message;
+          box.classList.remove("hidden");
+        }
+      });
+
+      const formTolerancia = conteudo.querySelector("#form-tolerancia-ponto");
+      formTolerancia.addEventListener("submit", async (ev) => {
+        ev.preventDefault();
+        try {
+          await api.patch("/api/config/tolerancia-ponto", {
+            toleranciaMetros: Number(document.getElementById("tp-raio").value),
+          });
+          showToast("Raio de tolerância salvo.", "sucesso");
+        } catch (err) {
+          const box = conteudo.querySelector("#tp-erro");
           box.textContent = err.message;
           box.classList.remove("hidden");
         }
