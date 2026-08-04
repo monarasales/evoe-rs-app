@@ -1,5 +1,5 @@
 import { api } from "../api.js";
-import { store, showToast, formatarData } from "../state.js";
+import { store, showToast, formatarData, isGestor } from "../state.js";
 import { abrirModal, fecharModal } from "../modal.js";
 
 function escapeHtml(str) {
@@ -22,6 +22,14 @@ const TAG_ETAPA_PROSPECT = {
 };
 
 export async function renderCrm(root) {
+  // Guarda de segurança: além de o item de menu já não aparecer para quem não é
+  // Gestor, isso evita acesso pela URL direta (#/crm) — a rota de fato só devolve
+  // dados pra Gestor mesmo, mas aqui a mensagem já deixa claro o motivo.
+  if (!isGestor()) {
+    root.innerHTML = '<div class="empty-state">O CRM é restrito ao perfil Gestor.</div>';
+    return;
+  }
+
   let abaAtiva = "clientes";
 
   root.innerHTML = `

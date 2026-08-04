@@ -1,14 +1,15 @@
 const express = require("express");
 const bcrypt = require("bcryptjs");
 const db = require("../db");
-const { requireGestor } = require("../middleware/auth");
+const { requireAuth, requireGestor } = require("../middleware/auth");
 const { PERFIS_ACESSO, TIPOS_VINCULO, MODALIDADES_TRABALHO, DIAS_SEMANA } = require("../utils/constants");
 const { geocodificarEndereco } = require("../utils/geo");
+const { usaControlePonto } = require("../utils/pontoCompute");
 
 const router = express.Router();
 
-// Valida a estrutura do horário esperado (usado no Controle de Ponto dos estagiários):
-// { dias: ["Segunda", ...], entrada: "08:00", saida: "14:00" }. Aceita null/undefined
+// Valida a estrutura do horário esperado (usado no Controle de Ponto): { dias:
+// ["Segunda", ...], entrada: "08:00", saida: "14:00" }. Aceita null/undefined
 // (funcionário sem horário cadastrado ainda) — só valida quando algo foi enviado.
 function horarioValido(horario) {
   if (horario == null) return true;
@@ -23,11 +24,11 @@ function horarioValido(horario) {
 }
 
 // Geocodifica endereço residencial e/ou de trabalho quando mudam (só para quem usa
-// Controle de Ponto — tipoVinculo "Estágio" — para não gastar chamadas à toa). Nunca
-// derruba o cadastro se a geocodificação falhar: só fica sem a checagem de distância.
-async function geocodificarSeNecessario(tipoVinculo, enderecoAntigo, enderecoNovo, enderecoTrabalhoAntigo, enderecoTrabalhoNovo) {
+// Controle de Ponto, para não gastar chamadas à toa). Nunca derruba o cadastro se a
+// geocodificação falhar: só fica sem a checagem de distância naquele endereço.
+async function geocodificarSeNecessario(elegivel, enderecoAntigo, enderecoNovo, enderecoTrabalhoAntigo, enderecoTrabalhoNovo) {
   const resultado = {};
-  if (tipoVinculo !== "Estágio") return resultado;
+  if (!elegivel) return resultado;
 
   if (enderecoNovo !== undefined && enderecoNovo !== enderecoAntigo) {
     const geo = await geocodificarEndereco(enderecoNovo);
@@ -63,7 +64,7 @@ router.post("/", requireGestor, async (req, res) => {
   const {
     nome, email, whatsapp, perfil, ativo, username, senha,
     dataAdmissao, tipoVinculo, valorRemuneracao, beneficios, cpf, dataNascimento, endereco,
-    enderecoTrabalho, modalidadeTrabalho, horarioEsperado,
+    enderecoTrabalho, modalidadeTrabalho, horarioEsperado, controlaPonto,
   } = req.body || {};
   if (!nome || !email || !perfil || !PERFIS_ACESSO.includes(perfil)) {
     return res.status(400).json({ erro: "Nome, e-mail e perfil (Gestor/Recrutador) são obrigatórios." });
@@ -91,7 +92,11 @@ router.post("/", requireGestor, async (req, res) => {
     }
   }
 
-  const geo = await geocodificarSeNecessario(tipoVinculo, undefined, endereco || "", undefined, enderecoTrabalho || "");
+  // Controle de Ponto: não é mais amarrado ao tipo de vínculo — o Gestor decide por
+  // pessoa (Guilherme pode ser CLT e ainda assim usar ponto, por exemplo). Sem escolha
+  // explícita no formulário, mantém o padrão histórico (ligado para quem é Estágio).
+  const controlaPontoFinal = typeof controlaPonto === "boolean" ? controlaPonto : tipoVinculo === "Estágio";
+  const geo = await geocodificarSeNecessario(controlaPontoFinal, undefined, endereco || "", undefined, enderecoTrabalho || "");
 
   const consultor = db.insert("consultores", {
     nome,
@@ -109,8 +114,9 @@ router.post("/", requireGestor, async (req, res) => {
     endereco: endereco || "",
     enderecoLat: geo.enderecoLat ?? null,
     enderecoLng: geo.enderecoLng ?? null,
-    // Controle de Ponto (estagiários): endereço de trabalho, modalidade e horário
-    // esperado. Ficam vazios/null para quem não usa ponto (CLT/PJ/Outro).
+    // Controle de Ponto: quem usa (controlaPonto), endereço de trabalho e horário
+    // esperado. Ficam vazios/null para quem não usa ponto.
+    controlaPonto: controlaPontoFinal,
     enderecoTrabalho: enderecoTrabalho || "",
     enderecoTrabalhoLat: geo.enderecoTrabalhoLat ?? null,
     enderecoTrabalhoLng: geo.enderecoTrabalhoLng ?? null,
@@ -129,6 +135,26 @@ router.post("/", requireGestor, async (req, res) => {
   res.status(201).json(consultor);
 });
 
+// Autoatendimento: qualquer consultor logado pode atualizar os PRÓPRIOS dados de
+// contato/endereço (usados no Controle de Ponto) sem precisar pedir para o Gestor
+// mexer no cadastro dele. Não deixa alterar perfil, vínculo, remuneração, horário
+// esperado ou controlaPonto — isso continua exclusivo do Gestor (rota "/:id" abaixo).
+// Precisa vir ANTES de "/:id" para o Express não tratar "me" como um :id.
+router.patch("/me", requireAuth, async (req, res) => {
+  const consultor = req.consultor;
+  const { whatsapp, endereco, enderecoTrabalho } = req.body || {};
+
+  const geo = await geocodificarSeNecessario(usaControlePonto(consultor), consultor.endereco, endereco, consultor.enderecoTrabalho, enderecoTrabalho);
+
+  const atualizado = db.update("consultores", consultor.id, {
+    whatsapp,
+    endereco,
+    enderecoTrabalho,
+    ...geo,
+  });
+  res.json(atualizado);
+});
+
 router.patch("/:id", requireGestor, async (req, res) => {
   const consultorAtual = db.findById("consultores", req.params.id);
   if (!consultorAtual) return res.status(404).json({ erro: "Consultor não encontrado." });
@@ -136,7 +162,7 @@ router.patch("/:id", requireGestor, async (req, res) => {
   const {
     nome, email, whatsapp, perfil, ativo,
     dataAdmissao, dataDesligamento, tipoVinculo, valorRemuneracao, beneficios, cpf, dataNascimento, endereco,
-    enderecoTrabalho, modalidadeTrabalho, horarioEsperado,
+    enderecoTrabalho, modalidadeTrabalho, horarioEsperado, controlaPonto,
   } = req.body || {};
   if (perfil && !PERFIS_ACESSO.includes(perfil)) {
     return res.status(400).json({ erro: "Perfil inválido." });
@@ -151,20 +177,18 @@ router.patch("/:id", requireGestor, async (req, res) => {
     return res.status(400).json({ erro: "Horário esperado inválido — confira os dias e o horário de entrada/saída." });
   }
 
-  const geo = await geocodificarSeNecessario(
-    tipoVinculo || consultorAtual.tipoVinculo,
-    consultorAtual.endereco,
-    endereco,
-    consultorAtual.enderecoTrabalho,
-    enderecoTrabalho
-  );
+  const elegivel = usaControlePonto({
+    tipoVinculo: tipoVinculo !== undefined ? tipoVinculo : consultorAtual.tipoVinculo,
+    controlaPonto: controlaPonto !== undefined ? controlaPonto : consultorAtual.controlaPonto,
+  });
+  const geo = await geocodificarSeNecessario(elegivel, consultorAtual.endereco, endereco, consultorAtual.enderecoTrabalho, enderecoTrabalho);
 
   const atualizado = db.update("consultores", req.params.id, {
     nome, email, whatsapp, perfil, ativo,
     dataAdmissao, dataDesligamento, tipoVinculo,
     valorRemuneracao: valorRemuneracao !== undefined ? Number(valorRemuneracao) || 0 : undefined,
     beneficios, cpf, dataNascimento, endereco,
-    enderecoTrabalho, modalidadeTrabalho, horarioEsperado,
+    enderecoTrabalho, modalidadeTrabalho, horarioEsperado, controlaPonto,
     ...geo,
   });
   if (!atualizado) return res.status(404).json({ erro: "Consultor não encontrado." });

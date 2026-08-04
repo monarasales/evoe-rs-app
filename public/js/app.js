@@ -1,5 +1,5 @@
 import { api } from "./api.js";
-import { store, showToast, isGestor, podeGerenciarVagas, ehEstagiario } from "./state.js";
+import { store, showToast, isGestor, podeGerenciarVagas, usaControlePonto } from "./state.js";
 import { registrarRota, setRaiz, iniciarRouter, navegarPara } from "./router.js";
 import { renderKanban } from "./views/kanban.js";
 import { renderCandidatos } from "./views/candidatos.js";
@@ -11,6 +11,7 @@ import { renderCrm } from "./views/crm.js";
 import { renderFinanceiro } from "./views/financeiro.js";
 import { renderComissoes } from "./views/comissoes.js";
 import { renderPonto } from "./views/ponto.js";
+import { renderMeuCadastro } from "./views/meuCadastro.js";
 import { obterLocalizacao } from "./geo.js";
 
 const loginScreen = document.getElementById("login-screen");
@@ -42,7 +43,9 @@ const NAV_SECOES = [
   {
     titulo: "Comercial",
     itens: [
-      { href: "#/crm", label: "CRM", icone: "🤝" },
+      // CRM só para Gestor: dados de clientes/prospects não devem ficar abertos
+      // para Recrutador/Supervisora editarem livremente.
+      { href: "#/crm", label: "CRM", icone: "🤝", somenteGestor: true },
       { href: "#/financeiro", label: "Financeiro", icone: "💰", somenteGestor: true },
       { href: "#/comissoes", label: "Comissões", icone: "🏆", somenteGestorOuSupervisora: true },
       { href: "#/ponto", label: "Controle de Ponto", icone: "🕒", somentePonto: true },
@@ -53,6 +56,7 @@ const NAV_SECOES = [
     itens: [
       { href: "#/contratos", label: "Contratos", icone: "📝" },
       { href: "#/configuracoes", label: "Configurações", icone: "⚙️" },
+      { href: "#/meu-cadastro", label: "Meu Cadastro", icone: "🪪" },
     ],
   },
 ];
@@ -63,7 +67,7 @@ function montarNav() {
       (l) =>
         (!l.somenteGestor || isGestor()) &&
         (!l.somenteGestorOuSupervisora || podeGerenciarVagas()) &&
-        (!l.somentePonto || podeGerenciarVagas() || ehEstagiario())
+        (!l.somentePonto || podeGerenciarVagas() || usaControlePonto())
     );
     if (itensVisiveis.length === 0) return "";
     return `
@@ -122,7 +126,7 @@ btnPontoWidget.addEventListener("click", () => navegarPara("#/ponto"));
 // anexa ela ao registro de hoje — tudo em segundo plano, sem travar o uso do
 // sistema mesmo se o estagiário negar a permissão de localização.
 async function inicializarPontoDoDia() {
-  if (!ehEstagiario()) {
+  if (!usaControlePonto()) {
     btnPontoWidget.classList.add("hidden");
     return;
   }
@@ -204,6 +208,7 @@ function registrarRotas() {
   registrarRota("/financeiro", renderFinanceiro);
   registrarRota("/comissoes", renderComissoes);
   registrarRota("/ponto", renderPonto);
+  registrarRota("/meu-cadastro", renderMeuCadastro);
 }
 
 async function init() {

@@ -1,11 +1,22 @@
-// Controle de Ponto dos estagiários: entrada batida automaticamente no login, saída
-// batida manualmente (botão "Bater Saída"), com localização opcional comparada ao
-// endereço de referência (de trabalho, se Presencial; residencial, se Home Office) e
-// cálculo de horas trabalhadas x esperadas (para apurar hora extra ou desconto).
+// Controle de Ponto: entrada batida automaticamente no login, saída batida
+// manualmente (botão "Bater Saída"), com localização opcional comparada aos dois
+// endereços cadastrados (residencial e de trabalho) e cálculo de horas trabalhadas
+// x esperadas (para apurar hora extra ou desconto). Hoje se aplica a quem tem o
+// campo controlaPonto ligado (ver usaControlePonto abaixo) — não só a estagiários.
 const db = require("../db");
 const { DIAS_SEMANA, TOLERANCIA_PONTO_METROS } = require("./constants");
 const { distanciaMetros } = require("./geo");
 const { hojeStr } = require("./vagaCompute");
+
+// Quem usa o Controle de Ponto: por padrão qualquer um com o campo controlaPonto
+// marcado explicitamente. Para cadastros antigos (de antes desse campo existir),
+// cai no comportamento anterior — vale para quem tem vínculo "Estágio" — para não
+// "desligar" o ponto de ninguém que já usava sem o Gestor precisar reconfirmar.
+function usaControlePonto(consultor) {
+  if (!consultor) return false;
+  if (typeof consultor.controlaPonto === "boolean") return consultor.controlaPonto;
+  return consultor.tipoVinculo === "Estágio";
+}
 
 function agoraHHMM() {
   const d = new Date();
@@ -39,39 +50,36 @@ function horasEntre(horaInicio, horaFim) {
   return Math.round((minutos / 60) * 100) / 100;
 }
 
-// Qual endereço geocodificado usar como referência para checar a distância da
-// batida do ponto: o de trabalho (Presencial) ou o residencial (Home Office).
-// Retorna null se o consultor não tiver esse endereço geocodificado ainda.
-function referenciaLocalizacao(consultor) {
-  if (consultor.modalidadeTrabalho === "Home Office") {
-    if (consultor.enderecoLat != null && consultor.enderecoLng != null) {
-      return { lat: consultor.enderecoLat, lng: consultor.enderecoLng, tipo: "residencial" };
-    }
-    return null;
-  }
-  if (consultor.enderecoTrabalhoLat != null && consultor.enderecoTrabalhoLng != null) {
-    return { lat: consultor.enderecoTrabalhoLat, lng: consultor.enderecoTrabalhoLng, tipo: "trabalho" };
-  }
-  return null;
-}
-
-// Compara uma coordenada batida (lat/lng do navegador) com a referência do consultor,
-// devolvendo a distância em metros e se está fora da tolerância. Se não houver
-// referência geocodificada, devolve tudo null (sem checagem, sem alarme falso).
+// Compara uma coordenada batida (lat/lng do navegador) com OS DOIS endereços
+// cadastrados (residencial e de trabalho) e fica com o mais próximo — em vez de
+// depender de uma modalidade fixa (Presencial/Home Office) escolhida com antecedência.
+// Isso resolve o caso de quem tem dias mistos (às vezes no escritório, às vezes em
+// casa): o sistema simplesmente identifica de qual dos dois endereços a batida veio.
+// Se nenhum dos dois estiver geocodificado ainda, devolve tudo null (sem checagem,
+// sem alarme falso).
 function avaliarLocalizacao(consultor, lat, lng) {
-  const ref = referenciaLocalizacao(consultor);
-  if (!ref) return { distanciaMetros: null, foraDoLocal: false, referencia: null };
-  const dist = distanciaMetros(lat, lng, ref.lat, ref.lng);
+  const candidatos = [];
+  if (consultor.enderecoTrabalhoLat != null && consultor.enderecoTrabalhoLng != null) {
+    candidatos.push({ tipo: "trabalho", distancia: distanciaMetros(lat, lng, consultor.enderecoTrabalhoLat, consultor.enderecoTrabalhoLng) });
+  }
+  if (consultor.enderecoLat != null && consultor.enderecoLng != null) {
+    candidatos.push({ tipo: "residencial", distancia: distanciaMetros(lat, lng, consultor.enderecoLat, consultor.enderecoLng) });
+  }
+  if (candidatos.length === 0) return { distanciaMetros: null, foraDoLocal: false, referencia: null };
+
+  const maisProximo = candidatos.sort((a, b) => a.distancia - b.distancia)[0];
   return {
-    distanciaMetros: Math.round(dist),
-    foraDoLocal: dist > TOLERANCIA_PONTO_METROS,
-    referencia: ref.tipo,
+    distanciaMetros: Math.round(maisProximo.distancia),
+    foraDoLocal: maisProximo.distancia > TOLERANCIA_PONTO_METROS,
+    // Só identifica QUAL endereço bateu (trabalho/residencial) quando está dentro da
+    // tolerância — se está longe dos dois, não faz sentido "escolher" um como se fosse ele.
+    referencia: maisProximo.distancia <= TOLERANCIA_PONTO_METROS ? maisProximo.tipo : null,
   };
 }
 
 // Chamada no login (server/routes/auth.js) — bate a entrada do dia automaticamente,
-// se o consultor for estagiário e ainda não tiver batido hoje. Idempotente: se já
-// bateu, devolve o registro existente sem duplicar.
+// se o consultor usa Controle de Ponto e ainda não tiver batido hoje. Idempotente:
+// se já bateu, devolve o registro existente sem duplicar.
 function garantirPontoDeHoje(consultor) {
   const data = hojeStr();
   const existente = db.readCollection("pontos").find((p) => p.consultorId === consultor.id && p.data === data);
@@ -98,11 +106,11 @@ function garantirPontoDeHoje(consultor) {
 }
 
 module.exports = {
+  usaControlePonto,
   agoraHHMM,
   diaSemanaDe,
   horasEsperadasNoDia,
   horasEntre,
-  referenciaLocalizacao,
   avaliarLocalizacao,
   garantirPontoDeHoje,
 };

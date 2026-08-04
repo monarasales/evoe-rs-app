@@ -18,12 +18,18 @@ const ABAS = [
 // "Bolsa Estágio" no formulário. Espelha TIPOS_VINCULO em server/utils/constants.js.
 const TIPOS_VINCULO = ["CLT", "PJ", "Estágio", "Outro"];
 
-// Controle de Ponto: só se aplica a quem tem tipoVinculo "Estágio" — por isso os
-// campos de modalidade/endereço de trabalho/horário só aparecem no formulário quando
-// esse vínculo está selecionado. Espelha MODALIDADES_TRABALHO/DIAS_SEMANA em
-// server/utils/constants.js.
-const MODALIDADES_TRABALHO = ["Presencial", "Home Office"];
+// Controle de Ponto: o Gestor liga/desliga por pessoa (campo controlaPonto), sem
+// depender do tipo de vínculo — um CLT também pode usar, por exemplo. Espelha
+// DIAS_SEMANA em server/utils/constants.js.
 const DIAS_SEMANA = ["Segunda", "Terça", "Quarta", "Quinta", "Sexta", "Sábado", "Domingo"];
+
+// Mesma regra de padrão usada no backend (server/utils/pontoCompute.js): sem escolha
+// explícita, cai no comportamento antigo (ligado só para quem é Estágio).
+function controlaPontoInicial(consultor) {
+  if (!consultor) return false;
+  if (typeof consultor.controlaPonto === "boolean") return consultor.controlaPonto;
+  return consultor.tipoVinculo === "Estágio";
+}
 
 function formatarReal(valor) {
   return (Number(valor) || 0).toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
@@ -144,6 +150,7 @@ export async function renderConfiguracoes(root) {
   function abrirFormularioConsultor(consultor) {
     const editando = !!consultor;
     const vinculoInicial = (editando && consultor.tipoVinculo) || "CLT";
+    const pontoInicial = controlaPontoInicial(consultor);
     abrirModal(`
       <h2>${editando ? "Editar Funcionário" : "Novo Funcionário"}</h2>
       <form id="form-consultor">
@@ -197,21 +204,21 @@ export async function renderConfiguracoes(root) {
           <input type="text" inputmode="numeric" placeholder="dd/mm/aaaa" maxlength="10" id="cs-desligamento" value="${editando ? isoParaBr(consultor.dataDesligamento) : ""}" />
         </div>
 
-        <div id="cs-ponto-section" style="${vinculoInicial === "Estágio" ? "" : "display:none;"}">
-          <h3 class="section-title" style="margin-top:18px;">Controle de Ponto</h3>
-          <div class="sub" style="margin-top:-6px; margin-bottom:8px;">Entrada batida automaticamente ao logar; saída batida pelo próprio estagiário. A localização é comparada com o endereço abaixo, dentro de uma margem de ~500m.</div>
-          <div class="form-cols">
-            <div class="form-row">
-              <label>Modalidade</label>
-              <select id="cs-modalidade">
-                ${MODALIDADES_TRABALHO.map((m) => `<option ${(editando ? consultor.modalidadeTrabalho : "Presencial") === m ? "selected" : ""}>${m}</option>`).join("")}
-              </select>
-            </div>
-            <div class="form-row" id="cs-endereco-trabalho-row">
-              <label>Endereço de Trabalho (local presencial)</label>
-              <input type="text" id="cs-endereco-trabalho" value="${editando ? escapeHtml(consultor.enderecoTrabalho || "") : ""}" />
-            </div>
+        <div class="form-row checkbox-row">
+          <input type="checkbox" id="cs-controla-ponto" ${pontoInicial ? "checked" : ""} />
+          <label style="margin:0;">🕒 Usa Controle de Ponto</label>
+        </div>
+        <div id="cs-ponto-section" style="${pontoInicial ? "" : "display:none;"}">
+          <h3 class="section-title" style="margin-top:10px;">Controle de Ponto</h3>
+          <div class="sub" style="margin-top:-6px; margin-bottom:8px;">
+            Entrada batida automaticamente ao logar; saída batida pela própria pessoa. Preencha os dois endereços abaixo —
+            em dias de home office ou no escritório, o sistema identifica sozinho de qual dos dois a batida veio (margem de ~500m).
           </div>
+          <div class="form-row" id="cs-endereco-trabalho-row">
+            <label>Endereço de Trabalho</label>
+            <input type="text" id="cs-endereco-trabalho" placeholder="Rua, número, bairro, cidade/UF" value="${editando ? escapeHtml(consultor.enderecoTrabalho || "") : ""}" />
+          </div>
+          <div class="sub" style="margin-top:-6px; margin-bottom:10px;">O Endereço Residencial (acima, em Dados de RH) também é usado como referência.</div>
           <div class="form-row">
             <label>Dias de trabalho</label>
             <div class="checkbox-row" style="flex-wrap:wrap; gap:4px 14px;">
@@ -263,17 +270,13 @@ export async function renderConfiguracoes(root) {
 
     document.getElementById("cs-vinculo").addEventListener("change", (ev) => {
       document.getElementById("cs-remuneracao-label").textContent = rotuloRemuneracao(ev.target.value);
-      document.getElementById("cs-ponto-section").style.display = ev.target.value === "Estágio" ? "" : "none";
     });
     document.getElementById("cs-ativo").addEventListener("change", (ev) => {
       document.getElementById("cs-desligamento-row").style.display = ev.target.checked ? "none" : "";
     });
-    const atualizarVisibilidadeEnderecoTrabalho = () => {
-      const modalidade = document.getElementById("cs-modalidade").value;
-      document.getElementById("cs-endereco-trabalho-row").style.display = modalidade === "Home Office" ? "none" : "";
-    };
-    document.getElementById("cs-modalidade").addEventListener("change", atualizarVisibilidadeEnderecoTrabalho);
-    atualizarVisibilidadeEnderecoTrabalho();
+    document.getElementById("cs-controla-ponto").addEventListener("change", (ev) => {
+      document.getElementById("cs-ponto-section").style.display = ev.target.checked ? "" : "none";
+    });
 
     document.getElementById("form-consultor").addEventListener("submit", async (ev) => {
       ev.preventDefault();
@@ -308,18 +311,17 @@ export async function renderConfiguracoes(root) {
 
       const ativo = document.getElementById("cs-ativo").checked;
       const tipoVinculo = document.getElementById("cs-vinculo").value;
+      const controlaPonto = document.getElementById("cs-controla-ponto").checked;
 
-      // Controle de Ponto só se aplica a estagiários — para os demais vínculos,
-      // envia horarioEsperado null (não usa) mesmo que os campos escondidos tenham
-      // algum valor residual no formulário.
-      const horarioEsperado =
-        tipoVinculo === "Estágio"
-          ? {
-              dias: Array.from(document.querySelectorAll(".cs-horario-dia:checked")).map((el) => el.value),
-              entrada: document.getElementById("cs-horario-entrada").value,
-              saida: document.getElementById("cs-horario-saida").value,
-            }
-          : null;
+      // Controle de Ponto: quando desligado, envia horarioEsperado null (não usa)
+      // mesmo que os campos escondidos tenham algum valor residual no formulário.
+      const horarioEsperado = controlaPonto
+        ? {
+            dias: Array.from(document.querySelectorAll(".cs-horario-dia:checked")).map((el) => el.value),
+            entrada: document.getElementById("cs-horario-entrada").value,
+            saida: document.getElementById("cs-horario-saida").value,
+          }
+        : null;
 
       const payload = {
         nome: document.getElementById("cs-nome").value.trim(),
@@ -335,7 +337,7 @@ export async function renderConfiguracoes(root) {
         dataNascimento: datasIso["cs-nascimento"],
         endereco: document.getElementById("cs-endereco").value.trim(),
         dataDesligamento: ativo ? null : (datasIso["cs-desligamento"] || null),
-        modalidadeTrabalho: document.getElementById("cs-modalidade").value,
+        controlaPonto,
         enderecoTrabalho: document.getElementById("cs-endereco-trabalho").value.trim(),
         horarioEsperado,
       };
@@ -362,9 +364,8 @@ export async function renderConfiguracoes(root) {
         // Avisa se algum endereço usado no Controle de Ponto não foi localizado
         // automaticamente — a checagem de distância não vai funcionar para ele até
         // o texto do endereço ser ajustado (ex: mais completo, com bairro/cidade).
-        const enderecoSemGeo = tipoVinculo === "Estágio" && payload.endereco && !consultorSalvo.enderecoLat;
-        const enderecoTrabalhoSemGeo =
-          tipoVinculo === "Estágio" && payload.modalidadeTrabalho === "Presencial" && payload.enderecoTrabalho && !consultorSalvo.enderecoTrabalhoLat;
+        const enderecoSemGeo = controlaPonto && payload.endereco && !consultorSalvo.enderecoLat;
+        const enderecoTrabalhoSemGeo = controlaPonto && payload.enderecoTrabalho && !consultorSalvo.enderecoTrabalhoLat;
         if (enderecoSemGeo || enderecoTrabalhoSemGeo) {
           showToast("Funcionário salvo, mas não conseguimos localizar automaticamente o endereço informado — tente deixá-lo mais completo (bairro, cidade). A checagem de localização do ponto fica desativada até lá.", "erro");
         } else {

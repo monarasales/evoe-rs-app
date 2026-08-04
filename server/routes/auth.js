@@ -2,7 +2,7 @@ const express = require("express");
 const bcrypt = require("bcryptjs");
 const db = require("../db");
 const { requireAuth } = require("../middleware/auth");
-const { garantirPontoDeHoje } = require("../utils/pontoCompute");
+const { garantirPontoDeHoje, usaControlePonto } = require("../utils/pontoCompute");
 
 const router = express.Router();
 
@@ -21,10 +21,10 @@ router.post("/login", (req, res) => {
   }
   req.session.userId = user.id;
 
-  // Controle de Ponto: estagiário bate a entrada automaticamente ao logar — não
-  // depende de ele lembrar de fazer isso manualmente. Se algo der errado aqui,
-  // não pode travar o login (por isso o try/catch).
-  if (consultor.tipoVinculo === "Estágio") {
+  // Controle de Ponto: quem usa (ver usaControlePonto) bate a entrada automaticamente
+  // ao logar — não depende de lembrar de fazer isso manualmente. Se algo der errado
+  // aqui, não pode travar o login (por isso o try/catch).
+  if (usaControlePonto(consultor)) {
     try {
       garantirPontoDeHoje(consultor);
     } catch (e) {
@@ -32,7 +32,13 @@ router.post("/login", (req, res) => {
     }
   }
 
-  res.json({ id: consultor.id, nome: consultor.nome, perfil: consultor.perfil, email: consultor.email, tipoVinculo: consultor.tipoVinculo });
+  res.json({
+    id: consultor.id,
+    nome: consultor.nome,
+    perfil: consultor.perfil,
+    email: consultor.email,
+    usaControlePonto: usaControlePonto(consultor),
+  });
 });
 
 router.post("/logout", (req, res) => {
@@ -48,7 +54,7 @@ router.get("/me", requireAuth, (req, res) => {
     nome: req.consultor.nome,
     perfil: req.consultor.perfil,
     email: req.consultor.email,
-    tipoVinculo: req.consultor.tipoVinculo,
+    usaControlePonto: usaControlePonto(req.consultor),
   });
 });
 
