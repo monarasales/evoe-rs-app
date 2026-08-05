@@ -3,6 +3,7 @@ import { store, isGestor, showToast, formatarData } from "../state.js";
 import { abrirModal, fecharModal } from "../modal.js";
 import { isoParaBr, brParaIso, isoValida, aplicarMascaraData } from "../dateMask.js";
 import { campoEnderecoHtml, aplicarBuscaCep, montarEnderecoDosCampos } from "../enderecoCampo.js";
+import { normalizarBlocos } from "../horarioBlocos.js";
 
 function escapeHtml(str) {
   const div = document.createElement("div");
@@ -153,6 +154,10 @@ export async function renderConfiguracoes(root) {
     const editando = !!consultor;
     const vinculoInicial = (editando && consultor.tipoVinculo) || "CLT";
     const pontoInicial = controlaPontoInicial(consultor);
+    // Horário esperado: lista de blocos (dias + entrada/saída/pausa), pra permitir
+    // horários diferentes conforme o dia da semana. normalizarBlocos também lê o
+    // formato antigo (um único objeto), de cadastros feitos antes dessa mudança.
+    let blocos = normalizarBlocos(editando ? consultor.horarioEsperado : null);
     abrirModal(`
       <h2>${editando ? "Editar Funcionário" : "Novo Funcionário"}</h2>
       <form id="form-consultor">
@@ -218,30 +223,14 @@ export async function renderConfiguracoes(root) {
             ${campoEnderecoHtml("cs-endt", "Endereço de Trabalho", editando ? consultor.enderecoTrabalho : "")}
           </div>
           <div class="sub" style="margin-top:-6px; margin-bottom:10px;">O Endereço Residencial (acima, em Dados de RH) também é usado como referência.</div>
-          <div class="form-row">
-            <label>Dias de trabalho</label>
-            <div class="checkbox-row" style="flex-wrap:wrap; gap:4px 14px;">
-              ${DIAS_SEMANA.map((d) => {
-                const marcado = editando && consultor.horarioEsperado && consultor.horarioEsperado.dias && consultor.horarioEsperado.dias.includes(d);
-                return `<label style="display:inline-flex; align-items:center; gap:4px; font-weight:400;"><input type="checkbox" class="cs-horario-dia" value="${d}" ${marcado ? "checked" : ""} /> ${d}</label>`;
-              }).join("")}
-            </div>
+
+          <div class="form-row"><label>Horário de trabalho</label></div>
+          <div class="sub" style="margin-top:-6px; margin-bottom:8px;">
+            Se a pessoa entra em horários diferentes conforme o dia (ex: Segunda/Quarta/Sexta num turno, Terça/Quinta em outro),
+            cadastre um horário para cada grupo de dias clicando em "+ Adicionar horário diferente".
           </div>
-          <div class="form-cols">
-            <div class="form-row">
-              <label>Entrada esperada</label>
-              <input type="time" id="cs-horario-entrada" value="${editando && consultor.horarioEsperado ? consultor.horarioEsperado.entrada || "" : "08:00"}" />
-            </div>
-            <div class="form-row">
-              <label>Saída esperada</label>
-              <input type="time" id="cs-horario-saida" value="${editando && consultor.horarioEsperado ? consultor.horarioEsperado.saida || "" : "14:00"}" />
-            </div>
-            <div class="form-row">
-              <label>Pausa de almoço (min)</label>
-              <input type="number" min="0" step="5" id="cs-horario-pausa" placeholder="ex: 60" value="${editando && consultor.horarioEsperado && consultor.horarioEsperado.pausaAlmocoMinutos ? consultor.horarioEsperado.pausaAlmocoMinutos : ""}" />
-            </div>
-          </div>
-          <div class="sub" style="margin-top:-6px;">Deixe em branco ou 0 se a pessoa não tem pausa de almoço batida no ponto.</div>
+          <div id="cs-horario-blocos"></div>
+          <button type="button" id="btn-add-bloco" class="btn btn-outline btn-sm" style="margin-bottom:14px;">+ Adicionar horário diferente</button>
         </div>
 
         <h3 class="section-title" style="margin-top:18px;">Acesso ao Sistema</h3>
@@ -274,6 +263,64 @@ export async function renderConfiguracoes(root) {
     aplicarBuscaCep("cs-end");
     aplicarBuscaCep("cs-endt");
 
+    // ---------- Blocos de horário (Controle de Ponto) ----------
+    function blocoHtml(bloco, idx) {
+      return `
+        <div class="card horario-bloco-item" data-idx="${idx}" style="margin-bottom:10px; padding:12px 14px;">
+          <div class="form-row">
+            <label>Dias deste horário</label>
+            <div class="checkbox-row" style="flex-wrap:wrap; gap:4px 14px;">
+              ${DIAS_SEMANA.map(
+                (d) =>
+                  `<label style="display:inline-flex; align-items:center; gap:4px; font-weight:400;"><input type="checkbox" class="bloco-dia" value="${d}" ${bloco.dias && bloco.dias.includes(d) ? "checked" : ""} /> ${d}</label>`
+              ).join("")}
+            </div>
+          </div>
+          <div class="form-cols">
+            <div class="form-row"><label>Entrada</label><input type="time" class="bloco-entrada" value="${bloco.entrada || "08:00"}" /></div>
+            <div class="form-row"><label>Saída</label><input type="time" class="bloco-saida" value="${bloco.saida || "17:00"}" /></div>
+            <div class="form-row"><label>Pausa almoço (min)</label><input type="number" min="0" step="5" class="bloco-pausa" placeholder="ex: 60" value="${bloco.pausaAlmocoMinutos ? bloco.pausaAlmocoMinutos : ""}" /></div>
+          </div>
+          ${blocos.length > 1 ? '<button type="button" class="btn btn-outline btn-sm btn-remover-bloco" style="color:#c0392b;">Remover este horário</button>' : ""}
+        </div>`;
+    }
+
+    // Lê o estado atual dos campos na tela de volta pro array `blocos` — chamado
+    // antes de adicionar/remover um bloco (pra não perder o que já foi preenchido
+    // nos outros) e antes de montar o payload no envio do formulário.
+    function sincronizarBlocosDoDom() {
+      const itens = document.querySelectorAll("#cs-horario-blocos .horario-bloco-item");
+      blocos = Array.from(itens).map((item) => ({
+        dias: Array.from(item.querySelectorAll(".bloco-dia:checked")).map((el) => el.value),
+        entrada: item.querySelector(".bloco-entrada").value,
+        saida: item.querySelector(".bloco-saida").value,
+        pausaAlmocoMinutos: item.querySelector(".bloco-pausa").value ? Number(item.querySelector(".bloco-pausa").value) : 0,
+      }));
+    }
+
+    function renderizarBlocos() {
+      const container = document.getElementById("cs-horario-blocos");
+      container.innerHTML = blocos.length
+        ? blocos.map((b, i) => blocoHtml(b, i)).join("")
+        : '<div class="sub" style="margin-bottom:8px;">Nenhum horário adicionado ainda.</div>';
+      container.querySelectorAll(".btn-remover-bloco").forEach((btn) => {
+        btn.addEventListener("click", (e) => {
+          sincronizarBlocosDoDom();
+          const idx = Number(e.target.closest(".horario-bloco-item").dataset.idx);
+          blocos.splice(idx, 1);
+          renderizarBlocos();
+        });
+      });
+    }
+
+    renderizarBlocos();
+
+    document.getElementById("btn-add-bloco").addEventListener("click", () => {
+      sincronizarBlocosDoDom();
+      blocos.push({ dias: [], entrada: "08:00", saida: "17:00", pausaAlmocoMinutos: 0 });
+      renderizarBlocos();
+    });
+
     document.getElementById("cs-vinculo").addEventListener("change", (ev) => {
       document.getElementById("cs-remuneracao-label").textContent = rotuloRemuneracao(ev.target.value);
     });
@@ -282,6 +329,10 @@ export async function renderConfiguracoes(root) {
     });
     document.getElementById("cs-controla-ponto").addEventListener("change", (ev) => {
       document.getElementById("cs-ponto-section").style.display = ev.target.checked ? "" : "none";
+      if (ev.target.checked && blocos.length === 0) {
+        blocos.push({ dias: [], entrada: "08:00", saida: "17:00", pausaAlmocoMinutos: 0 });
+        renderizarBlocos();
+      }
     });
 
     document.getElementById("form-consultor").addEventListener("submit", async (ev) => {
@@ -321,16 +372,10 @@ export async function renderConfiguracoes(root) {
 
       // Controle de Ponto: quando desligado, envia horarioEsperado null (não usa)
       // mesmo que os campos escondidos tenham algum valor residual no formulário.
-      // pausaAlmocoMinutos vazio/0 = sem pausa de almoço batida no ponto.
-      const pausaDigitada = document.getElementById("cs-horario-pausa").value;
-      const horarioEsperado = controlaPonto
-        ? {
-            dias: Array.from(document.querySelectorAll(".cs-horario-dia:checked")).map((el) => el.value),
-            entrada: document.getElementById("cs-horario-entrada").value,
-            saida: document.getElementById("cs-horario-saida").value,
-            pausaAlmocoMinutos: pausaDigitada ? Number(pausaDigitada) : 0,
-          }
-        : null;
+      // Quando ligado, envia a lista de blocos (cada um com seus dias e horário —
+      // permite horários diferentes conforme o dia da semana).
+      sincronizarBlocosDoDom();
+      const horarioEsperado = controlaPonto ? blocos : null;
 
       const payload = {
         nome: document.getElementById("cs-nome").value.trim(),

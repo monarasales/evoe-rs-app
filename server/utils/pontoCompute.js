@@ -59,17 +59,35 @@ function diaSemanaDe(dataStr) {
   return DIAS_SEMANA[new Date(`${dataStr}T12:00:00`).getDay()];
 }
 
+// horarioEsperado é uma LISTA de "blocos", cada um com seu próprio conjunto de dias
+// e horário (entrada/saida/pausaAlmocoMinutos) — permite, por exemplo, Segunda/
+// Quarta/Sexta num turno e Terça/Quinta em outro, para quem tem expediente que
+// varia conforme o dia. Mantém compatibilidade com cadastros salvos antes dessa
+// mudança, quando horarioEsperado era um único objeto (não uma lista).
+function normalizarBlocosHorario(horarioEsperado) {
+  if (!horarioEsperado) return [];
+  if (Array.isArray(horarioEsperado)) return horarioEsperado;
+  if (horarioEsperado.entrada) return [horarioEsperado];
+  return [];
+}
+
+// Acha o bloco de horário que vale para uma data específica (baseado no dia da
+// semana dela) — ou null se não há horário cadastrado para aquele dia (folga).
+function blocoDoDia(consultor, dataStr) {
+  const dia = diaSemanaDe(dataStr);
+  return normalizarBlocosHorario(consultor.horarioEsperado).find((b) => Array.isArray(b.dias) && b.dias.includes(dia)) || null;
+}
+
 // Quantas horas esse consultor deveria trabalhar num dia específico, de acordo com o
-// horário esperado cadastrado (0 se não tiver horário cadastrado ou o dia não for um
-// dos dias de trabalho previstos) — já descontando a pausa de almoço, se houver.
+// bloco de horário esperado que vale para aquele dia (0 se não houver bloco para o
+// dia, ou seja, dia de folga) — já descontando a pausa de almoço desse bloco, se houver.
 function horasEsperadasNoDia(consultor, dataStr) {
-  const h = consultor.horarioEsperado;
-  if (!h || !h.entrada || !h.saida || !Array.isArray(h.dias) || h.dias.length === 0) return 0;
-  if (!h.dias.includes(diaSemanaDe(dataStr))) return 0;
-  const [he, me] = h.entrada.split(":").map(Number);
-  const [hs, ms] = h.saida.split(":").map(Number);
+  const bloco = blocoDoDia(consultor, dataStr);
+  if (!bloco || !bloco.entrada || !bloco.saida) return 0;
+  const [he, me] = bloco.entrada.split(":").map(Number);
+  const [hs, ms] = bloco.saida.split(":").map(Number);
   const minutosBrutos = hs * 60 + ms - (he * 60 + me);
-  const minutosLiquidos = minutosBrutos - (Number(h.pausaAlmocoMinutos) || 0);
+  const minutosLiquidos = minutosBrutos - (Number(bloco.pausaAlmocoMinutos) || 0);
   return Math.max(0, Math.round((minutosLiquidos / 60) * 100) / 100);
 }
 
@@ -157,6 +175,8 @@ module.exports = {
   usaControlePonto,
   agoraHHMM,
   diaSemanaDe,
+  normalizarBlocosHorario,
+  blocoDoDia,
   horasEsperadasNoDia,
   horasEntre,
   calcularHorasTrabalhadas,

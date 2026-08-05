@@ -8,26 +8,51 @@ const { usaControlePonto } = require("../utils/pontoCompute");
 
 const router = express.Router();
 
-// Valida a estrutura do horário esperado (usado no Controle de Ponto): { dias:
-// ["Segunda", ...], entrada: "08:00", saida: "14:00", pausaAlmocoMinutos: 60 }.
-// pausaAlmocoMinutos é opcional (0/ausente = sem pausa de almoço nesse horário).
-// Aceita null/undefined (funcionário sem horário cadastrado ainda) — só valida
-// quando algo foi enviado.
-function horarioValido(horario) {
-  if (horario == null) return true;
-  if (typeof horario !== "object") return false;
-  const { dias, entrada, saida, pausaAlmocoMinutos } = horario;
-  if (!Array.isArray(dias) || dias.some((d) => !DIAS_SEMANA.includes(d))) return false;
+// Valida o horário esperado (usado no Controle de Ponto): uma LISTA de blocos,
+// cada um com { dias: ["Segunda", ...], entrada: "08:00", saida: "14:00",
+// pausaAlmocoMinutos: 60 }. Permite horários diferentes por dia da semana — ex:
+// um bloco para Segunda/Quarta/Sexta e outro para Terça/Quinta — porque nem todo
+// mundo tem o mesmo horário todo dia. pausaAlmocoMinutos é opcional (0/ausente =
+// sem pausa de almoço naquele bloco). Aceita null (sem horário cadastrado ainda).
+// Devolve null quando válido, ou uma mensagem de erro específica para mostrar ao
+// Gestor (em vez de só um booleano) — importante para não deixar a pessoa perdida
+// tentando adivinhar qual campo está errado.
+function validarHorarioEsperado(horarioEsperado) {
+  if (horarioEsperado == null) return null;
+  if (!Array.isArray(horarioEsperado)) return "Horário esperado inválido.";
+
   const horaRegex = /^([01]\d|2[0-3]):([0-5]\d)$/;
-  if (!horaRegex.test(entrada || "") || !horaRegex.test(saida || "")) return false;
-  const [he, me] = entrada.split(":").map(Number);
-  const [hs, ms] = saida.split(":").map(Number);
-  if (hs * 60 + ms <= he * 60 + me) return false;
-  if (pausaAlmocoMinutos !== undefined && pausaAlmocoMinutos !== null) {
-    const minutos = Number(pausaAlmocoMinutos);
-    if (!Number.isInteger(minutos) || minutos < 0 || minutos >= hs * 60 + ms - (he * 60 + me)) return false;
+  const diasJaUsados = new Set();
+
+  for (const bloco of horarioEsperado) {
+    if (!bloco || typeof bloco !== "object") return "Horário esperado inválido.";
+    const { dias, entrada, saida, pausaAlmocoMinutos } = bloco;
+
+    if (!Array.isArray(dias) || dias.length === 0 || dias.some((d) => !DIAS_SEMANA.includes(d))) {
+      return "Selecione ao menos um dia válido em cada horário cadastrado.";
+    }
+    const diaRepetido = dias.find((d) => diasJaUsados.has(d));
+    if (diaRepetido) {
+      return `O dia "${diaRepetido}" está em mais de um horário — cada dia só pode ter um horário esperado.`;
+    }
+    dias.forEach((d) => diasJaUsados.add(d));
+
+    if (!horaRegex.test(entrada || "") || !horaRegex.test(saida || "")) {
+      return "Horário de entrada/saída inválido — confira os campos preenchidos (formato HH:MM).";
+    }
+    const [he, me] = entrada.split(":").map(Number);
+    const [hs, ms] = saida.split(":").map(Number);
+    if (hs * 60 + ms <= he * 60 + me) {
+      return "O horário de saída precisa ser depois do horário de entrada.";
+    }
+    if (pausaAlmocoMinutos !== undefined && pausaAlmocoMinutos !== null) {
+      const minutos = Number(pausaAlmocoMinutos);
+      if (!Number.isInteger(minutos) || minutos < 0 || minutos >= hs * 60 + ms - (he * 60 + me)) {
+        return "A pausa de almoço precisa ser um número de minutos válido, menor que a duração do turno.";
+      }
+    }
   }
-  return true;
+  return null;
 }
 
 // Geocodifica endereço residencial e/ou de trabalho quando mudam (só para quem usa
@@ -82,8 +107,9 @@ router.post("/", requireGestor, async (req, res) => {
   if (modalidadeTrabalho && !MODALIDADES_TRABALHO.includes(modalidadeTrabalho)) {
     return res.status(400).json({ erro: "Modalidade de trabalho inválida." });
   }
-  if (!horarioValido(horarioEsperado)) {
-    return res.status(400).json({ erro: "Horário esperado inválido — confira os dias e o horário de entrada/saída." });
+  const erroHorario = validarHorarioEsperado(horarioEsperado);
+  if (erroHorario) {
+    return res.status(400).json({ erro: erroHorario });
   }
 
   // Valida o usuário de login ANTES de criar o consultor, para nunca deixar um
@@ -180,8 +206,9 @@ router.patch("/:id", requireGestor, async (req, res) => {
   if (modalidadeTrabalho && !MODALIDADES_TRABALHO.includes(modalidadeTrabalho)) {
     return res.status(400).json({ erro: "Modalidade de trabalho inválida." });
   }
-  if (!horarioValido(horarioEsperado)) {
-    return res.status(400).json({ erro: "Horário esperado inválido — confira os dias e o horário de entrada/saída." });
+  const erroHorario = validarHorarioEsperado(horarioEsperado);
+  if (erroHorario) {
+    return res.status(400).json({ erro: erroHorario });
   }
 
   const elegivel = usaControlePonto({

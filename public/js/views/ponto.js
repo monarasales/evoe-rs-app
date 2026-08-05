@@ -2,6 +2,7 @@ import { api } from "../api.js";
 import { store, showToast, podeGerenciarVagas, usaControlePonto, isGestor } from "../state.js";
 import { obterLocalizacao, linkMapa } from "../geo.js";
 import { abrirModal, fecharModal } from "../modal.js";
+import { blocoDoDia } from "../horarioBlocos.js";
 
 function escapeHtml(str) {
   const div = document.createElement("div");
@@ -303,18 +304,11 @@ async function renderGestor(root) {
 
 // ================== Visão do próprio funcionário ("Meu Ponto") ==================
 async function renderMeuPonto(root) {
-  // store.consultores já vem carregado no boot — usado só para saber se o MEU
-  // horário esperado tem pausa de almoço configurada (ex: a Fernanda tem, outras
-  // pessoas podem não ter) e decidir se mostra os botões de pausa.
-  const meuRegistro = store.consultores.find((c) => c.id === store.usuario.id);
-  const pausaMinutos = meuRegistro && meuRegistro.horarioEsperado ? Number(meuRegistro.horarioEsperado.pausaAlmocoMinutos) || 0 : 0;
-  const temPausa = pausaMinutos > 0;
-
   root.innerHTML = `
     <div class="view-header">
       <div>
         <h2>Meu Ponto</h2>
-        <div class="sub">A entrada é batida automaticamente quando você faz login. Não esqueça de bater${temPausa ? " a saída/volta do almoço e" : ""} a saída ao final do expediente.</div>
+        <div class="sub">A entrada é batida automaticamente quando você faz login. Não esqueça de bater a saída (e a pausa de almoço, quando houver) ao final do expediente.</div>
       </div>
     </div>
     <div id="ponto-hoje-card" class="card" style="margin-bottom:18px;"></div>
@@ -334,6 +328,14 @@ async function renderMeuPonto(root) {
       cardEl.innerHTML = '<div class="sub">Nenhuma batida de ponto hoje ainda — ela é registrada automaticamente no login.</div>';
       return;
     }
+    // store.consultores já vem carregado no boot — usado pra achar o bloco de
+    // horário que vale PARA HOJE (hoje.diaSemana vem do servidor, já no fuso
+    // certo) e decidir se a pausa de almoço se aplica hoje. A mesma pessoa pode
+    // ter pausa numa Segunda e não ter na Terça, por exemplo.
+    const meuRegistro = store.consultores.find((c) => c.id === store.usuario.id);
+    const blocoHoje = meuRegistro ? blocoDoDia(meuRegistro.horarioEsperado, hoje.diaSemana) : null;
+    const pausaMinutos = blocoHoje ? Number(blocoHoje.pausaAlmocoMinutos) || 0 : 0;
+    const temPausa = pausaMinutos > 0;
     const aguardandoVoltaAlmoco = temPausa && hoje.pausaSaida && !hoje.pausaEntrada;
     cardEl.innerHTML = `
       <div class="kpi-row">

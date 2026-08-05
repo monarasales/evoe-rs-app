@@ -14,6 +14,7 @@ const {
   usaControlePonto,
   horasEsperadasNoDia,
   diaSemanaDe,
+  blocoDoDia,
   calcularHorasTrabalhadas,
 } = require("../utils/pontoCompute");
 
@@ -80,6 +81,15 @@ router.post("/pausa-saida", requireAuth, (req, res) => {
   if (!ponto) return res.status(400).json({ erro: "Nenhuma entrada registrada hoje." });
   if (ponto.horaSaida) return res.status(400).json({ erro: "A saída de hoje já foi registrada — não é mais possível bater a pausa." });
   if (ponto.pausaSaida) return res.status(400).json({ erro: "A saída para o almoço já foi registrada." });
+
+  // O horário esperado agora pode ter blocos diferentes por dia (ex: com pausa
+  // numa Segunda, sem pausa numa Terça) — confere se o bloco de HOJE tem pausa
+  // configurada antes de deixar bater, mesmo que o botão já fique escondido no
+  // front-end quando não há pausa prevista para o dia.
+  const blocoHoje = blocoDoDia(req.consultor, ponto.data);
+  if (!blocoHoje || !(Number(blocoHoje.pausaAlmocoMinutos) > 0)) {
+    return res.status(400).json({ erro: "Seu horário de hoje não tem pausa de almoço configurada." });
+  }
 
   const { lat, lng } = req.body || {};
   const patch = { pausaSaida: agoraHHMM() };
