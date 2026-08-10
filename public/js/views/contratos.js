@@ -11,6 +11,9 @@ function escapeHtml(str) {
 const PADRAO = {
   tipoCobranca: "Percentual",
   percentualHonorarios: 90,
+  comissaoEstimada: 0,
+  valorTotalPersonalizado: null,
+  clausulaHonorariosTexto: "",
   valorFixo: 0,
   valorPermuta: 0,
   descricaoPermuta: "",
@@ -36,6 +39,24 @@ function vencimentoVencido(dataStr) {
 
 function formatarReal(valor) {
   return (Number(valor) || 0).toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
+}
+
+// Espelha server/utils/contratoTexto.js (montarTextoHonorarios) — usado só para
+// pré-preencher a caixa de texto da cláusula no formulário, com o mesmo texto que o
+// sistema geraria automaticamente. Se a usuária editar a caixa, o texto dela é que
+// vale (tanto aqui quanto no PDF/Word gerado pelo backend).
+function textoHonorariosPadrao({ tipoCobranca, percentualHonorarios, comissaoEstimada, valorFixo, valorPermuta, descricaoPermuta, parcelaInicialPct, parcelaFechamentoPct }) {
+  const comissao = Number(comissaoEstimada) || 0;
+  if (tipoCobranca === "ValorFixo") {
+    return `Pela prestação dos serviços contratados, a CONTRATANTE pagará à CONTRATADA o valor fixo de ${formatarReal(valorFixo)} pela vaga trabalhada, independentemente do salário do cargo. Sendo que a primeira parcela a ser paga no percentual de ${parcelaInicialPct}% desse valor para iniciar o serviço e os outros ${parcelaFechamentoPct}% no fechamento da vaga.`;
+  }
+  if (tipoCobranca === "Permuta") {
+    return `Pela prestação dos serviços contratados, as partes acordam o pagamento em regime de permuta, no valor correspondente a ${formatarReal(valorPermuta)}${descricaoPermuta ? `, referente a ${descricaoPermuta}` : ""}, em substituição ao pagamento em espécie. Sendo que a primeira parcela a ser paga no percentual de ${parcelaInicialPct}% desse valor para iniciar o serviço e os outros ${parcelaFechamentoPct}% no fechamento da vaga.`;
+  }
+  if (comissao > 0) {
+    return `Pela prestação dos serviços contratados, a CONTRATANTE pagará à CONTRATADA um percentual por vaga trabalhada de ${percentualHonorarios}% em cima do salário mais comissão do cargo, aplicável às vagas da área comercial cuja remuneração contempla parte variável (comissionamento). Sendo que a primeira parcela a ser paga no percentual de ${parcelaInicialPct}% para iniciar o serviço e os outros ${parcelaFechamentoPct}% no fechamento da vaga. Vagas que a porcentagem aplicada em cima do salário mais comissão o resultado for menos que um salário-mínimo, aplicamos a cobrança da vaga o valor do salário-mínimo vigente.`;
+  }
+  return `Pela prestação dos serviços contratados, a CONTRATANTE pagará à CONTRATADA um percentual por vaga trabalhada de ${percentualHonorarios}% em cima do salário. Sendo que a primeira parcela a ser paga no percentual de ${parcelaInicialPct}% para iniciar o serviço e os outros ${parcelaFechamentoPct}% no fechamento da vaga. Vagas que a porcentagem aplicada em cima do salário o resultado for menos que um salário-mínimo, aplicamos a cobrança da vaga o valor do salário-mínimo vigente.`;
 }
 
 export async function renderContratos(root) {
@@ -232,15 +253,21 @@ export async function renderContratos(root) {
         <div id="ct-preview-valor" class="card" style="margin:10px 0; padding:12px 14px;"></div>
         <div class="form-cols">
           <div class="form-row" id="ct-row-percentual"><label>Percentual sobre o salário (%)</label><input type="number" id="ct-percentual" min="1" max="200" value="${editando ? c.percentualHonorarios : PADRAO.percentualHonorarios}" /></div>
+          <div class="form-row" id="ct-row-comissao"><label>Comissão estimada (R$)</label><input type="number" id="ct-comissao" min="0" step="0.01" value="${editando ? c.comissaoEstimada || 0 : PADRAO.comissaoEstimada}" /></div>
           <div class="form-row" id="ct-row-valorfixo"><label>Valor fixo (R$)</label><input type="number" id="ct-valorfixo" min="0" step="0.01" value="${editando ? c.valorFixo || 0 : PADRAO.valorFixo}" /></div>
           <div class="form-row" id="ct-row-valorpermuta"><label>Valor da permuta (R$)</label><input type="number" id="ct-valorpermuta" min="0" step="0.01" value="${editando ? c.valorPermuta || 0 : PADRAO.valorPermuta}" /></div>
           <div class="form-row"><label>Prazo de reposição (dias)</label><input type="number" id="ct-reposicao" min="1" value="${editando ? c.prazoReposicaoDias : PADRAO.prazoReposicaoDias}" /></div>
         </div>
+        <div class="sub" id="ct-sub-comissao" style="margin-top:-6px;">Preencha só para vagas da área comercial (remuneração com parte variável) — a taxa passa a ser calculada sobre salário + comissão, e a cláusula do contrato deixa isso explícito.</div>
         <div class="form-row" id="ct-row-descricaopermuta"><label>O que está sendo permutado</label><input type="text" id="ct-descricaopermuta" placeholder="ex: divulgação da vaga em troca de material publicitário" value="${editando ? escapeHtml(c.descricaoPermuta || "") : ""}" /></div>
+        <div class="form-row"><label>Valor final do contrato (R$) — opcional</label><input type="number" id="ct-valor-final" min="0" step="0.01" placeholder="deixe em branco para calcular automaticamente" value="${editando && c.valorTotalPersonalizado !== null && c.valorTotalPersonalizado !== undefined ? c.valorTotalPersonalizado : ""}" /></div>
+        <div class="sub" style="margin-top:-6px;">Se preencher, esse valor vale por cima do cálculo automático (percentual, fixo ou permuta) — tanto nas parcelas quanto no contrato.</div>
         <div class="form-cols">
           <div class="form-row"><label>1ª parcela — início do serviço (%)</label><input type="number" id="ct-parcela1" min="0" max="100" value="${editando ? c.parcelaInicialPct : PADRAO.parcelaInicialPct}" /></div>
           <div class="form-row"><label>2ª parcela — fechamento da vaga (%)</label><input type="number" id="ct-parcela2" min="0" max="100" value="${editando ? c.parcelaFechamentoPct : PADRAO.parcelaFechamentoPct}" /></div>
         </div>
+        <div class="form-row"><label>Texto da Cláusula de Honorários (Cláusula 5, item I)</label><textarea id="ct-clausula-honorarios" rows="4"></textarea></div>
+        <div class="sub" style="margin-top:-6px;">Preenchido automaticamente de acordo com o tipo de cobrança acima — edite à vontade se precisar de uma redação diferente para este contrato específico.</div>
         <div class="form-cols">
           <div class="form-row"><label>Vencimento da 1ª parcela</label><input type="date" id="ct-venc-p1" value="${editando ? (c.dataVencimentoParcela1 || "") : ""}" /></div>
           <div class="form-row"><label>Vencimento da 2ª parcela</label><input type="date" id="ct-venc-p2" value="${editando ? (c.dataVencimentoParcela2 || "") : ""}" /></div>
@@ -272,6 +299,8 @@ export async function renderContratos(root) {
     const selectVaga = document.getElementById("ct-vaga");
 
     const rowPercentual = document.getElementById("ct-row-percentual");
+    const rowComissao = document.getElementById("ct-row-comissao");
+    const subComissao = document.getElementById("ct-sub-comissao");
     const rowValorFixo = document.getElementById("ct-row-valorfixo");
     const rowValorPermuta = document.getElementById("ct-row-valorpermuta");
     const rowDescricaoPermuta = document.getElementById("ct-row-descricaopermuta");
@@ -279,18 +308,23 @@ export async function renderContratos(root) {
     const atualizarVisibilidadeCobranca = () => {
       const tipo = document.querySelector('input[name="ct-tipo-cobranca"]:checked').value;
       rowPercentual.style.display = tipo === "Percentual" ? "" : "none";
+      rowComissao.style.display = tipo === "Percentual" ? "" : "none";
+      subComissao.style.display = tipo === "Percentual" ? "" : "none";
       rowValorFixo.style.display = tipo === "ValorFixo" ? "" : "none";
       rowValorPermuta.style.display = tipo === "Permuta" ? "" : "none";
       rowDescricaoPermuta.style.display = tipo === "Permuta" ? "" : "none";
       atualizarPreviewValor();
+      atualizarClausulaPadrao();
     };
     radiosTipo.forEach((r) => r.addEventListener("change", atualizarVisibilidadeCobranca));
 
     // Calcula e mostra ao vivo o valor total estimado do contrato, puxando o salário
-    // já cadastrado na vaga quando o tipo de cobrança é "Percentual" — assim a usuária
-    // vê o resultado do cálculo (salário × percentual) na hora, sem precisar salvar
-    // para descobrir o valor.
+    // já cadastrado na vaga quando o tipo de cobrança é "Percentual" (somado à comissão
+    // estimada, se preenchida) — assim a usuária vê o resultado do cálculo na hora, sem
+    // precisar salvar para descobrir o valor. Se "Valor final do contrato" estiver
+    // preenchido, ele sobrepõe qualquer cálculo automático.
     const previewEl = document.getElementById("ct-preview-valor");
+    const inputValorFinal = document.getElementById("ct-valor-final");
     function vagaSelecionada() {
       if (editando) return { salario: c.vagaSalario || 0, titulo: c.vagaTitulo };
       const vaga = vagas.find((v) => v.id === selectVaga.value);
@@ -301,16 +335,23 @@ export async function renderContratos(root) {
       const vagaInfo = vagaSelecionada();
       let valorTotal = 0;
       let detalhe = "";
+      const valorFinalManual = inputValorFinal.value !== "" ? Number(inputValorFinal.value) : null;
 
-      if (tipo === "Percentual") {
+      if (valorFinalManual !== null && !Number.isNaN(valorFinalManual)) {
+        valorTotal = valorFinalManual;
+        detalhe = "Valor digitado manualmente — sobrepõe o cálculo automático.";
+      } else if (tipo === "Percentual") {
         const pct = Number(document.getElementById("ct-percentual").value) || 0;
+        const comissao = Number(document.getElementById("ct-comissao").value) || 0;
         if (!vagaInfo) {
           detalhe = "Selecione a vaga para calcular.";
         } else if (!vagaInfo.salario) {
           detalhe = `Cadastre o salário do cargo na vaga "${vagaInfo.titulo}" (Funil de Vagas) para o sistema calcular automaticamente.`;
         } else {
-          valorTotal = Math.round(((vagaInfo.salario * pct) / 100) * 100) / 100;
-          detalhe = `${formatarReal(vagaInfo.salario)} (salário da vaga) × ${pct}%`;
+          valorTotal = Math.round((((vagaInfo.salario + comissao) * pct) / 100) * 100) / 100;
+          detalhe = comissao > 0
+            ? `(${formatarReal(vagaInfo.salario)} salário + ${formatarReal(comissao)} comissão) × ${pct}%`
+            : `${formatarReal(vagaInfo.salario)} (salário da vaga) × ${pct}%`;
         }
       } else if (tipo === "ValorFixo") {
         valorTotal = Number(document.getElementById("ct-valorfixo").value) || 0;
@@ -332,9 +373,46 @@ export async function renderContratos(root) {
         ${valorTotal > 0 ? `<div class="sub" style="margin-top:6px;">1ª parcela: <strong>${formatarReal(valorParcela1)}</strong> · 2ª parcela: <strong>${formatarReal(valorParcela2)}</strong></div>` : ""}
       `;
     }
-    ["ct-percentual", "ct-valorfixo", "ct-valorpermuta", "ct-parcela1", "ct-parcela2"].forEach((id) => {
-      document.getElementById(id).addEventListener("input", atualizarPreviewValor);
+
+    // Cláusula de honorários: fica preenchida automaticamente (mesmo texto que o PDF/Word
+    // vai gerar) até a usuária começar a editar a caixa à mão — a partir daí, o texto dela
+    // é que vale e para de ser sobrescrito pelas mudanças nos campos acima.
+    const textareaClausula = document.getElementById("ct-clausula-honorarios");
+    let clausulaEditadaManualmente = editando && !!(c.clausulaHonorariosTexto || "").trim();
+    textareaClausula.value = clausulaEditadaManualmente
+      ? c.clausulaHonorariosTexto
+      : textoHonorariosPadrao({
+          tipoCobranca: tipoInicial,
+          percentualHonorarios: editando ? c.percentualHonorarios : PADRAO.percentualHonorarios,
+          comissaoEstimada: editando ? c.comissaoEstimada || 0 : PADRAO.comissaoEstimada,
+          valorFixo: editando ? c.valorFixo || 0 : PADRAO.valorFixo,
+          valorPermuta: editando ? c.valorPermuta || 0 : PADRAO.valorPermuta,
+          descricaoPermuta: editando ? c.descricaoPermuta || "" : "",
+          parcelaInicialPct: editando ? c.parcelaInicialPct : PADRAO.parcelaInicialPct,
+          parcelaFechamentoPct: editando ? c.parcelaFechamentoPct : PADRAO.parcelaFechamentoPct,
+        });
+    textareaClausula.addEventListener("input", () => { clausulaEditadaManualmente = true; });
+    function atualizarClausulaPadrao() {
+      if (clausulaEditadaManualmente) return;
+      textareaClausula.value = textoHonorariosPadrao({
+        tipoCobranca: document.querySelector('input[name="ct-tipo-cobranca"]:checked').value,
+        percentualHonorarios: document.getElementById("ct-percentual").value,
+        comissaoEstimada: document.getElementById("ct-comissao").value,
+        valorFixo: document.getElementById("ct-valorfixo").value,
+        valorPermuta: document.getElementById("ct-valorpermuta").value,
+        descricaoPermuta: document.getElementById("ct-descricaopermuta").value,
+        parcelaInicialPct: document.getElementById("ct-parcela1").value,
+        parcelaFechamentoPct: document.getElementById("ct-parcela2").value,
+      });
+    }
+
+    ["ct-percentual", "ct-comissao", "ct-valorfixo", "ct-valorpermuta", "ct-descricaopermuta", "ct-parcela1", "ct-parcela2"].forEach((id) => {
+      document.getElementById(id).addEventListener("input", () => {
+        atualizarPreviewValor();
+        atualizarClausulaPadrao();
+      });
     });
+    inputValorFinal.addEventListener("input", atualizarPreviewValor);
     atualizarVisibilidadeCobranca();
 
     // Vencimento da 2ª parcela = vencimento da 1ª + 30 dias, recalculado sempre que a
@@ -375,6 +453,9 @@ export async function renderContratos(root) {
         vigenciaDias: document.getElementById("ct-vigencia").value,
         tipoCobranca: document.querySelector('input[name="ct-tipo-cobranca"]:checked').value,
         percentualHonorarios: document.getElementById("ct-percentual").value,
+        comissaoEstimada: document.getElementById("ct-comissao").value,
+        valorTotalPersonalizado: document.getElementById("ct-valor-final").value,
+        clausulaHonorariosTexto: document.getElementById("ct-clausula-honorarios").value.trim(),
         valorFixo: document.getElementById("ct-valorfixo").value,
         valorPermuta: document.getElementById("ct-valorpermuta").value,
         descricaoPermuta: document.getElementById("ct-descricaopermuta").value.trim(),

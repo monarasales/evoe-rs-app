@@ -3,20 +3,27 @@
 // (faturamento recebido/previsto das vagas em aberto).
 
 /** Valor total (R$) do contrato: valor fixo negociado direto, percentual sobre o
- * salário do cargo cadastrado na vaga, ou valor de permuta (pago em troca de produto/
- * serviço, não em dinheiro). Se a cobrança for por percentual e a vaga ainda não tiver
- * salário preenchido, devolve 0 e sinaliza salarioFaltando — a tela avisa a usuária
- * para completar o cadastro da vaga em vez de fingir que o valor é zero mesmo.
+ * salário do cargo cadastrado na vaga (mais a comissão estimada, para vagas da área
+ * comercial), ou valor de permuta (pago em troca de produto/serviço, não em dinheiro).
+ * Se a cobrança for por percentual e a vaga ainda não tiver salário preenchido, devolve
+ * 0 e sinaliza salarioFaltando — a tela avisa a usuária para completar o cadastro da
+ * vaga em vez de fingir que o valor é zero mesmo.
  *
- * Se o contrato tiver um ajuste manual (valorManualOverride, definido pela tela de
- * Financeiro), esse valor vale sempre, por cima do cálculo automático — útil para
- * contratos antigos ou negociados fora do padrão, onde o cálculo automático não
- * reflete o que realmente foi cobrado. O ajuste só afeta os números do Financeiro,
- * não o texto do contrato gerado em PDF/Word. */
+ * Ordem de prioridade dos overrides:
+ * 1. valorManualOverride — ajuste feito na tela Financeiro (só Gestor), pensado pra
+ *    corrigir contratos antigos/fora do padrão. Só afeta os números do Financeiro,
+ *    nunca o texto do contrato em PDF/Word.
+ * 2. valorTotalPersonalizado — valor final digitado direto no formulário do Contrato
+ *    (qualquer tipo de cobrança). Vale tanto para os números quanto, se a usuária não
+ *    tiver escrito uma cláusula própria, para o texto do contrato.
+ * 3. Cálculo automático (percentual × salário+comissão, valor fixo, ou permuta). */
 function calcularValorContrato(contrato, vaga) {
   if (!contrato) return { valorTotal: 0, salarioFaltando: false, ehPermuta: false };
   if (contrato.valorManualOverride !== null && contrato.valorManualOverride !== undefined) {
     return { valorTotal: Number(contrato.valorManualOverride) || 0, salarioFaltando: false, ehPermuta: contrato.tipoCobranca === "Permuta" };
+  }
+  if (contrato.valorTotalPersonalizado !== null && contrato.valorTotalPersonalizado !== undefined) {
+    return { valorTotal: Number(contrato.valorTotalPersonalizado) || 0, salarioFaltando: false, ehPermuta: contrato.tipoCobranca === "Permuta" };
   }
   if (contrato.tipoCobranca === "ValorFixo") {
     return { valorTotal: Number(contrato.valorFixo) || 0, salarioFaltando: false, ehPermuta: false };
@@ -26,7 +33,8 @@ function calcularValorContrato(contrato, vaga) {
   }
   const salario = vaga && vaga.salario ? Number(vaga.salario) : 0;
   if (!salario) return { valorTotal: 0, salarioFaltando: true, ehPermuta: false };
-  const valorTotal = Math.round(((salario * (Number(contrato.percentualHonorarios) || 0)) / 100) * 100) / 100;
+  const comissao = Number(contrato.comissaoEstimada) || 0;
+  const valorTotal = Math.round((((salario + comissao) * (Number(contrato.percentualHonorarios) || 0)) / 100) * 100) / 100;
   return { valorTotal, salarioFaltando: false, ehPermuta: false };
 }
 

@@ -34,12 +34,31 @@ function dataExtenso(dataStr) {
   return `${DIAS_SEMANA[d.getDay()]}, ${String(dia).padStart(2, "0")} de ${MESES[mes - 1]} de ${ano}`;
 }
 
+/** Monta o texto padrão do item de honorários (Cláusula 5, item I), usado quando a
+ * usuária não escreveu uma redação própria em `clausulaHonorariosTexto`. Para vagas
+ * de área comercial (com comissão estimada preenchida), a taxa passa a incidir sobre
+ * salário + comissão, e o texto deixa isso explícito. */
+function montarTextoHonorarios(dados) {
+  const comissao = Number(dados.comissaoEstimada) || 0;
+  if (dados.tipoCobranca === "ValorFixo") {
+    return `Pela prestação dos serviços contratados, a CONTRATANTE pagará à CONTRATADA o valor fixo de ${formatarReal(dados.valorFixo)} pela vaga trabalhada, independentemente do salário do cargo. Sendo que a primeira parcela a ser paga no percentual de ${dados.parcelaInicialPct}% desse valor para iniciar o serviço e os outros ${dados.parcelaFechamentoPct}% no fechamento da vaga.`;
+  }
+  if (dados.tipoCobranca === "Permuta") {
+    return `Pela prestação dos serviços contratados, as partes acordam o pagamento em regime de permuta, no valor correspondente a ${formatarReal(dados.valorPermuta)}${dados.descricaoPermuta ? `, referente a ${dados.descricaoPermuta}` : ""}, em substituição ao pagamento em espécie. Sendo que a primeira parcela a ser paga no percentual de ${dados.parcelaInicialPct}% desse valor para iniciar o serviço e os outros ${dados.parcelaFechamentoPct}% no fechamento da vaga.`;
+  }
+  if (comissao > 0) {
+    return `Pela prestação dos serviços contratados, a CONTRATANTE pagará à CONTRATADA um percentual por vaga trabalhada de ${dados.percentualHonorarios}% em cima do salário mais comissão do cargo, aplicável às vagas da área comercial cuja remuneração contempla parte variável (comissionamento). Sendo que a primeira parcela a ser paga no percentual de ${dados.parcelaInicialPct}% para iniciar o serviço e os outros ${dados.parcelaFechamentoPct}% no fechamento da vaga. Vagas que a porcentagem aplicada em cima do salário mais comissão o resultado for menos que um salário-mínimo, aplicamos a cobrança da vaga o valor do salário-mínimo vigente.`;
+  }
+  return `Pela prestação dos serviços contratados, a CONTRATANTE pagará à CONTRATADA um percentual por vaga trabalhada de ${dados.percentualHonorarios}% em cima do salário. Sendo que a primeira parcela a ser paga no percentual de ${dados.parcelaInicialPct}% para iniciar o serviço e os outros ${dados.parcelaFechamentoPct}% no fechamento da vaga. Vagas que a porcentagem aplicada em cima do salário o resultado for menos que um salário-mínimo, aplicamos a cobrança da vaga o valor do salário-mínimo vigente.`;
+}
+
 /**
  * dados: {
  *   numero, dataContrato (yyyy-mm-dd),
  *   cliente: { nome, cnpj, endereco },
  *   cargoObjeto,
- *   percentualHonorarios, parcelaInicialPct, parcelaFechamentoPct,
+ *   percentualHonorarios, comissaoEstimada, valorTotalPersonalizado, clausulaHonorariosTexto,
+ *   parcelaInicialPct, parcelaFechamentoPct,
  *   prazoReposicaoDias, vigenciaDias, prazoRescisaoAvisoDias,
  *   testemunha1: { nome, cpf }, testemunha2: { nome, cpf },
  * }
@@ -131,20 +150,13 @@ function montarContrato(dados) {
     titulo: "Cláusula 5º. DOS HONORÁRIOS.",
     texto: "Fica acordado entre as partes que os honorários a título de prestação dos serviços objeto deste contrato serão pagos da forma a seguir definida, levando sempre em consideração os parâmetros de definição aqui estabelecidos:",
     itens: [
-      dados.tipoCobranca === "ValorFixo"
-        ? {
-            letra: "I.",
-            texto: `Pela prestação dos serviços contratados, a CONTRATANTE pagará à CONTRATADA o valor fixo de ${formatarReal(dados.valorFixo)} pela vaga trabalhada, independentemente do salário do cargo. Sendo que a primeira parcela a ser paga no percentual de ${dados.parcelaInicialPct}% desse valor para iniciar o serviço e os outros ${dados.parcelaFechamentoPct}% no fechamento da vaga.`,
-          }
-        : dados.tipoCobranca === "Permuta"
-        ? {
-            letra: "I.",
-            texto: `Pela prestação dos serviços contratados, as partes acordam o pagamento em regime de permuta, no valor correspondente a ${formatarReal(dados.valorPermuta)}${dados.descricaoPermuta ? `, referente a ${dados.descricaoPermuta}` : ""}, em substituição ao pagamento em espécie. Sendo que a primeira parcela a ser paga no percentual de ${dados.parcelaInicialPct}% desse valor para iniciar o serviço e os outros ${dados.parcelaFechamentoPct}% no fechamento da vaga.`,
-          }
-        : {
-            letra: "I.",
-            texto: `Pela prestação dos serviços contratados, a CONTRATANTE pagará à CONTRATADA um percentual por vaga trabalhada de ${dados.percentualHonorarios}% em cima do salário. Sendo que a primeira parcela a ser paga no percentual de ${dados.parcelaInicialPct}% para iniciar o serviço e os outros ${dados.parcelaFechamentoPct}% no fechamento da vaga. Vagas que a porcentagem aplicada em cima do salário o resultado for menos que um salário-mínimo, aplicamos a cobrança da vaga o valor do salário-mínimo vigente.`,
-          },
+      {
+        letra: "I.",
+        // A usuária pode reescrever essa cláusula à mão (clausulaHonorariosTexto) para
+        // qualquer caso especial de negociação — sem isso, o sistema gera o texto padrão
+        // de acordo com o tipo de cobrança (percentual, valor fixo ou permuta).
+        texto: (dados.clausulaHonorariosTexto || "").trim() || montarTextoHonorarios(dados),
+      },
     ],
     paragrafos: [
       { simbolo: "§1º", texto: "O atraso no pagamento de qualquer dos honorários estipulados nesta cláusula ocasionará a cobrança de multa correspondente a 5% (cinco unidades por cento) do valor da cobrança atrasada, além de juros de 2% (duas unidades por cento) ao mês, pro rata die, que incidirão automaticamente, independentemente de interpelação administrativa ou judicial." },

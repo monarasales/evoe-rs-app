@@ -58,6 +58,9 @@ function montarDadosContrato(contrato) {
     cargoObjeto: contrato.cargoObjeto || vaga.titulo || "",
     tipoCobranca: contrato.tipoCobranca || "Percentual",
     percentualHonorarios: contrato.percentualHonorarios,
+    comissaoEstimada: contrato.comissaoEstimada || 0,
+    valorTotalPersonalizado: contrato.valorTotalPersonalizado,
+    clausulaHonorariosTexto: contrato.clausulaHonorariosTexto || "",
     valorFixo: contrato.valorFixo || 0,
     valorPermuta: contrato.valorPermuta || 0,
     descricaoPermuta: contrato.descricaoPermuta || "",
@@ -88,6 +91,9 @@ function extrairCamposEditaveis(body) {
     cargoObjeto,
     tipoCobranca,
     percentualHonorarios,
+    comissaoEstimada,
+    valorTotalPersonalizado,
+    clausulaHonorariosTexto,
     valorFixo,
     valorPermuta,
     descricaoPermuta,
@@ -112,6 +118,19 @@ function extrairCamposEditaveis(body) {
     cargoObjeto: cargoObjeto !== undefined ? cargoObjeto : undefined,
     tipoCobranca: TIPOS_COBRANCA_CONTRATO.includes(tipoCobranca) ? tipoCobranca : "Percentual",
     percentualHonorarios: Number(percentualHonorarios) || CONTRATO_PADRAO.percentualHonorarios,
+    // Comissão estimada (R$): só se aplica a vagas da área comercial, cuja remuneração
+    // inclui parte variável — soma ao salário na base de cálculo do percentual.
+    comissaoEstimada: Number(comissaoEstimada) || 0,
+    // Valor final digitado à mão (opcional): sobrepõe o cálculo automático (percentual,
+    // fixo ou permuta) tanto nas parcelas quanto no texto do contrato, se a cláusula não
+    // tiver sido reescrita à mão também. Null = segue o cálculo automático normalmente.
+    valorTotalPersonalizado:
+      valorTotalPersonalizado !== undefined && valorTotalPersonalizado !== null && valorTotalPersonalizado !== ""
+        ? Number(valorTotalPersonalizado)
+        : null,
+    // Redação da Cláusula 5, item I (honorários), editável à mão pela usuária para
+    // qualquer caso de negociação especial. Vazio = o sistema gera o texto padrão.
+    clausulaHonorariosTexto: (clausulaHonorariosTexto || "").trim(),
     valorFixo: Number(valorFixo) || 0,
     valorPermuta: Number(valorPermuta) || 0,
     descricaoPermuta: descricaoPermuta || "",
