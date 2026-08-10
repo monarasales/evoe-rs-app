@@ -1,11 +1,21 @@
 const express = require("express");
+const multer = require("multer");
 const db = require("../db");
 const { requireAuth } = require("../middleware/auth");
 const { notifyMudancaVaga } = require("../utils/notify");
 const { computeVagaFields, computarReposicaoInfo, hojeStr } = require("../utils/vagaCompute");
 const { ETAPAS_VAGA, PRIORIDADES, TIPOS_VAGA } = require("../utils/constants");
+const { extrairDadosDaVaga } = require("../utils/vagaExtract");
 
 const router = express.Router();
+
+// Upload temporário (só em memória, nunca salvo em disco) do arquivo de vaga que
+// será lido pela IA — diferente do currículo do candidato, esse arquivo não precisa
+// ficar guardado depois de extraído.
+const uploadMemoria = multer({
+  storage: multer.memoryStorage(),
+  limits: { fileSize: 10 * 1024 * 1024 },
+});
 
 function podeEditar(req, vaga) {
   return (
@@ -35,6 +45,22 @@ router.get("/", (req, res) => {
 
 router.get("/etapas", (req, res) => {
   res.json(ETAPAS_VAGA);
+});
+
+// Lê um arquivo (PDF/Word/texto) com a descrição de uma vaga e devolve os campos já
+// identificados pela IA, para pré-preencher o formulário de Nova Vaga — nunca cria a
+// vaga sozinho, quem está criando ainda confere e ajusta antes de salvar.
+router.post("/extrair-arquivo", requireAuth, (req, res) => {
+  uploadMemoria.single("arquivo")(req, res, async (err) => {
+    if (err) return res.status(400).json({ erro: err.message });
+    if (!req.file) return res.status(400).json({ erro: "Envie um arquivo." });
+    try {
+      const dados = await extrairDadosDaVaga(req.file.buffer, req.file.originalname, req.file.mimetype);
+      res.json(dados);
+    } catch (erroExtracao) {
+      res.status(erroExtracao.semChaveConfigurada ? 400 : 422).json({ erro: erroExtracao.message });
+    }
+  });
 });
 
 router.get("/:id", (req, res) => {

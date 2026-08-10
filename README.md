@@ -119,6 +119,46 @@ próximo depois do seu último contrato manual). Se precisar ajustar, vá em
 Configurações > Parâmetros do Sistema > "Próximo número de contrato" (só o
 Gestor pode alterar).
 
+## Configurar a leitura automática de arquivo de vaga com IA
+
+Em Funil de Vagas > Nova Vaga, dá para enviar um arquivo (PDF, Word ou texto) com o
+perfil da vaga que o cliente mandou, e o sistema preenche título, perfil, salário,
+prazo e prioridade automaticamente (usando a IA da Anthropic) — você só confere e
+ajusta antes de salvar.
+
+Isso usa uma conta separada na Anthropic (a mesma empresa do Claude), com um custo
+bem pequeno por vaga lida (na casa de centavos). Sem configurar, essa função
+específica fica indisponível (com um aviso claro na tela), mas o resto do sistema
+continua funcionando normalmente.
+
+**Passo a passo:**
+
+1. Crie uma conta em [console.anthropic.com](https://console.anthropic.com) e
+   configure uma forma de pagamento (cartão) — é cobrado só pelo uso, não tem
+   mensalidade fixa.
+2. Em "API Keys", crie uma chave nova e copie o valor (começa com `sk-ant-`).
+3. **No Render** (onde o sistema está publicado): abra o serviço, vá em
+   "Environment" e adicione uma variável nova:
+   ```
+   ANTHROPIC_API_KEY=a chave que você copiou
+   ```
+   Salve — o Render reinicia o serviço sozinho e a leitura automática já passa a
+   funcionar.
+4. **Para testar no seu computador** (opcional): coloque a mesma chave no arquivo
+   `.env` (ver seção do e-mail acima), na linha `ANTHROPIC_API_KEY=`.
+
+Isso eu não consigo fazer por você — só quem tem acesso à conta da Anthropic e ao
+painel do Render consegue criar a chave e configurá-la.
+
+## Link público para o cliente pedir uma vaga
+
+Em Funil de Vagas > Solicitações de Vaga tem um botão "Copiar link para o cliente" —
+é um link fixo (`/solicitar-vaga.html`) que pode ser enviado por WhatsApp ou e-mail
+para qualquer cliente, mesmo um que ainda não seja cadastrado. O cliente preenche um
+formulário simples (sem precisar de login) e o pedido cai como uma **solicitação
+pendente** — nada vira vaga de verdade no funil sozinho. Só o Gestor revisa, ajusta o
+que precisar e aprova (ou rejeita) — aí sim a vaga é criada.
+
 ## Sobre as notificações por e-mail e WhatsApp
 
 Nesta fase local, todas as notificações ficam **dentro do próprio sistema** (central

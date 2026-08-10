@@ -68,6 +68,12 @@ const PRIORIDADES = ["Alta", "Média", "Baixa"];
 const TIPOS_VAGA = ["Nova", "Reposição"];
 const MOTIVOS_REPOSICAO = ["Desistência do Candidato", "Cliente Demitiu", "Outro"];
 
+// Solicitações de Vaga: pedido enviado pelo cliente através do link público (formulário
+// fora do sistema, sem login) — fica pendente até o Gestor revisar e aprovar, e só
+// então vira uma vaga de verdade no funil. Evita erro de digitação do cliente ou uso
+// indevido do link virando vaga direto sem checagem.
+const STATUS_SOLICITACAO_VAGA = ["Pendente", "Aprovada", "Rejeitada"];
+
 // CRM — Prospects: quem entra em contato querendo cotar serviço, ainda sem ser cliente.
 const SERVICOS_PROSPECT = [
   "Seleção e Recrutamento",
@@ -178,6 +184,7 @@ module.exports = {
   TIPOS_COBRANCA_CONTRATO,
   SERVICOS_PROSPECT,
   ETAPAS_PROSPECT,
+  STATUS_SOLICITACAO_VAGA,
   DIAS_ALERTA_PRAZO,
   SLA_DIAS_IDEAL,
   SLA_DIAS_LIMITE,

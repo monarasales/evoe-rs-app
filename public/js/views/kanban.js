@@ -317,6 +317,15 @@ export async function renderKanban(root) {
 
     abrirModal(`
       <h2>${editando ? "Editar Vaga" : "Nova Vaga"}</h2>
+      ${
+        !editando
+          ? `<div class="form-row" style="background:#f7f9fb; border:1px dashed var(--border); border-radius:10px; padding:12px 14px;">
+              <label>📄 Preencher automaticamente a partir de um arquivo (opcional)</label>
+              <input type="file" id="v-arquivo" accept=".pdf,.docx,.txt" />
+              <div class="sub" id="v-arquivo-status" style="margin-top:6px; margin-bottom:0;">Envie o perfil da vaga em PDF, Word (.docx) ou texto — a IA identifica título, perfil, salário, prazo e prioridade pra você conferir abaixo.</div>
+            </div>`
+          : ""
+      }
       <form id="form-vaga">
         <div class="form-row">
           <label>Título da vaga</label>
@@ -412,6 +421,51 @@ export async function renderKanban(root) {
     `);
 
     document.getElementById("btn-cancelar").addEventListener("click", fecharModal);
+
+    // Preenchimento automático a partir de arquivo (só em "Nova Vaga" — nunca sobrescreve
+    // uma vaga já existente sozinho). Lê o arquivo, manda pra IA e pré-preenche os
+    // campos abaixo; a pessoa sempre confere e ajusta antes de salvar de verdade.
+    const inputArquivo = document.getElementById("v-arquivo");
+    if (inputArquivo) {
+      inputArquivo.addEventListener("change", async () => {
+        const arquivo = inputArquivo.files[0];
+        if (!arquivo) return;
+        const statusEl = document.getElementById("v-arquivo-status");
+        statusEl.textContent = "Lendo o arquivo com IA... isso pode levar alguns segundos.";
+        inputArquivo.disabled = true;
+        try {
+          const dados = await api.upload("/api/vagas/extrair-arquivo", arquivo);
+          if (dados.titulo) document.getElementById("v-titulo").value = dados.titulo;
+          if (dados.perfilVaga) document.getElementById("v-perfil").value = dados.perfilVaga;
+          if (dados.salario != null) document.getElementById("v-salario").value = dados.salario;
+          if (dados.prioridade) document.getElementById("v-prioridade").value = dados.prioridade;
+          if (dados.prazoSugeridoDias) {
+            const dataPrazo = new Date();
+            dataPrazo.setDate(dataPrazo.getDate() + dados.prazoSugeridoDias);
+            document.getElementById("v-prazo").value = dataPrazo.toISOString().slice(0, 10);
+          }
+
+          let mensagem = "✅ Campos preenchidos — confira tudo antes de salvar.";
+          if (dados.nomeEmpresaDetectado) {
+            const alvo = dados.nomeEmpresaDetectado.toLowerCase();
+            const empresaExistente = store.empresas.find(
+              (e) => e.nome.toLowerCase().includes(alvo) || alvo.includes(e.nome.toLowerCase())
+            );
+            if (empresaExistente) {
+              document.getElementById("v-empresa").value = empresaExistente.id;
+              mensagem += ` Empresa identificada: ${empresaExistente.nome}.`;
+            } else {
+              mensagem += ` Empresa mencionada no arquivo: "${dados.nomeEmpresaDetectado}" — confira se já está cadastrada no CRM, ou crie antes de salvar.`;
+            }
+          }
+          statusEl.textContent = mensagem;
+        } catch (err) {
+          statusEl.textContent = "⚠️ " + err.message;
+        } finally {
+          inputArquivo.disabled = false;
+        }
+      });
+    }
 
     const selectTipo = document.getElementById("v-tipo");
     const camposReposicao = document.getElementById("reposicao-campos");

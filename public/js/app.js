@@ -12,6 +12,7 @@ import { renderFinanceiro } from "./views/financeiro.js";
 import { renderComissoes } from "./views/comissoes.js";
 import { renderPonto } from "./views/ponto.js";
 import { renderMeuCadastro } from "./views/meuCadastro.js";
+import { renderSolicitacoesVaga } from "./views/solicitacoesVaga.js";
 import { obterLocalizacao } from "./geo.js";
 
 const loginScreen = document.getElementById("login-screen");
@@ -38,6 +39,9 @@ const NAV_SECOES = [
     itens: [
       { href: "#/kanban", label: "Funil de Vagas", icone: "🧭" },
       { href: "#/candidatos", label: "Candidatos", icone: "👥" },
+      // Pedidos recebidos pelo link público (public/solicitar-vaga.html) — visível a
+      // quem gerencia o funil; só o Gestor aprova/rejeita (ver solicitacoesVaga.js).
+      { href: "#/solicitacoes-vaga", label: "Solicitações de Vaga", icone: "📥", somenteGestorOuSupervisora: true, idBadge: "nav-badge-solicitacoes" },
     ],
   },
   {
@@ -81,10 +85,33 @@ function montarNav() {
     return `
       ${secao.titulo ? `<div class="sidebar-nav-titulo">${secao.titulo}</div>` : ""}
       ${itensVisiveis
-        .map((l) => `<a href="${l.href}"><span class="nav-icone">${l.icone}</span><span>${l.label}</span></a>`)
+        .map(
+          (l) =>
+            `<a href="${l.href}"><span class="nav-icone">${l.icone}</span><span>${l.label}</span>${l.idBadge ? `<span id="${l.idBadge}" class="tag tag-atrasada hidden" style="margin-left:6px;">0</span>` : ""}</a>`
+        )
         .join("")}
     `;
   }).join("");
+}
+
+// Quantas solicitações de vaga (link público) estão esperando revisão — mostra um
+// contador na sidebar pra quem gerencia o funil não perder o pedido do cliente no
+// meio da rotina. Só busca se a pessoa tem acesso à tela (Gestor/Supervisora).
+async function atualizarBadgeSolicitacoes() {
+  if (!podeGerenciarVagas()) return;
+  const badge = document.getElementById("nav-badge-solicitacoes");
+  if (!badge) return;
+  try {
+    const pendentes = await api.get("/api/solicitacoes-vaga?status=Pendente");
+    if (pendentes.length > 0) {
+      badge.textContent = pendentes.length > 99 ? "99+" : String(pendentes.length);
+      badge.classList.remove("hidden");
+    } else {
+      badge.classList.add("hidden");
+    }
+  } catch (e) {
+    /* silencioso: contador é um extra, não pode travar o uso do sistema */
+  }
 }
 
 async function carregarCachesBasicos() {
@@ -189,10 +216,12 @@ async function bootAposLogin() {
   await carregarCachesBasicos();
   mostrarApp();
   atualizarBadgeNotificacoes();
+  atualizarBadgeSolicitacoes();
   inicializarPontoDoDia();
   navegarPara("#/dashboard");
   iniciarRouter();
   setInterval(atualizarBadgeNotificacoes, 30000);
+  setInterval(atualizarBadgeSolicitacoes, 30000);
 }
 
 btnLogout.addEventListener("click", async () => {
@@ -217,6 +246,7 @@ function registrarRotas() {
   registrarRota("/comissoes", renderComissoes);
   registrarRota("/ponto", renderPonto);
   registrarRota("/meu-cadastro", renderMeuCadastro);
+  registrarRota("/solicitacoes-vaga", renderSolicitacoesVaga);
 }
 
 async function init() {
@@ -228,9 +258,11 @@ async function init() {
     await carregarCachesBasicos();
     mostrarApp();
     atualizarBadgeNotificacoes();
+    atualizarBadgeSolicitacoes();
     inicializarPontoDoDia();
     iniciarRouter();
     setInterval(atualizarBadgeNotificacoes, 30000);
+    setInterval(atualizarBadgeSolicitacoes, 30000);
   } else {
     mostrarLogin();
   }
