@@ -1,6 +1,8 @@
 import { api } from "../api.js";
 import { store, showToast, formatarData, isGestor } from "../state.js";
 import { abrirModal, fecharModal } from "../modal.js";
+import { abrirFormularioVaga } from "../vagaModal.js";
+import { navegarPara } from "../router.js";
 
 function escapeHtml(str) {
   const div = document.createElement("div");
@@ -69,7 +71,7 @@ export async function renderCrm(root) {
   function renderAbaClientes() {
     conteudo.innerHTML = `
       <div class="view-header" style="margin-bottom:10px;">
-        <div class="sub">Empresas para as quais a Evoé presta serviço de recrutamento.</div>
+        <div class="sub">Empresas para as quais a Evoé presta serviço de recrutamento. Cadastre a empresa e já pode seguir direto com o cadastro da vaga dela.</div>
         <button id="btn-nova-empresa" class="btn btn-primary btn-sm">+ Nova Empresa</button>
       </div>
       <div id="tabela-empresas"></div>
@@ -99,7 +101,10 @@ export async function renderCrm(root) {
               <td>${escapeHtml(e.contatoResponsavel)}</td>
               <td>${escapeHtml(e.emailContato)}</td>
               <td>${e.endereco ? escapeHtml(e.endereco) : '<span class="sub">— não cadastrado —</span>'}</td>
-              <td><button class="btn btn-outline btn-sm btn-editar-empresa">Editar</button></td>
+              <td style="white-space:nowrap;">
+                <button class="btn btn-outline btn-sm btn-nova-vaga-empresa" title="Cadastrar uma vaga para esta empresa">+ Vaga</button>
+                <button class="btn btn-outline btn-sm btn-editar-empresa">Editar</button>
+              </td>
             </tr>`
             )
             .join("")}
@@ -109,6 +114,12 @@ export async function renderCrm(root) {
       btn.addEventListener("click", (e) => {
         const id = e.target.closest("tr").dataset.id;
         abrirFormularioEmpresa(empresas.find((x) => x.id === id));
+      })
+    );
+    el.querySelectorAll(".btn-nova-vaga-empresa").forEach((btn) =>
+      btn.addEventListener("click", (e) => {
+        const id = e.target.closest("tr").dataset.id;
+        abrirFormularioVaga({ empresaIdPadrao: id, aoSalvar: () => navegarPara("#/kanban") });
       })
     );
   }
@@ -156,13 +167,20 @@ export async function renderCrm(root) {
         representanteLegalCpf: document.getElementById("e-rep-cpf").value.trim(),
       };
       try {
-        if (editando) await api.patch(`/api/empresas/${empresa.id}`, payload);
-        else await api.post("/api/empresas", payload);
+        const empresaSalva = editando
+          ? await api.patch(`/api/empresas/${empresa.id}`, payload)
+          : await api.post("/api/empresas", payload);
         showToast("Empresa salva.", "sucesso");
         fecharModal();
-        carregarEmpresas();
         const empresas = await api.get("/api/empresas");
         store.empresas = empresas;
+        carregarEmpresas();
+        // Ao cadastrar uma empresa nova (não ao editar uma já existente), já segue
+        // direto pro cadastro da vaga dela — evita ter que ir catar a empresa de novo
+        // no Funil de Vagas logo em seguida.
+        if (!editando) {
+          abrirFormularioVaga({ empresaIdPadrao: empresaSalva.id, aoSalvar: () => navegarPara("#/kanban") });
+        }
       } catch (err) {
         const box = document.getElementById("empresa-form-erro");
         box.textContent = err.message;

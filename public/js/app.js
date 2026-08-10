@@ -51,16 +51,17 @@ const NAV_SECOES = [
       // para Recrutador/Supervisora editarem livremente.
       { href: "#/crm", label: "CRM", icone: "🤝", somenteGestor: true },
       { href: "#/financeiro", label: "Financeiro", icone: "💰", somenteGestor: true },
-      { href: "#/comissoes", label: "Comissões", icone: "🏆", somenteGestorOuSupervisora: true },
     ],
   },
   {
     // Agrupa tudo que é "sobre a própria pessoa/equipe" num único lugar — o Ponto
-    // de todo mundo (para quem gerencia) ou o próprio (para quem bate ponto), e o
-    // cadastro pessoal de cada um, incluindo o da Gestora.
+    // de todo mundo (para quem gerencia) ou o próprio (para quem bate ponto), o
+    // cadastro pessoal de cada um (incluindo o da Gestora), e a Comissão, que é um
+    // ganho do colaborador por vaga fechada, não uma questão comercial.
     titulo: "Colaborador",
     itens: [
       { href: "#/ponto", label: "Controle de Ponto", icone: "🕒", somentePonto: true },
+      { href: "#/comissoes", label: "Comissões", icone: "🏆", somenteGestorOuSupervisora: true },
       { href: "#/meu-cadastro", label: "Meu Cadastro", icone: "🪪" },
     ],
   },
