@@ -52,6 +52,11 @@ function cardVagaHtml(vaga) {
         <span class="candidatos-count">${vaga.diasEmAberto}d</span>
       </div>
       ${vaga.slaFechamento ? `<div class="meta-row" style="margin-top:4px;">${tagSla(vaga.slaFechamento)}</div>` : ""}
+      <div class="meta-row" style="margin-top:6px;">
+        <select class="vaga-card-etapa" data-id="${vaga.id}" draggable="false" title="Mudar a etapa sem precisar arrastar o card">
+          ${store.etapasVaga.map((e) => `<option value="${e}" ${e === vaga.etapaAtual ? "selected" : ""}>${e}</option>`).join("")}
+        </select>
+      </div>
     </div>`;
 }
 
@@ -183,6 +188,31 @@ export async function renderKanban(root) {
       });
       card.addEventListener("dragend", () => (card.style.opacity = "1"));
       card.addEventListener("click", () => abrirVaga(card.dataset.id));
+    });
+
+    // Select de etapa direto no card: permite ao consultor mudar a etapa da vaga
+    // (ex: marcar como Aprovado) sem precisar arrastar o card entre as colunas.
+    // Usa a mesma rota do drag-and-drop, então respeita as mesmas permissões.
+    board.querySelectorAll(".vaga-card-etapa").forEach((select) => {
+      select.addEventListener("click", (e) => e.stopPropagation());
+      select.addEventListener("mousedown", (e) => e.stopPropagation());
+      select.addEventListener("change", async (e) => {
+        e.stopPropagation();
+        const vagaId = select.dataset.id;
+        const novaEtapa = select.value;
+        const etapaAnterior = vagasAtuais.find((v) => v.id === vagaId)?.etapaAtual;
+        select.disabled = true;
+        try {
+          await api.patch(`/api/vagas/${vagaId}/etapa`, { etapa: novaEtapa });
+          showToast("Vaga movida para: " + novaEtapa, "sucesso");
+          carregar();
+          window.__evoe.atualizarBadgeNotificacoes();
+        } catch (err) {
+          showToast(err.message, "erro");
+          select.value = etapaAnterior || novaEtapa;
+          select.disabled = false;
+        }
+      });
     });
 
     board.querySelectorAll(".kanban-column").forEach((col) => {

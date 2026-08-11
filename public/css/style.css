@@ -224,6 +224,11 @@ input, textarea, select { font-family: inherit; }
 .tag-prospect-perdido { background: var(--danger-bg); color: var(--danger); }
 .candidatos-count { color: var(--text-muted); }
 .vaga-card.vaga-card--standby { opacity: .72; border-left-style: dashed; }
+.vaga-card-etapa {
+  width: 100%; font-size: 11px; padding: 4px 6px; border-radius: 6px; border: 1px solid var(--border);
+  background: var(--bg-soft, #f5f6f8); color: var(--text); cursor: pointer;
+}
+.vaga-card-etapa:disabled { opacity: .6; cursor: wait; }
 
 .prioridade-tag-Alta { background: var(--danger-bg); color: var(--danger); }
 .prioridade-tag-Média { background: var(--warning-bg); color: var(--warning); }
