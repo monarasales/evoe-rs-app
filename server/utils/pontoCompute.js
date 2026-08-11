@@ -169,6 +169,15 @@ function garantirPontoDeHoje(consultor) {
   });
 }
 
+// Banco de Horas: um mês fechado (ver server/routes/fechamentosPonto.js) trava a
+// edição dos registros de ponto daquele consultor naquele mês — só o Gestor pode
+// reabrir. Usado tanto na correção manual quanto no lançamento manual de ponto.
+function mesFechadoPara(consultorId, dataStr) {
+  const anoMes = String(dataStr).slice(0, 7);
+  const fechamentos = db.readCollection("fechamentosPonto");
+  return fechamentos.some((f) => f.consultorId === consultorId && f.anoMes === anoMes && f.status === "Fechado");
+}
+
 module.exports = {
   FUSO_HORARIO,
   hojeStrFuso,
@@ -182,4 +191,5 @@ module.exports = {
   calcularHorasTrabalhadas,
   avaliarLocalizacao,
   garantirPontoDeHoje,
+  mesFechadoPara,
 };

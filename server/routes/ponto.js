@@ -16,6 +16,7 @@ const {
   diaSemanaDe,
   blocoDoDia,
   calcularHorasTrabalhadas,
+  mesFechadoPara,
 } = require("../utils/pontoCompute");
 
 const router = express.Router();
@@ -34,13 +35,17 @@ function toleranciaConfigurada() {
 // Recalcula horasTrabalhadas/saldoHoras de um registro (considerando a pausa de
 // almoço, se houver) após qualquer alteração — batida normal, correção manual ou
 // lançamento manual.
+// Banco de Horas: diferenças pequenas (dentro da tolerância configurada, ver
+// getParamPonto) não geram saldo — evita contabilizar minutos de imprecisão normal
+// na hora de bater o ponto. Acima da tolerância, o saldo é a diferença cheia (não
+// só o excedente), pra refletir corretamente horas extras ou horas faltando.
 function recalcularHoras(registro) {
   const horasTrabalhadas = calcularHorasTrabalhadas(registro);
   if (horasTrabalhadas == null) return { horasTrabalhadas: null, saldoHoras: null };
-  return {
-    horasTrabalhadas,
-    saldoHoras: Math.round((horasTrabalhadas - (registro.horasEsperadas || 0)) * 100) / 100,
-  };
+  const diferenca = horasTrabalhadas - (registro.horasEsperadas || 0);
+  const toleranciaHoras = (Number(getParamPonto().toleranciaBancoHorasMinutos) || 0) / 60;
+  const saldoHoras = Math.abs(diferenca) <= toleranciaHoras ? 0 : Math.round(diferenca * 100) / 100;
+  return { horasTrabalhadas, saldoHoras };
 }
 
 // Registro de ponto do dia do próprio usuário logado (ou null, se ainda não bateu
@@ -216,6 +221,11 @@ router.get("/resumo", requireGestorOuSupervisora, (req, res) => {
 router.patch("/:id", requireGestor, (req, res) => {
   const registro = db.findById("pontos", req.params.id);
   if (!registro) return res.status(404).json({ erro: "Registro de ponto não encontrado." });
+  if (mesFechadoPara(registro.consultorId, registro.data)) {
+    return res.status(409).json({
+      erro: `O mês ${registro.data.slice(0, 7)} já foi fechado no Banco de Horas. Reabra o mês em Controle de Ponto antes de corrigir este dia.`,
+    });
+  }
 
   const { horaEntrada, horaSaida, pausaSaida, pausaEntrada } = req.body || {};
   for (const [rotulo, valor] of [
@@ -279,6 +289,11 @@ router.post("/manual", requireGestor, (req, res) => {
   if (!consultor) return res.status(400).json({ erro: "Funcionário inválido." });
   if (!data || !/^\d{4}-\d{2}-\d{2}$/.test(data)) {
     return res.status(400).json({ erro: "Data inválida. Use o formato AAAA-MM-DD." });
+  }
+  if (mesFechadoPara(consultorId, data)) {
+    return res.status(409).json({
+      erro: `O mês ${data.slice(0, 7)} já foi fechado no Banco de Horas. Reabra o mês em Controle de Ponto antes de lançar um registro nele.`,
+    });
   }
   if (!horaEntrada || !HORA_REGEX.test(horaEntrada)) {
     return res.status(400).json({ erro: "Horário de entrada inválido. Use o formato HH:MM." });

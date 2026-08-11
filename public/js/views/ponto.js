@@ -16,6 +16,19 @@ function formatarDataCurta(iso) {
   return `${dia}/${mes}`;
 }
 
+function formatarAnoMes(anoMes) {
+  if (!anoMes) return "—";
+  const [ano, mes] = anoMes.split("-");
+  return `${mes}/${ano}`;
+}
+
+function tagSaldoValor(v) {
+  const numero = Number(v) || 0;
+  if (numero > 0.05) return `<span class="tag tag-nprazo">+${numero}h</span>`;
+  if (numero < -0.05) return `<span class="tag tag-atrasada">${numero}h</span>`;
+  return '<span class="tag tag-encerrada">0h</span>';
+}
+
 function tagSaldo(saldo) {
   const v = Number(saldo) || 0;
   if (v > 0.05) return `<span class="tag tag-nprazo">+${v}h extra</span>`;
@@ -53,6 +66,22 @@ function periodoMes(offsetMeses) {
   const ultimoDiaMes = new Date(alvo.getFullYear(), alvo.getMonth() + 1, 0).toISOString().slice(0, 10);
   const hojeStr = hoje.toISOString().slice(0, 10);
   const fim = offsetMeses === 0 && ultimoDiaMes > hojeStr ? hojeStr : ultimoDiaMes;
+  return { inicio, fim };
+}
+
+// Início/fim (AAAA-MM-DD) de uma semana (Segunda a Domingo) relativa à atual
+// (0 = esta semana, -1 = semana passada) — usado pro acompanhamento semanal do
+// Banco de Horas, pra não deixar o saldo ultrapassar muito antes do fechamento do mês.
+function periodoSemana(offsetSemanas) {
+  const hoje = new Date();
+  const diaSemanaNum = hoje.getDay(); // 0=Domingo..6=Sábado
+  const diffParaSegunda = diaSemanaNum === 0 ? -6 : 1 - diaSemanaNum;
+  const segunda = new Date(hoje.getFullYear(), hoje.getMonth(), hoje.getDate() + diffParaSegunda + offsetSemanas * 7);
+  const domingo = new Date(segunda.getFullYear(), segunda.getMonth(), segunda.getDate() + 6);
+  const inicio = segunda.toISOString().slice(0, 10);
+  const fimCalc = domingo.toISOString().slice(0, 10);
+  const hojeStr = hoje.toISOString().slice(0, 10);
+  const fim = offsetSemanas === 0 && fimCalc > hojeStr ? hojeStr : fimCalc;
   return { inicio, fim };
 }
 
@@ -160,10 +189,202 @@ function abrirModalPontoManual(consultores, aoSalvar) {
   });
 }
 
+// Banco de Horas de um funcionário: histórico de meses fechados (com o saldo que foi
+// transportado) + fechamento do próximo mês em aberto. Fechar um mês só TRAVA os
+// registros de ponto dele contra edição — o sistema nunca decide sozinho se o saldo
+// vira hora extra paga, folga ou fica acumulado; isso é sempre uma decisão do Gestor,
+// registrada no campo "Saldo transportado" (editável) e nas observações.
+async function abrirModalBancoHoras(consultor, aoSalvar) {
+  abrirModal('<h2>Banco de Horas — ' + escapeHtml(consultor.nome) + '</h2><div id="bh-conteudo" class="empty-state">Carregando...</div>');
+  const conteudoEl = document.getElementById("bh-conteudo");
+
+  async function carregar() {
+    const fechamentos = await api.get(`/api/fechamentos-ponto?consultorId=${consultor.id}`);
+    const ultimoAtivo = fechamentos.find((f) => f.status === "Fechado") || null;
+    const mesSugerido = ultimoAtivo ? proximoAnoMes(ultimoAtivo.anoMes) : mesAnteriorAoAtual();
+
+    conteudoEl.innerHTML = `
+      <div class="kpi-row" style="margin-bottom:16px;">
+        <div class="kpi-card">
+          <div class="kpi-label">Saldo acumulado atual</div>
+          <div class="kpi-value">${tagSaldoValor(ultimoAtivo ? ultimoAtivo.saldoTransportado : 0)}</div>
+          <div class="sub" style="margin-top:4px;">Soma de todos os meses já fechados.</div>
+        </div>
+      </div>
+
+      <h3 class="section-title">Fechar um mês</h3>
+      <div class="form-cols">
+        <div class="form-row"><label>Mês</label><input type="month" id="bh-mes" value="${mesSugerido}" /></div>
+        <div class="form-row" style="align-self:flex-end;"><button type="button" id="bh-consultar" class="btn btn-outline btn-sm">Consultar</button></div>
+      </div>
+      <div id="bh-preview"></div>
+
+      <h3 class="section-title" style="margin-top:22px;">Histórico de fechamentos</h3>
+      ${
+        fechamentos.length === 0
+          ? '<div class="empty-state">Nenhum mês fechado ainda.</div>'
+          : `<table>
+              <thead><tr><th>Mês</th><th>Saldo do mês</th><th>Saldo transportado</th><th>Status</th><th>Observações</th><th></th></tr></thead>
+              <tbody>
+                ${fechamentos
+                  .map(
+                    (f) => `
+                  <tr data-id="${f.id}">
+                    <td>${formatarAnoMes(f.anoMes)}</td>
+                    <td>${tagSaldoValor(f.saldoDoMes)}</td>
+                    <td>${tagSaldoValor(f.saldoTransportado)}</td>
+                    <td>${f.status === "Fechado" ? '<span class="tag tag-encerrada">Fechado</span>' : '<span class="tag tag-standby">Reaberto</span>'}</td>
+                    <td>${escapeHtml(f.observacoes || "—")}</td>
+                    <td>
+                      ${
+                        f.status === "Fechado"
+                          ? '<button class="btn btn-outline btn-sm btn-bh-editar">Editar saldo</button> <button class="btn btn-outline btn-sm btn-bh-reabrir">Reabrir</button>'
+                          : ""
+                      }
+                    </td>
+                  </tr>`
+                  )
+                  .join("")}
+              </tbody>
+            </table>`
+      }
+    `;
+
+    document.getElementById("bh-consultar").addEventListener("click", consultarPreview);
+
+    conteudoEl.querySelectorAll(".btn-bh-editar").forEach((btn) => {
+      btn.addEventListener("click", (e) => {
+        const id = e.target.closest("tr").dataset.id;
+        const fechamento = fechamentos.find((f) => f.id === id);
+        editarSaldoTransportado(fechamento);
+      });
+    });
+    conteudoEl.querySelectorAll(".btn-bh-reabrir").forEach((btn) => {
+      btn.addEventListener("click", async (e) => {
+        const id = e.target.closest("tr").dataset.id;
+        if (!confirm(`Reabrir ${formatarAnoMes(fechamentos.find((f) => f.id === id).anoMes)}? Isso destrava os registros de ponto desse mês para correção.`)) return;
+        try {
+          const resultado = await api.patch(`/api/fechamentos-ponto/${id}/reabrir`, {});
+          if (resultado.aviso) showToast(resultado.aviso, "erro");
+          else showToast("Mês reaberto.", "sucesso");
+          carregar();
+          aoSalvar();
+        } catch (err) {
+          showToast(err.message, "erro");
+        }
+      });
+    });
+
+    await consultarPreview();
+  }
+
+  async function consultarPreview() {
+    const anoMes = document.getElementById("bh-mes").value;
+    const previewEl = document.getElementById("bh-preview");
+    if (!anoMes) {
+      previewEl.innerHTML = "";
+      return;
+    }
+    previewEl.innerHTML = '<div class="sub">Consultando...</div>';
+    try {
+      const p = await api.get(`/api/fechamentos-ponto/preview?consultorId=${consultor.id}&anoMes=${anoMes}`);
+      previewEl.innerHTML = `
+        <div class="card" style="margin:12px 0;">
+          <div class="sub">Saldo acumulado até o mês anterior: ${tagSaldoValor(p.saldoAcumuladoAnterior)} &nbsp;+&nbsp; Saldo de ${formatarAnoMes(p.anoMes)}: ${tagSaldoValor(p.saldoDoMes)} &nbsp;=&nbsp; Saldo final calculado: ${tagSaldoValor(p.saldoFinalCalculado)}</div>
+          ${
+            p.podeFechar
+              ? `<div class="form-row" style="margin-top:10px;"><label>Saldo transportado para o próximo mês (edite se já decidiu pagar/descontar/dar folga de parte)</label><input type="number" step="0.01" id="bh-saldo-transportado" value="${p.saldoFinalCalculado}" /></div>
+                 <div class="form-row"><label>Observações (opcional)</label><textarea id="bh-observacoes" rows="2" placeholder="Ex: 2h pagas como hora extra em folha, restante acumula."></textarea></div>
+                 <button type="button" id="bh-fechar" class="btn btn-primary btn-sm" style="margin-top:8px;">Fechar ${formatarAnoMes(p.anoMes)}</button>`
+              : `<div class="sub" style="color:var(--danger); margin-top:8px;">${escapeHtml(p.motivoBloqueio || "Não é possível fechar este mês.")}</div>`
+          }
+        </div>
+      `;
+      const btnFechar = document.getElementById("bh-fechar");
+      if (btnFechar) {
+        btnFechar.addEventListener("click", async () => {
+          btnFechar.disabled = true;
+          try {
+            await api.post("/api/fechamentos-ponto", {
+              consultorId: consultor.id,
+              anoMes: p.anoMes,
+              saldoTransportado: document.getElementById("bh-saldo-transportado").value,
+              observacoes: document.getElementById("bh-observacoes").value,
+            });
+            showToast(`${formatarAnoMes(p.anoMes)} fechado.`, "sucesso");
+            carregar();
+            aoSalvar();
+          } catch (err) {
+            showToast(err.message, "erro");
+            btnFechar.disabled = false;
+          }
+        });
+      }
+    } catch (err) {
+      previewEl.innerHTML = `<div class="sub" style="color:var(--danger);">${escapeHtml(err.message)}</div>`;
+    }
+  }
+
+  function editarSaldoTransportado(fechamento) {
+    abrirModal(`
+      <h2>Editar saldo transportado — ${formatarAnoMes(fechamento.anoMes)}</h2>
+      <form id="form-bh-editar">
+        <div class="form-row"><label>Saldo transportado (h)</label><input type="number" step="0.01" id="bh-edit-saldo" value="${fechamento.saldoTransportado}" required /></div>
+        <div class="sub" style="margin-top:-6px;">Saldo calculado automaticamente: ${tagSaldoValor(fechamento.saldoFinalCalculado)}.</div>
+        <div class="form-row"><label>Observações</label><textarea id="bh-edit-obs" rows="2">${escapeHtml(fechamento.observacoes || "")}</textarea></div>
+        <div id="bh-editar-erro" class="form-erro hidden"></div>
+        <div class="modal-close-row">
+          <button type="button" id="btn-cancelar-bh-editar" class="btn btn-outline">Cancelar</button>
+          <button type="submit" class="btn btn-primary">Salvar</button>
+        </div>
+      </form>
+    `);
+    document.getElementById("btn-cancelar-bh-editar").addEventListener("click", () => {
+      abrirModalBancoHoras(consultor, aoSalvar);
+    });
+    document.getElementById("form-bh-editar").addEventListener("submit", async (ev) => {
+      ev.preventDefault();
+      const erroEl = document.getElementById("bh-editar-erro");
+      erroEl.classList.add("hidden");
+      try {
+        await api.patch(`/api/fechamentos-ponto/${fechamento.id}`, {
+          saldoTransportado: document.getElementById("bh-edit-saldo").value,
+          observacoes: document.getElementById("bh-edit-obs").value,
+        });
+        showToast("Saldo transportado atualizado.", "sucesso");
+        abrirModalBancoHoras(consultor, aoSalvar);
+        aoSalvar();
+      } catch (err) {
+        erroEl.textContent = err.message;
+        erroEl.classList.remove("hidden");
+      }
+    });
+  }
+
+  await carregar();
+}
+
+// AAAA-MM do mês seguinte a um AAAA-MM.
+function proximoAnoMes(anoMes) {
+  const [ano, mes] = anoMes.split("-").map(Number);
+  const data = new Date(ano, mes, 1);
+  return `${data.getFullYear()}-${String(data.getMonth() + 1).padStart(2, "0")}`;
+}
+
+// AAAA-MM do mês anterior ao atual (sugestão inicial de fechamento pra quem ainda
+// não fechou nenhum mês).
+function mesAnteriorAoAtual() {
+  const hoje = new Date();
+  const data = new Date(hoje.getFullYear(), hoje.getMonth() - 1, 1);
+  return `${data.getFullYear()}-${String(data.getMonth() + 1).padStart(2, "0")}`;
+}
+
 // ================== Visão do Gestor/Supervisora ==================
 async function renderGestor(root) {
-  let offsetMeses = 0;
+  let periodoValor = "mes:0";
   let ultimoResumo = null;
+  const config = await api.get("/api/config");
+  const limiteSemanalHoras = Number(config.limiteSaldoSemanalHoras) || 2;
 
   root.innerHTML = `
     <div class="view-header">
@@ -173,8 +394,10 @@ async function renderGestor(root) {
       </div>
       <div style="display:flex; gap:8px; align-items:center;">
         <select id="ponto-periodo">
-          <option value="0">Este mês</option>
-          <option value="-1">Mês passado</option>
+          <option value="mes:0">Este mês</option>
+          <option value="mes:-1">Mês passado</option>
+          <option value="semana:0">Esta semana</option>
+          <option value="semana:-1">Semana passada</option>
         </select>
         ${isGestor() ? '<button id="btn-ponto-manual" class="btn btn-outline btn-sm">+ Registrar manualmente</button>' : ""}
       </div>
@@ -186,19 +409,26 @@ async function renderGestor(root) {
   const periodoSelect = root.querySelector("#ponto-periodo");
 
   async function carregar() {
-    const { inicio, fim } = periodoMes(offsetMeses);
+    const [tipo, offsetStr] = periodoValor.split(":");
+    const offset = Number(offsetStr);
+    const { inicio, fim } = tipo === "semana" ? periodoSemana(offset) : periodoMes(offset);
     const dados = await api.get(`/api/ponto/resumo?inicio=${inicio}&fim=${fim}`);
     ultimoResumo = dados;
-    renderizarResumo(dados);
+    renderizarResumo(dados, tipo === "semana");
   }
 
-  function renderizarResumo(dados) {
+  function renderizarResumo(dados, modoSemanal) {
     if (dados.resumo.length === 0) {
       conteudo.innerHTML =
         '<div class="empty-state">Ninguém com Controle de Ponto habilitado ainda. Marque "Usa Controle de Ponto" no cadastro da pessoa em Configurações &gt; Funcionários.</div>';
       return;
     }
     conteudo.innerHTML = `
+      ${
+        modoSemanal
+          ? `<div class="sub" style="margin-bottom:10px;">Acompanhamento semanal (${formatarDataCurta(dados.inicio)} a ${formatarDataCurta(dados.fim)}) — aviso quando o saldo da semana passa de ${limiteSemanalHoras}h, pra não deixar acumular demais antes do fechamento do mês.</div>`
+          : ""
+      }
       <table>
         <thead>
           <tr>
@@ -208,21 +438,25 @@ async function renderGestor(root) {
         </thead>
         <tbody>
           ${dados.resumo
-            .map(
-              (r) => `
-            <tr data-id="${r.consultor.id}" class="linha-clicavel" style="cursor:pointer;">
+            .map((r) => {
+              const acimaDoLimite = modoSemanal && Math.abs(Number(r.saldoHoras) || 0) > limiteSemanalHoras;
+              return `
+            <tr data-id="${r.consultor.id}" class="linha-clicavel" style="cursor:pointer;${acimaDoLimite ? " background:#fff4e5;" : ""}">
               <td>${escapeHtml(r.consultor.nome)}${r.consultor.ativo === false ? ' <span class="tag tag-encerrada">Inativo</span>' : ""}</td>
               <td>${r.horasTrabalhadas}h</td>
               <td>${r.horasEsperadas}h</td>
-              <td>${tagSaldo(r.saldoHoras)}</td>
+              <td>${tagSaldo(r.saldoHoras)}${acimaDoLimite ? ' <span class="tag tag-atrasada" title="Acima do limite semanal configurado">⚠️ acima do limite semanal</span>' : ""}</td>
               <td>${r.diasComPonto}</td>
               <td>
                 ${r.diasForaDoLocal > 0 ? `<span class="tag tag-atrasada">⚠️ ${r.diasForaDoLocal} fora do local</span> ` : ""}
                 ${r.diasSemSaida > 0 ? `<span class="tag tag-standby">⏳ ${r.diasSemSaida} sem saída</span>` : ""}
               </td>
-              <td><button class="btn btn-outline btn-sm btn-detalhe-ponto">Ver dias</button></td>
-            </tr>`
-            )
+              <td>
+                <button class="btn btn-outline btn-sm btn-detalhe-ponto">Ver dias</button>
+                ${isGestor() ? '<button class="btn btn-outline btn-sm btn-bancohoras-linha">Banco de Horas</button>' : ""}
+              </td>
+            </tr>`;
+            })
             .join("")}
         </tbody>
       </table>
@@ -234,6 +468,15 @@ async function renderGestor(root) {
         const tr = e.target.closest("tr");
         const r = dados.resumo.find((x) => x.consultor.id === tr.dataset.id);
         abrirDetalhe(r.consultor, dados.inicio, dados.fim);
+      });
+    });
+
+    conteudo.querySelectorAll(".btn-bancohoras-linha").forEach((btn) => {
+      btn.addEventListener("click", (e) => {
+        e.stopPropagation();
+        const tr = e.target.closest("tr");
+        const r = dados.resumo.find((x) => x.consultor.id === tr.dataset.id);
+        abrirModalBancoHoras(r.consultor, carregar);
       });
     });
   }
@@ -283,7 +526,7 @@ async function renderGestor(root) {
   }
 
   periodoSelect.addEventListener("change", () => {
-    offsetMeses = Number(periodoSelect.value);
+    periodoValor = periodoSelect.value;
     carregar();
   });
 
@@ -312,14 +555,75 @@ async function renderMeuPonto(root) {
       </div>
     </div>
     <div id="ponto-hoje-card" class="card" style="margin-bottom:18px;"></div>
+    <h3 class="section-title">Meu Banco de Horas</h3>
+    <div id="ponto-banco-horas-card" class="card" style="margin-bottom:18px;"></div>
     <h3 class="section-title">Meu histórico</h3>
     <div id="ponto-historico"></div>
   `;
 
   async function carregar() {
-    const [hoje, historico] = await Promise.all([api.get("/api/ponto/hoje"), api.get("/api/ponto/meu")]);
+    const [hoje, historico, fechamentos] = await Promise.all([
+      api.get("/api/ponto/hoje"),
+      api.get("/api/ponto/meu"),
+      api.get("/api/fechamentos-ponto/meus"),
+    ]);
     renderizarHoje(hoje);
+    renderizarBancoHoras(historico, fechamentos);
     renderizarHistorico(historico);
+  }
+
+  // Mostra o saldo acumulado dos meses já fechados (travado, decidido pelo Gestor) +
+  // o saldo do mês atual, calculado em tempo real a cada batida — pra a pessoa
+  // acompanhar seu próprio banco de horas sem precisar perguntar.
+  function renderizarBancoHoras(historico, fechamentos) {
+    const cardEl = root.querySelector("#ponto-banco-horas-card");
+    const ultimoAtivo = fechamentos.find((f) => f.status === "Fechado") || null;
+    const saldoAcumulado = ultimoAtivo ? Number(ultimoAtivo.saldoTransportado) || 0 : 0;
+    const anoMesAtual = new Date().toISOString().slice(0, 7);
+    const saldoMesAberto =
+      Math.round(
+        historico
+          .filter((p) => p.data.slice(0, 7) === anoMesAtual && p.saldoHoras != null)
+          .reduce((soma, p) => soma + (Number(p.saldoHoras) || 0), 0) * 100
+      ) / 100;
+    const saldoTotalAtual = Math.round((saldoAcumulado + saldoMesAberto) * 100) / 100;
+
+    cardEl.innerHTML = `
+      <div class="kpi-row">
+        <div class="kpi-card">
+          <div class="kpi-label">Saldo de meses já fechados</div>
+          <div class="kpi-value">${tagSaldoValor(saldoAcumulado)}</div>
+        </div>
+        <div class="kpi-card">
+          <div class="kpi-label">Saldo deste mês (em aberto)</div>
+          <div class="kpi-value">${tagSaldoValor(saldoMesAberto)}</div>
+        </div>
+        <div class="kpi-card">
+          <div class="kpi-label">Saldo total atual</div>
+          <div class="kpi-value">${tagSaldoValor(saldoTotalAtual)}</div>
+        </div>
+      </div>
+      ${
+        fechamentos.length > 0
+          ? `<table style="margin-top:16px;">
+              <thead><tr><th>Mês</th><th>Saldo do mês</th><th>Saldo transportado</th><th>Status</th></tr></thead>
+              <tbody>
+                ${fechamentos
+                  .map(
+                    (f) => `
+                  <tr>
+                    <td>${formatarAnoMes(f.anoMes)}</td>
+                    <td>${tagSaldoValor(f.saldoDoMes)}</td>
+                    <td>${tagSaldoValor(f.saldoTransportado)}</td>
+                    <td>${f.status === "Fechado" ? '<span class="tag tag-encerrada">Fechado</span>' : '<span class="tag tag-standby">Reaberto</span>'}</td>
+                  </tr>`
+                  )
+                  .join("")}
+              </tbody>
+            </table>`
+          : '<div class="sub" style="margin-top:10px;">Nenhum mês fechado ainda pelo Gestor — o saldo acima é só do mês atual, calculado em tempo real.</div>'
+      }
+    `;
   }
 
   function renderizarHoje(hoje) {

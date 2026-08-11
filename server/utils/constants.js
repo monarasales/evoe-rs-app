@@ -106,6 +106,15 @@ const MODALIDADES_TRABALHO = ["Presencial", "Home Office"];
 // "fora do local esperado" — dá uma margem para imprecisão normal do GPS do celular/notebook.
 const TOLERANCIA_PONTO_METROS = 500;
 
+// Banco de Horas: diferença (em minutos) entre horas trabalhadas e esperadas no dia que
+// é ignorada no saldo — evita gerar banco de horas por poucos minutos de imprecisão na
+// batida. Limite semanal de saldo (positivo ou negativo, em horas) a partir do qual o
+// Gestor recebe um aviso visual no Controle de Ponto, pra não deixar acumular demais
+// antes do fechamento do mês. Ambos editáveis pelo Gestor, junto com a tolerância de
+// localização (ver TOLERANCIA_PONTO_METROS acima).
+const TOLERANCIA_BANCO_HORAS_MINUTOS = 10;
+const LIMITE_SALDO_SEMANAL_HORAS = 2;
+
 // Comissão por fechamento de vaga: valor fixo pago ao consultor responsável quando a
 // vaga fecha (11. Aprovado) dentro do SLA ideal (SLA_DIAS_IDEAL dias, ver abaixo).
 // Vagas de Reposição nunca geram comissão, pois não são uma nova colocação vendida.
@@ -180,6 +189,8 @@ module.exports = {
   DIAS_SEMANA,
   MODALIDADES_TRABALHO,
   TOLERANCIA_PONTO_METROS,
+  TOLERANCIA_BANCO_HORAS_MINUTOS,
+  LIMITE_SALDO_SEMANAL_HORAS,
   VALOR_COMISSAO_FECHAMENTO,
   TIPOS_COBRANCA_CONTRATO,
   SERVICOS_PROSPECT,

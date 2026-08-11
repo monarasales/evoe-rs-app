@@ -8,6 +8,8 @@ const {
   DIAS_ALERTA_PRAZO,
   META_VAGAS_FECHADAS_MES,
   TOLERANCIA_PONTO_METROS,
+  TOLERANCIA_BANCO_HORAS_MINUTOS,
+  LIMITE_SALDO_SEMANAL_HORAS,
 } = require("../utils/constants");
 
 const router = express.Router();
@@ -29,7 +31,21 @@ function getParamPonto() {
   const parametros = db.readCollection("parametros");
   let param = parametros.find((p) => p.chave === "ponto");
   if (!param) {
-    param = db.insert("parametros", { chave: "ponto", toleranciaMetros: TOLERANCIA_PONTO_METROS });
+    param = db.insert("parametros", {
+      chave: "ponto",
+      toleranciaMetros: TOLERANCIA_PONTO_METROS,
+      toleranciaBancoHorasMinutos: TOLERANCIA_BANCO_HORAS_MINUTOS,
+      limiteSaldoSemanalHoras: LIMITE_SALDO_SEMANAL_HORAS,
+    });
+  } else if (param.toleranciaBancoHorasMinutos === undefined || param.limiteSaldoSemanalHoras === undefined) {
+    // Instalações anteriores ao Banco de Horas não tinham esses dois campos —
+    // preenche com o padrão na primeira leitura, sem exigir ação manual do Gestor.
+    param = db.update("parametros", param.id, {
+      toleranciaBancoHorasMinutos:
+        param.toleranciaBancoHorasMinutos === undefined ? TOLERANCIA_BANCO_HORAS_MINUTOS : param.toleranciaBancoHorasMinutos,
+      limiteSaldoSemanalHoras:
+        param.limiteSaldoSemanalHoras === undefined ? LIMITE_SALDO_SEMANAL_HORAS : param.limiteSaldoSemanalHoras,
+    });
   }
   return param;
 }
@@ -48,6 +64,8 @@ router.get("/", requireAuth, (req, res) => {
     metaVagasFechadasMes: META_VAGAS_FECHADAS_MES,
     proximoNumeroContrato: paramContratos.proximoNumero,
     toleranciaPontoMetros: paramPonto.toleranciaMetros,
+    toleranciaBancoHorasMinutos: paramPonto.toleranciaBancoHorasMinutos,
+    limiteSaldoSemanalHoras: paramPonto.limiteSaldoSemanalHoras,
   });
 });
 
@@ -69,6 +87,28 @@ router.patch("/tolerancia-ponto", requireAuth, requireGestor, (req, res) => {
   const paramPonto = getParamPonto();
   const atualizado = db.update("parametros", paramPonto.id, { toleranciaMetros: valor });
   res.json({ toleranciaPontoMetros: atualizado.toleranciaMetros });
+});
+
+// Banco de Horas: tolerância diária (minutos ignorados no saldo) e limite semanal de
+// saldo (aviso visual no Controle de Ponto) — editáveis pelo Gestor.
+router.patch("/banco-horas", requireAuth, requireGestor, (req, res) => {
+  const toleranciaMinutos = Number(req.body && req.body.toleranciaMinutos);
+  const limiteSemanalHoras = Number(req.body && req.body.limiteSemanalHoras);
+  if (!Number.isInteger(toleranciaMinutos) || toleranciaMinutos < 0 || toleranciaMinutos > 60) {
+    return res.status(400).json({ erro: "Informe uma tolerância em minutos válida (entre 0 e 60)." });
+  }
+  if (!Number.isFinite(limiteSemanalHoras) || limiteSemanalHoras <= 0) {
+    return res.status(400).json({ erro: "Informe um limite semanal de horas válido (maior que zero)." });
+  }
+  const paramPonto = getParamPonto();
+  const atualizado = db.update("parametros", paramPonto.id, {
+    toleranciaBancoHorasMinutos: toleranciaMinutos,
+    limiteSaldoSemanalHoras: limiteSemanalHoras,
+  });
+  res.json({
+    toleranciaBancoHorasMinutos: atualizado.toleranciaBancoHorasMinutos,
+    limiteSaldoSemanalHoras: atualizado.limiteSaldoSemanalHoras,
+  });
 });
 
 module.exports = router;
