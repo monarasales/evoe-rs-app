@@ -34,7 +34,10 @@ function toleranciaConfigurada() {
 
 // Recalcula horasTrabalhadas/saldoHoras de um registro (considerando a pausa de
 // almoço, se houver) após qualquer alteração — batida normal, correção manual ou
-// lançamento manual.
+// lançamento manual. saldoHoras é SEMPRE a diferença entre trabalhado e esperado —
+// nunca o total trabalhado — então "hora extra" é sempre só o excedente, nunca o
+// expediente inteiro (ver comHorasAoVivo/horasEsperadasNoDia logo abaixo: o cuidado
+// real está em garantir que horasEsperadas chegue aqui correto, não zerado).
 // Banco de Horas: diferenças pequenas (dentro da tolerância configurada, ver
 // getParamPonto) não geram saldo — evita contabilizar minutos de imprecisão normal
 // na hora de bater o ponto. Acima da tolerância, o saldo é a diferença cheia (não
@@ -46,6 +49,26 @@ function recalcularHoras(registro) {
   const toleranciaHoras = (Number(getParamPonto().toleranciaBancoHorasMinutos) || 0) / 60;
   const saldoHoras = Math.abs(diferenca) <= toleranciaHoras ? 0 : Math.round(diferenca * 100) / 100;
   return { horasTrabalhadas, saldoHoras };
+}
+
+// Recalcula horasEsperadas/horasTrabalhadas/saldoHoras de um registro "ao vivo", com
+// base no horário esperado ATUAL do funcionário — em vez de confiar só no valor que
+// ficou gravado no dia em que o ponto foi batido. Isso corrige sozinho registros
+// antigos cujo horário só foi cadastrado (ou corrigido) DEPOIS do dia já ter sido
+// batido — sem isso, o dia ficava com horasEsperadas=0 pra sempre e o sistema
+// contabilizava o expediente inteiro como "hora extra", o que é claramente errado.
+// Meses já FECHADOS no Banco de Horas não são recalculados — o número ali já foi
+// revisado e decidido pelo Gestor no fechamento, então fica travado como está.
+function comHorasAoVivo(registro, consultoresPorId) {
+  if (mesFechadoPara(registro.consultorId, registro.data)) return registro;
+  const consultor = consultoresPorId[registro.consultorId];
+  if (!consultor) return registro;
+  const horasEsperadas = horasEsperadasNoDia(consultor, registro.data);
+  if (registro.horaSaida) {
+    const { horasTrabalhadas, saldoHoras } = recalcularHoras({ ...registro, horasEsperadas });
+    return { ...registro, horasEsperadas, horasTrabalhadas, saldoHoras };
+  }
+  return { ...registro, horasEsperadas };
 }
 
 // Registro de ponto do dia do próprio usuário logado (ou null, se ainda não bateu
@@ -206,7 +229,12 @@ router.post("/bater-saida", requireAuth, (req, res) => {
     patch.saidaForaDoLocal = avaliacao.foraDoLocal;
   }
 
-  const { horasTrabalhadas, saldoHoras } = recalcularHoras({ ...ponto, horaSaida });
+  // Recalcula horasEsperadas com o horário ATUAL da pessoa (não o que estava salvo
+  // desde a entrada) — corrige sozinho o caso de o horário ter sido cadastrado/
+  // corrigido depois da entrada já batida.
+  const horasEsperadasAtual = horasEsperadasNoDia(req.consultor, ponto.data);
+  const { horasTrabalhadas, saldoHoras } = recalcularHoras({ ...ponto, horaSaida, horasEsperadas: horasEsperadasAtual });
+  patch.horasEsperadas = horasEsperadasAtual;
   patch.horasTrabalhadas = horasTrabalhadas;
   patch.saldoHoras = saldoHoras;
 
@@ -214,18 +242,129 @@ router.post("/bater-saida", requireAuth, (req, res) => {
   res.json(atualizado);
 });
 
-// Histórico do próprio funcionário (tela "Meu Ponto").
+// Botão único de "Bater Ponto": a pessoa clica um botão só, todo santo dia, e o
+// sistema decide sozinho qual é a próxima batida (entrada → saída do almoço → volta
+// do almoço → saída final) e preenche na hora — sem precisar escolher entre vários
+// botões diferentes. Substitui bater-entrada/pausa-saida/pausa-entrada/bater-saida
+// como o fluxo principal da tela "Meu Ponto" (as rotas separadas continuam existindo,
+// mas deixam de ser usadas pelo botão único).
+router.post("/bater", requireAuth, (req, res) => {
+  if (!usaControlePonto(req.consultor)) {
+    return res.status(403).json({ erro: "O Controle de Ponto não está habilitado para o seu cadastro." });
+  }
+
+  const { lat, lng } = req.body || {};
+  const ponto = pontoDeHoje(req.consultor.id);
+  const localizacaoValida = typeof lat === "number" && typeof lng === "number";
+
+  // 1) Sem registro hoje ainda → bate a ENTRADA (cria o registro do dia).
+  if (!ponto) {
+    const data = hojeStrFuso();
+    const registro = {
+      consultorId: req.consultor.id,
+      data,
+      diaSemana: diaSemanaDe(data),
+      horaEntrada: agoraHHMM(),
+      entradaLat: null,
+      entradaLng: null,
+      entradaDistanciaMetros: null,
+      entradaForaDoLocal: false,
+      entradaReferencia: null,
+      pausaSaida: null,
+      pausaEntrada: null,
+      horaSaida: null,
+      saidaLat: null,
+      saidaLng: null,
+      saidaDistanciaMetros: null,
+      saidaForaDoLocal: false,
+      horasTrabalhadas: null,
+      horasEsperadas: horasEsperadasNoDia(req.consultor, data),
+      saldoHoras: null,
+    };
+    if (localizacaoValida) {
+      const avaliacao = avaliarLocalizacao(req.consultor, lat, lng, toleranciaConfigurada());
+      registro.entradaLat = lat;
+      registro.entradaLng = lng;
+      registro.entradaDistanciaMetros = avaliacao.distanciaMetros;
+      registro.entradaForaDoLocal = avaliacao.foraDoLocal;
+      registro.entradaReferencia = avaliacao.referencia;
+    }
+    const novo = db.insert("pontos", registro);
+    return res.status(201).json({ ...novo, acao: "entrada" });
+  }
+
+  // 2) Ponto do dia já completo → nada mais pra bater.
+  if (ponto.horaSaida) {
+    return res.status(400).json({ erro: "Seu ponto de hoje já está completo." });
+  }
+
+  const blocoHoje = blocoDoDia(req.consultor, ponto.data);
+  const temPausa = blocoHoje && Number(blocoHoje.pausaAlmocoMinutos) > 0;
+
+  // 3) Tem pausa configurada pra hoje e ainda não saiu pro almoço → bate a SAÍDA
+  // PARA O ALMOÇO.
+  if (temPausa && !ponto.pausaSaida) {
+    const patch = { pausaSaida: agoraHHMM() };
+    if (localizacaoValida) {
+      const avaliacao = avaliarLocalizacao(req.consultor, lat, lng, toleranciaConfigurada());
+      patch.pausaSaidaLat = lat;
+      patch.pausaSaidaLng = lng;
+      patch.pausaSaidaForaDoLocal = avaliacao.foraDoLocal;
+    }
+    const atualizado = db.update("pontos", ponto.id, patch);
+    return res.json({ ...atualizado, acao: "pausa-saida" });
+  }
+
+  // 4) Já saiu pro almoço e ainda não voltou → bate a VOLTA DO ALMOÇO.
+  if (temPausa && ponto.pausaSaida && !ponto.pausaEntrada) {
+    const patch = { pausaEntrada: agoraHHMM() };
+    if (localizacaoValida) {
+      const avaliacao = avaliarLocalizacao(req.consultor, lat, lng, toleranciaConfigurada());
+      patch.pausaEntradaLat = lat;
+      patch.pausaEntradaLng = lng;
+      patch.pausaEntradaForaDoLocal = avaliacao.foraDoLocal;
+    }
+    const atualizado = db.update("pontos", ponto.id, patch);
+    return res.json({ ...atualizado, acao: "pausa-entrada" });
+  }
+
+  // 5) Sem pausa pendente → bate a SAÍDA FINAL do expediente.
+  const horaSaida = agoraHHMM();
+  const patch = { horaSaida };
+  if (localizacaoValida) {
+    const avaliacao = avaliarLocalizacao(req.consultor, lat, lng, toleranciaConfigurada());
+    patch.saidaLat = lat;
+    patch.saidaLng = lng;
+    patch.saidaDistanciaMetros = avaliacao.distanciaMetros;
+    patch.saidaForaDoLocal = avaliacao.foraDoLocal;
+  }
+  const horasEsperadasAtual = horasEsperadasNoDia(req.consultor, ponto.data);
+  const { horasTrabalhadas, saldoHoras } = recalcularHoras({ ...ponto, horaSaida, horasEsperadas: horasEsperadasAtual });
+  patch.horasEsperadas = horasEsperadasAtual;
+  patch.horasTrabalhadas = horasTrabalhadas;
+  patch.saldoHoras = saldoHoras;
+  const atualizado = db.update("pontos", ponto.id, patch);
+  res.json({ ...atualizado, acao: "saida" });
+});
+
+// Histórico do próprio funcionário (tela "Meu Ponto"). Recalculado ao vivo (ver
+// comHorasAoVivo) pra nunca mostrar um saldo errado por causa de um horário esperado
+// desatualizado — meses já fechados no Banco de Horas continuam travados como estavam.
 router.get("/meu", requireAuth, (req, res) => {
+  const consultoresPorId = Object.fromEntries(db.readCollection("consultores").map((c) => [c.id, c]));
   const registros = db
     .readCollection("pontos")
     .filter((p) => p.consultorId === req.consultor.id)
+    .map((p) => comHorasAoVivo(p, consultoresPorId))
     .sort((a, b) => b.data.localeCompare(a.data));
   res.json(registros);
 });
 
 // Listagem completa (Gestor/Supervisora) — opcionalmente filtrada por consultor.
+// Recalculada ao vivo, mesma lógica de /meu acima.
 router.get("/", requireGestorOuSupervisora, (req, res) => {
-  let registros = db.readCollection("pontos");
+  const consultoresPorId = Object.fromEntries(db.readCollection("consultores").map((c) => [c.id, c]));
+  let registros = db.readCollection("pontos").map((p) => comHorasAoVivo(p, consultoresPorId));
   const { consultorId } = req.query;
   if (consultorId) registros = registros.filter((p) => p.consultorId === consultorId);
   registros = registros.sort((a, b) => b.data.localeCompare(a.data));
@@ -233,11 +372,15 @@ router.get("/", requireGestorOuSupervisora, (req, res) => {
 });
 
 // Resumo por funcionário num período (padrão: mês atual) — horas trabalhadas,
-// esperadas e saldo (hora extra ou desconto), além de avisos (fora do local,
-// dias sem bater saída).
+// esperadas e saldo (hora extra ou desconto), além de avisos (fora do local, dias sem
+// bater saída, dias sem horário esperado configurado). Recalculado ao vivo (ver
+// comHorasAoVivo) — nunca mostra o expediente inteiro como "hora extra" só porque o
+// horário esperado da pessoa ficou desatualizado ou nunca foi cadastrado.
 router.get("/resumo", requireGestorOuSupervisora, (req, res) => {
-  const consultores = db.readCollection("consultores").filter(usaControlePonto);
-  const registros = db.readCollection("pontos");
+  const todosConsultores = db.readCollection("consultores");
+  const consultoresPorId = Object.fromEntries(todosConsultores.map((c) => [c.id, c]));
+  const consultores = todosConsultores.filter(usaControlePonto);
+  const registros = db.readCollection("pontos").map((p) => comHorasAoVivo(p, consultoresPorId));
   const hoje = hojeStrFuso();
   const inicio = req.query.inicio || `${hoje.slice(0, 7)}-01`;
   const fim = req.query.fim || hoje;
@@ -251,6 +394,7 @@ router.get("/resumo", requireGestorOuSupervisora, (req, res) => {
       horasTrabalhadas: Math.round(horasTrabalhadas * 100) / 100,
       horasEsperadas: Math.round(horasEsperadas * 100) / 100,
       saldoHoras: Math.round((horasTrabalhadas - horasEsperadas) * 100) / 100,
+      diasSemHorarioConfigurado: doPeriodo.filter((p) => p.horaSaida && !p.horasEsperadas).length,
       diasComPonto: doPeriodo.length,
       diasForaDoLocal: doPeriodo.filter((p) => p.entradaForaDoLocal || p.saidaForaDoLocal).length,
       diasSemSaida: doPeriodo.filter((p) => !p.horaSaida).length,
@@ -291,8 +435,16 @@ router.patch("/:id", requireGestor, (req, res) => {
     }
   }
 
+  // Recalcula horasEsperadas com o horário ATUAL da pessoa dona do ponto (não
+  // necessariamente req.consultor, que aqui é quem está corrigindo) — mesma lógica
+  // de bater-saída, pra nunca corrigir um horário e ainda assim ficar com o saldo
+  // errado por causa de um horasEsperadas desatualizado.
+  const consultorDoPonto = db.findById("consultores", registro.consultorId);
+  const horasEsperadasAtual = consultorDoPonto ? horasEsperadasNoDia(consultorDoPonto, registro.data) : registro.horasEsperadas || 0;
+
   const mesclado = {
     ...registro,
+    horasEsperadas: horasEsperadasAtual,
     horaEntrada: horaEntrada !== undefined ? horaEntrada : registro.horaEntrada,
     horaSaida: horaSaida !== undefined ? horaSaida : registro.horaSaida,
     pausaSaida: pausaSaida !== undefined ? pausaSaida : registro.pausaSaida,
@@ -323,6 +475,7 @@ router.patch("/:id", requireGestor, (req, res) => {
     horaSaida: mesclado.horaSaida,
     pausaSaida: mesclado.pausaSaida,
     pausaEntrada: mesclado.pausaEntrada,
+    horasEsperadas: horasEsperadasAtual,
     horasTrabalhadas,
     saldoHoras,
     corrigidoManualmente: true,

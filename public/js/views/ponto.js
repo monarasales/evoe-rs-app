@@ -815,134 +815,76 @@ async function renderMeuPonto(root) {
     `;
   }
 
+  // Determina qual é a PRÓXIMA batida a partir do estado de hoje — mesma lógica do
+  // backend (POST /api/ponto/bater), só pra decidir o texto do botão único sem
+  // precisar de uma chamada extra ao servidor.
+  function proximaBatida(hoje, temPausa) {
+    if (!hoje) return { rotulo: "Bater Entrada", mensagemSucesso: "Entrada registrada." };
+    if (hoje.horaSaida) return null; // dia completo
+    if (temPausa && !hoje.pausaSaida) return { rotulo: "Sair para o Almoço", mensagemSucesso: "Saída para o almoço registrada." };
+    if (temPausa && hoje.pausaSaida && !hoje.pausaEntrada) return { rotulo: "Voltar do Almoço", mensagemSucesso: "Volta do almoço registrada." };
+    return { rotulo: "Bater Saída", mensagemSucesso: "Saída registrada." };
+  }
+
   function renderizarHoje(hoje) {
     const cardEl = root.querySelector("#ponto-hoje-card");
-    if (!hoje) {
-      cardEl.innerHTML = `
-        <div class="kpi-row">
-          <div class="kpi-card">
-            <div class="kpi-label">Entrada de hoje</div>
-            <div class="kpi-value">—</div>
-            <button id="btn-bater-entrada" class="btn btn-primary btn-sm" style="margin-top:8px;">Bater Entrada</button>
-          </div>
-        </div>
-      `;
-      const btnEntrada = cardEl.querySelector("#btn-bater-entrada");
-      btnEntrada.addEventListener("click", async () => {
-        btnEntrada.disabled = true;
-        btnEntrada.textContent = "Registrando...";
-        try {
-          const localizacao = await obterLocalizacao();
-          await api.post("/api/ponto/bater-entrada", localizacao || {});
-          showToast("Entrada registrada.", "sucesso");
-          carregar();
-        } catch (err) {
-          showToast(err.message, "erro");
-          btnEntrada.disabled = false;
-          btnEntrada.textContent = "Bater Entrada";
-        }
-      });
-      return;
-    }
     // store.consultores já vem carregado no boot — usado pra achar o bloco de
-    // horário que vale PARA HOJE (hoje.diaSemana vem do servidor, já no fuso
-    // certo) e decidir se a pausa de almoço se aplica hoje. A mesma pessoa pode
-    // ter pausa numa Segunda e não ter na Terça, por exemplo.
+    // horário que vale PARA HOJE e decidir se a pausa de almoço se aplica hoje. A
+    // mesma pessoa pode ter pausa numa Segunda e não ter na Terça, por exemplo.
     const meuRegistro = store.consultores.find((c) => c.id === store.usuario.id);
-    const blocoHoje = meuRegistro ? blocoDoDia(meuRegistro.horarioEsperado, hoje.diaSemana) : null;
-    const pausaMinutos = blocoHoje ? Number(blocoHoje.pausaAlmocoMinutos) || 0 : 0;
-    const temPausa = pausaMinutos > 0;
-    const aguardandoVoltaAlmoco = temPausa && hoje.pausaSaida && !hoje.pausaEntrada;
+    const diaSemanaHoje = hoje ? hoje.diaSemana : new Intl.DateTimeFormat("pt-BR", { weekday: "long" }).format(new Date());
+    const blocoHoje = meuRegistro ? blocoDoDia(meuRegistro.horarioEsperado, diaSemanaHoje) : null;
+    const temPausa = blocoHoje ? (Number(blocoHoje.pausaAlmocoMinutos) || 0) > 0 : false;
+    const proxima = proximaBatida(hoje, temPausa);
+
     cardEl.innerHTML = `
       <div class="kpi-row">
         <div class="kpi-card">
-          <div class="kpi-label">Entrada de hoje</div>
-          <div class="kpi-value">${hoje.horaEntrada}</div>
-          ${hoje.entradaForaDoLocal ? '<div class="sub" style="color:var(--danger); margin-top:4px;">⚠️ Fora do local esperado</div>' : ""}
+          <div class="kpi-label">Entrada</div>
+          <div class="kpi-value">${hoje ? hoje.horaEntrada : "—"}</div>
+          ${hoje && hoje.entradaForaDoLocal ? '<div class="sub" style="color:var(--danger); margin-top:4px;">⚠️ Fora do local esperado</div>' : ""}
         </div>
         ${
           temPausa
             ? `<div class="kpi-card">
                 <div class="kpi-label">Almoço</div>
-                <div class="kpi-value" style="font-size:16px;">${hoje.pausaSaida || "—"} → ${hoje.pausaEntrada || "—"}</div>
-                ${
-                  !hoje.horaSaida && !hoje.pausaSaida
-                    ? '<button id="btn-pausa-saida" class="btn btn-outline btn-sm" style="margin-top:8px;">Sair para o Almoço</button>'
-                    : ""
-                }
-                ${
-                  !hoje.horaSaida && aguardandoVoltaAlmoco
-                    ? '<button id="btn-pausa-entrada" class="btn btn-outline btn-sm" style="margin-top:8px;">Voltar do Almoço</button>'
-                    : ""
-                }
+                <div class="kpi-value" style="font-size:16px;">${(hoje && hoje.pausaSaida) || "—"} → ${(hoje && hoje.pausaEntrada) || "—"}</div>
               </div>`
             : ""
         }
         <div class="kpi-card">
-          <div class="kpi-label">Saída de hoje</div>
-          <div class="kpi-value">${hoje.horaSaida || "—"}</div>
-          ${
-            !hoje.horaSaida && !aguardandoVoltaAlmoco
-              ? '<button id="btn-bater-saida" class="btn btn-primary btn-sm" style="margin-top:8px;">Bater Saída</button>'
-              : ""
-          }
-          ${aguardandoVoltaAlmoco ? '<div class="sub" style="margin-top:8px;">Bata a volta do almoço antes de sair.</div>' : ""}
+          <div class="kpi-label">Saída</div>
+          <div class="kpi-value">${(hoje && hoje.horaSaida) || "—"}</div>
         </div>
         <div class="kpi-card">
           <div class="kpi-label">Horas hoje</div>
-          <div class="kpi-value">${hoje.horasTrabalhadas != null ? hoje.horasTrabalhadas + "h" : "—"}</div>
-          <div class="sub" style="margin-top:4px;">Esperado: ${hoje.horasEsperadas}h</div>
+          <div class="kpi-value">${hoje && hoje.horasTrabalhadas != null ? hoje.horasTrabalhadas + "h" : "—"}</div>
+          <div class="sub" style="margin-top:4px;">Esperado: ${hoje ? hoje.horasEsperadas : blocoHoje ? "" : "0"}h</div>
         </div>
       </div>
+      <div style="margin-top:14px;">
+        ${
+          proxima
+            ? `<button id="btn-bater-ponto" class="btn btn-primary">${proxima.rotulo}</button>`
+            : '<div class="tag tag-encerrada" style="font-size:14px;">✓ Ponto de hoje completo</div>'
+        }
+      </div>
     `;
-    const btn = cardEl.querySelector("#btn-bater-saida");
-    if (btn) {
+
+    const btn = cardEl.querySelector("#btn-bater-ponto");
+    if (btn && proxima) {
       btn.addEventListener("click", async () => {
         btn.disabled = true;
         btn.textContent = "Registrando...";
         try {
           const localizacao = await obterLocalizacao();
-          await api.post("/api/ponto/bater-saida", localizacao || {});
-          showToast("Saída registrada.", "sucesso");
+          await api.post("/api/ponto/bater", localizacao || {});
+          showToast(proxima.mensagemSucesso, "sucesso");
           carregar();
         } catch (err) {
           showToast(err.message, "erro");
           btn.disabled = false;
-          btn.textContent = "Bater Saída";
-        }
-      });
-    }
-    const btnPausaSaida = cardEl.querySelector("#btn-pausa-saida");
-    if (btnPausaSaida) {
-      btnPausaSaida.addEventListener("click", async () => {
-        btnPausaSaida.disabled = true;
-        btnPausaSaida.textContent = "Registrando...";
-        try {
-          const localizacao = await obterLocalizacao();
-          await api.post("/api/ponto/pausa-saida", localizacao || {});
-          showToast("Saída para o almoço registrada.", "sucesso");
-          carregar();
-        } catch (err) {
-          showToast(err.message, "erro");
-          btnPausaSaida.disabled = false;
-          btnPausaSaida.textContent = "Sair para o Almoço";
-        }
-      });
-    }
-    const btnPausaEntrada = cardEl.querySelector("#btn-pausa-entrada");
-    if (btnPausaEntrada) {
-      btnPausaEntrada.addEventListener("click", async () => {
-        btnPausaEntrada.disabled = true;
-        btnPausaEntrada.textContent = "Registrando...";
-        try {
-          const localizacao = await obterLocalizacao();
-          await api.post("/api/ponto/pausa-entrada", localizacao || {});
-          showToast("Volta do almoço registrada.", "sucesso");
-          carregar();
-        } catch (err) {
-          showToast(err.message, "erro");
-          btnPausaEntrada.disabled = false;
-          btnPausaEntrada.textContent = "Voltar do Almoço";
+          btn.textContent = proxima.rotulo;
         }
       });
     }
