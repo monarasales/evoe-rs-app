@@ -1,4 +1,4 @@
-// Componente de endereço reutilizável (Configurações > Funcionários e Meu Cadastro):
+// Componente de endereço reutilizável (Colaborador > Equipe e Meu Cadastro):
 // a pessoa digita só o CEP e o sistema preenche rua/bairro/cidade automaticamente
 // (via ViaCEP), com número e complemento em campos separados (porque às vezes é
 // apartamento). Não muda o formato salvo no banco — continua sendo uma única string
@@ -92,7 +92,14 @@ export function aplicarBuscaCep(prefixo) {
 // o que já estava — evita apagar um endereço válido só porque o formulário de CEP
 // ficou vazio (os campos não vêm pré-preenchidos a partir do texto salvo, já que uma
 // string livre antiga não dá pra "desmontar" com segurança em rua/número/bairro).
-export function montarEnderecoDosCampos(prefixo, enderecoAtual) {
+//
+// Devolve { endereco, erro }: se a pessoa preencheu só ALGUNS campos (ex: só o
+// número, pra corrigir o apartamento) sem completar rua/bairro/cidade, NÃO monta um
+// endereço pela metade por cima do que já estava salvo — devolve erro pedindo pra
+// completar os três campos essenciais, e quem chamar deve barrar o envio nesse caso.
+// Isso evita o problema de um cadastro preenchido "sumir"/ficar incompleto por causa
+// de uma edição parcial.
+export function montarEnderecoDosCampos(prefixo, enderecoAtual, rotulo) {
   const get = (sufixo) => {
     const el = document.getElementById(`${prefixo}-${sufixo}`);
     return el ? (el.value || "").trim() : "";
@@ -103,17 +110,22 @@ export function montarEnderecoDosCampos(prefixo, enderecoAtual) {
   const bairro = get("bairro");
   const cidade = get("cidade");
 
-  if (!logradouro && !numero && !complemento && !bairro && !cidade) {
-    return enderecoAtual || "";
+  const algumPreenchido = logradouro || numero || complemento || bairro || cidade;
+  if (!algumPreenchido) {
+    return { endereco: enderecoAtual || "", erro: null };
+  }
+
+  if (!logradouro || !bairro || !cidade) {
+    return {
+      endereco: null,
+      erro: `${rotulo || "Endereço"}: preencha ao menos Rua, Bairro e Cidade/UF para salvar a alteração (ou deixe todos os campos deste endereço em branco para manter o que já estava cadastrado).`,
+    };
   }
 
   let linha1 = logradouro;
   if (numero) linha1 += linha1 ? `, ${numero}` : numero;
   if (complemento) linha1 += linha1 ? ` - ${complemento}` : complemento;
 
-  const partes = [];
-  if (linha1) partes.push(linha1);
-  if (bairro) partes.push(bairro);
-  if (cidade) partes.push(cidade);
-  return partes.join(", ");
+  const partes = [linha1, bairro, cidade];
+  return { endereco: partes.join(", "), erro: null };
 }

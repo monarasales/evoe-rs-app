@@ -12,8 +12,8 @@ import { renderFinanceiro } from "./views/financeiro.js";
 import { renderComissoes } from "./views/comissoes.js";
 import { renderPonto } from "./views/ponto.js";
 import { renderMeuCadastro } from "./views/meuCadastro.js";
+import { renderEquipe } from "./views/equipe.js";
 import { renderSolicitacoesVaga } from "./views/solicitacoesVaga.js";
-import { obterLocalizacao } from "./geo.js";
 
 const loginScreen = document.getElementById("login-screen");
 const mainScreen = document.getElementById("main-screen");
@@ -27,8 +27,8 @@ const btnNotificacoes = document.getElementById("btn-notificacoes");
 const notifBadge = document.getElementById("notif-badge");
 
 // Estrutura de navegação da sidebar. "Recrutamento & Seleção" é o núcleo
-// operacional (funil + candidatos); "Configurações" reúne tudo que é
-// cadastro/ajuste (empresas, equipe, e futuramente parâmetros do sistema).
+// operacional (funil + candidatos); "Configurações" só tem os parâmetros de
+// operação do sistema — a ficha da equipe fica em Colaborador > Equipe.
 const NAV_SECOES = [
   {
     titulo: null,
@@ -63,12 +63,15 @@ const NAV_SECOES = [
       { href: "#/ponto", label: "Controle de Ponto", icone: "🕒", somentePonto: true },
       { href: "#/comissoes", label: "Comissões", icone: "🏆", somenteGestorOuSupervisora: true },
       { href: "#/meu-cadastro", label: "Meu Cadastro", icone: "🪪" },
+      // Ficha cadastro da equipe (era "Configurações > Funcionários") — mora aqui
+      // porque é sobre as pessoas do time, não um parâmetro do sistema.
+      { href: "#/equipe", label: "Equipe", icone: "🧑‍🤝‍🧑", somenteGestor: true },
     ],
   },
   {
     titulo: "Administração",
     itens: [
-      { href: "#/contratos", label: "Contratos", icone: "📝" },
+      { href: "#/contratos", label: "Contratos", icone: "📝", somenteGestor: true },
       { href: "#/configuracoes", label: "Configurações", icone: "⚙️" },
     ],
   },
@@ -157,10 +160,9 @@ const pontoWidgetTexto = document.getElementById("ponto-widget-texto");
 
 btnPontoWidget.addEventListener("click", () => navegarPara("#/ponto"));
 
-// Controle de Ponto: mostra na sidebar o horário da entrada batida automaticamente
-// no login (ver server/routes/auth.js) e, se o navegador ceder a localização,
-// anexa ela ao registro de hoje — tudo em segundo plano, sem travar o uso do
-// sistema mesmo se o estagiário negar a permissão de localização.
+// Controle de Ponto: mostra na sidebar o horário da entrada de hoje, se já foi
+// batida (a pessoa bate pelo botão em Controle de Ponto — ver ponto.js). Se ainda
+// não bateu, mantém o texto padrão "Ponto"; clicar sempre leva pra tela de bater.
 async function inicializarPontoDoDia() {
   if (!usaControlePonto()) {
     btnPontoWidget.classList.add("hidden");
@@ -171,13 +173,6 @@ async function inicializarPontoDoDia() {
     const hoje = await api.get("/api/ponto/hoje");
     if (!hoje) return;
     pontoWidgetTexto.textContent = hoje.horaSaida ? `Ponto: ${hoje.horaEntrada}–${hoje.horaSaida}` : `Entrada: ${hoje.horaEntrada}`;
-
-    if (hoje.entradaLat == null) {
-      const localizacao = await obterLocalizacao();
-      if (localizacao) {
-        await api.patch("/api/ponto/hoje/entrada-localizacao", localizacao);
-      }
-    }
   } catch (e) {
     /* silencioso: ponto é um extra, não pode travar o login por falha aqui */
   }
@@ -247,6 +242,7 @@ function registrarRotas() {
   registrarRota("/comissoes", renderComissoes);
   registrarRota("/ponto", renderPonto);
   registrarRota("/meu-cadastro", renderMeuCadastro);
+  registrarRota("/equipe", renderEquipe);
   registrarRota("/solicitacoes-vaga", renderSolicitacoesVaga);
 }
 

@@ -76,6 +76,52 @@ router.patch("/hoje/entrada-localizacao", requireAuth, (req, res) => {
   res.json(atualizado);
 });
 
+// Bater a ENTRADA — ação manual do funcionário ao chegar (clique no botão em "Meu
+// Ponto"). Cria o registro do dia só no primeiro clique; um segundo clique dá erro
+// claro em vez de duplicar ou sobrescrever o horário já batido.
+router.post("/bater-entrada", requireAuth, (req, res) => {
+  if (!usaControlePonto(req.consultor)) {
+    return res.status(403).json({ erro: "O Controle de Ponto não está habilitado para o seu cadastro." });
+  }
+  if (pontoDeHoje(req.consultor.id)) {
+    return res.status(400).json({ erro: "A entrada de hoje já foi registrada." });
+  }
+
+  const data = hojeStrFuso();
+  const { lat, lng } = req.body || {};
+  const registro = {
+    consultorId: req.consultor.id,
+    data,
+    diaSemana: diaSemanaDe(data),
+    horaEntrada: agoraHHMM(),
+    entradaLat: null,
+    entradaLng: null,
+    entradaDistanciaMetros: null,
+    entradaForaDoLocal: false,
+    entradaReferencia: null,
+    pausaSaida: null,
+    pausaEntrada: null,
+    horaSaida: null,
+    saidaLat: null,
+    saidaLng: null,
+    saidaDistanciaMetros: null,
+    saidaForaDoLocal: false,
+    horasTrabalhadas: null,
+    horasEsperadas: horasEsperadasNoDia(req.consultor, data),
+    saldoHoras: null,
+  };
+  if (typeof lat === "number" && typeof lng === "number") {
+    const avaliacao = avaliarLocalizacao(req.consultor, lat, lng, toleranciaConfigurada());
+    registro.entradaLat = lat;
+    registro.entradaLng = lng;
+    registro.entradaDistanciaMetros = avaliacao.distanciaMetros;
+    registro.entradaForaDoLocal = avaliacao.foraDoLocal;
+    registro.entradaReferencia = avaliacao.referencia;
+  }
+  const novo = db.insert("pontos", registro);
+  res.status(201).json(novo);
+});
+
 // Bater a SAÍDA para o almoço — só para quem tem pausa configurada no horário
 // esperado (pausaAlmocoMinutos > 0).
 router.post("/pausa-saida", requireAuth, (req, res) => {
@@ -221,6 +267,12 @@ router.get("/resumo", requireGestorOuSupervisora, (req, res) => {
 router.patch("/:id", requireGestor, (req, res) => {
   const registro = db.findById("pontos", req.params.id);
   if (!registro) return res.status(404).json({ erro: "Registro de ponto não encontrado." });
+  // Algumas pessoas com perfil Gestor podem ser bloqueadas (bloqueiaAutoCorrecaoPonto,
+  // ver cadastro do funcionário) de corrigir o PRÓPRIO ponto — mesmo tendo acesso de
+  // Gestor para o restante da equipe. Só quem não tem essa restrição pode se auto-corrigir.
+  if (registro.consultorId === req.consultor.id && req.consultor.bloqueiaAutoCorrecaoPonto) {
+    return res.status(403).json({ erro: "Você não tem permissão para corrigir o próprio ponto. Peça para outra pessoa com acesso de Gestor fazer essa correção." });
+  }
   if (mesFechadoPara(registro.consultorId, registro.data)) {
     return res.status(409).json({
       erro: `O mês ${registro.data.slice(0, 7)} já foi fechado no Banco de Horas. Reabra o mês em Controle de Ponto antes de corrigir este dia.`,
@@ -287,6 +339,9 @@ router.post("/manual", requireGestor, (req, res) => {
   const { consultorId, data, horaEntrada, horaSaida, pausaSaida, pausaEntrada } = req.body || {};
   const consultor = db.findById("consultores", consultorId);
   if (!consultor) return res.status(400).json({ erro: "Funcionário inválido." });
+  if (consultorId === req.consultor.id && req.consultor.bloqueiaAutoCorrecaoPonto) {
+    return res.status(403).json({ erro: "Você não tem permissão para lançar o próprio ponto manualmente. Peça para outra pessoa com acesso de Gestor fazer isso." });
+  }
   if (!data || !/^\d{4}-\d{2}-\d{2}$/.test(data)) {
     return res.status(400).json({ erro: "Data inválida. Use o formato AAAA-MM-DD." });
   }

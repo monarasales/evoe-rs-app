@@ -97,12 +97,14 @@ function montarDadosContrato(contrato) {
   };
 }
 
-router.get("/", requireAuth, (req, res) => {
+// Contratos é área só de Gestor — dados comerciais/financeiros da empresa, não
+// operacionais do funil. Consultores e Supervisora não têm acesso a nenhuma rota aqui.
+router.get("/", requireGestor, (req, res) => {
   const contratos = db.readCollection("contratos").sort((a, b) => (a.dataContrato < b.dataContrato ? 1 : -1));
   res.json(contratos.map(comDetalhes));
 });
 
-router.get("/:id", requireAuth, (req, res) => {
+router.get("/:id", requireGestor, (req, res) => {
   const contrato = db.findById("contratos", req.params.id);
   if (!contrato) return res.status(404).json({ erro: "Contrato não encontrado." });
   res.json(comDetalhes(contrato));
@@ -197,7 +199,7 @@ function validarVagasAdicionais(idsBrutos, vagaPrincipalId, empresaId, contratoI
   return { vagas };
 }
 
-router.post("/", requireAuth, (req, res) => {
+router.post("/", requireGestor, (req, res) => {
   const { vagaId, vagasAdicionaisIds } = req.body || {};
 
   if (!vagaId) return res.status(400).json({ erro: "Selecione a vaga para a qual o contrato será gerado." });
@@ -313,7 +315,7 @@ router.delete("/:id", requireAuth, requireGestor, (req, res) => {
   res.json({ ok: true });
 });
 
-router.get("/:id/pdf", requireAuth, async (req, res) => {
+router.get("/:id/pdf", requireGestor, async (req, res) => {
   const contrato = db.findById("contratos", req.params.id);
   if (!contrato) return res.status(404).json({ erro: "Contrato não encontrado." });
   try {
@@ -326,7 +328,7 @@ router.get("/:id/pdf", requireAuth, async (req, res) => {
   }
 });
 
-router.get("/:id/docx", requireAuth, async (req, res) => {
+router.get("/:id/docx", requireGestor, async (req, res) => {
   const contrato = db.findById("contratos", req.params.id);
   if (!contrato) return res.status(404).json({ erro: "Contrato não encontrado." });
   try {
@@ -339,7 +341,7 @@ router.get("/:id/docx", requireAuth, async (req, res) => {
   }
 });
 
-router.get("/:id/link-whatsapp", requireAuth, (req, res) => {
+router.get("/:id/link-whatsapp", requireGestor, (req, res) => {
   const contrato = db.findById("contratos", req.params.id);
   if (!contrato) return res.status(404).json({ erro: "Contrato não encontrado." });
   const empresa = db.findById("empresas", contrato.empresaId);
@@ -353,7 +355,7 @@ router.get("/:id/link-whatsapp", requireAuth, (req, res) => {
   res.json({ link });
 });
 
-router.post("/:id/enviar-email", requireAuth, async (req, res) => {
+router.post("/:id/enviar-email", requireGestor, async (req, res) => {
   const contrato = db.findById("contratos", req.params.id);
   if (!contrato) return res.status(404).json({ erro: "Contrato não encontrado." });
   const empresa = db.findById("empresas", contrato.empresaId);

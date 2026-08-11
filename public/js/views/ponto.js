@@ -189,6 +189,85 @@ function abrirModalPontoManual(consultores, aoSalvar) {
   });
 }
 
+// Funcionário registra uma ocorrência (não conseguiu bater o ponto no horário certo)
+// pra um dia específico — não precisa ser hoje, pode ser um dia recente que esqueceu.
+function abrirModalRegistrarOcorrencia(aoSalvar) {
+  abrirModal(`
+    <h2>Registrar Ocorrência de Ponto</h2>
+    <p class="sub">Explique o que aconteceu — o Gestor avalia e, se aceitar, corrige seu ponto manualmente.</p>
+    <form id="form-registrar-ocorrencia">
+      <div class="form-row"><label>Data</label><input type="date" id="oc-data" required max="${new Date().toISOString().slice(0, 10)}" value="${new Date().toISOString().slice(0, 10)}" /></div>
+      <div class="form-row"><label>O que aconteceu?</label><textarea id="oc-motivo" rows="3" required placeholder="ex: esqueci de bater a entrada, celular sem internet, etc."></textarea></div>
+      <div id="registrar-ocorrencia-erro" class="form-erro hidden"></div>
+      <div class="modal-close-row">
+        <button type="button" id="btn-cancelar-oc" class="btn btn-outline">Fechar</button>
+        <button type="submit" class="btn btn-primary">Enviar</button>
+      </div>
+    </form>
+  `);
+  document.getElementById("btn-cancelar-oc").addEventListener("click", fecharModal);
+  document.getElementById("form-registrar-ocorrencia").addEventListener("submit", async (ev) => {
+    ev.preventDefault();
+    const erroEl = document.getElementById("registrar-ocorrencia-erro");
+    erroEl.classList.add("hidden");
+    try {
+      await api.post("/api/ocorrencias-ponto", {
+        data: document.getElementById("oc-data").value,
+        motivo: document.getElementById("oc-motivo").value.trim(),
+      });
+      showToast("Ocorrência enviada para o Gestor.", "sucesso");
+      fecharModal();
+      aoSalvar();
+    } catch (err) {
+      erroEl.textContent = err.message;
+      erroEl.classList.remove("hidden");
+    }
+  });
+}
+
+// Aceita ou recusa a justificativa de uma ocorrência de ponto. Aceitar NÃO corrige o
+// ponto sozinho — o Gestor ainda precisa usar "Editar"/"+ Registrar manualmente" pra
+// ajustar o horário de verdade, decisão explícita da usuária de manter esse controle
+// sempre nas mãos dela.
+function abrirModalResponderOcorrencia(ocorrencia, nomeConsultor, statusEscolhido, aoSalvar) {
+  const aceitando = statusEscolhido === "Aprovada";
+  abrirModal(`
+    <h2>${aceitando ? "Aceitar" : "Recusar"} Ocorrência — ${escapeHtml(nomeConsultor)}</h2>
+    <p class="sub">${formatarDataCurta(ocorrencia.data)} — motivo informado: "${escapeHtml(ocorrencia.motivo)}"</p>
+    ${
+      aceitando
+        ? '<div class="sub" style="margin-top:-6px;">Isso só registra que a justificativa foi aceita — o horário em si continua precisando ser corrigido manualmente ("Editar" ou "+ Registrar manualmente" na lista de dias).</div>'
+        : ""
+    }
+    <form id="form-responder-ocorrencia">
+      <div class="form-row"><label>Observação (opcional)</label><textarea id="ro-observacao" rows="2" placeholder="${aceitando ? "ex: corrigido no dia X" : "ex: justificativa não procede"}"></textarea></div>
+      <div id="responder-ocorrencia-erro" class="form-erro hidden"></div>
+      <div class="modal-close-row">
+        <button type="button" id="btn-cancelar-ro" class="btn btn-outline">Fechar</button>
+        <button type="submit" class="btn ${aceitando ? "btn-primary" : "btn-outline"}">${aceitando ? "Aceitar" : "Recusar"}</button>
+      </div>
+    </form>
+  `);
+  document.getElementById("btn-cancelar-ro").addEventListener("click", fecharModal);
+  document.getElementById("form-responder-ocorrencia").addEventListener("submit", async (ev) => {
+    ev.preventDefault();
+    const erroEl = document.getElementById("responder-ocorrencia-erro");
+    erroEl.classList.add("hidden");
+    try {
+      await api.patch(`/api/ocorrencias-ponto/${ocorrencia.id}/responder`, {
+        status: statusEscolhido,
+        respostaObservacao: document.getElementById("ro-observacao").value,
+      });
+      showToast(aceitando ? "Ocorrência aceita." : "Ocorrência recusada.", "sucesso");
+      fecharModal();
+      aoSalvar();
+    } catch (err) {
+      erroEl.textContent = err.message;
+      erroEl.classList.remove("hidden");
+    }
+  });
+}
+
 // Banco de Horas de um funcionário: histórico de meses fechados (com o saldo que foi
 // transportado) + fechamento do próximo mês em aberto. Fechar um mês só TRAVA os
 // registros de ponto dele contra edição — o sistema nunca decide sozinho se o saldo
@@ -402,11 +481,70 @@ async function renderGestor(root) {
         ${isGestor() ? '<button id="btn-ponto-manual" class="btn btn-outline btn-sm">+ Registrar manualmente</button>' : ""}
       </div>
     </div>
+    ${isGestor() ? '<div id="ocorrencias-pendentes-card" style="margin-bottom:18px;"></div>' : ""}
     <div id="ponto-conteudo"></div>
   `;
 
   const conteudo = root.querySelector("#ponto-conteudo");
   const periodoSelect = root.querySelector("#ponto-periodo");
+
+  // ---------- Ocorrências de Ponto pendentes (só o Gestor vê e responde) ----------
+  async function carregarOcorrenciasPendentes() {
+    const cardEl = root.querySelector("#ocorrencias-pendentes-card");
+    if (!cardEl) return;
+    const pendentes = await api.get("/api/ocorrencias-ponto?status=Pendente");
+    if (pendentes.length === 0) {
+      cardEl.innerHTML = "";
+      return;
+    }
+    cardEl.innerHTML = `
+      <div class="card" style="border-left:4px solid var(--danger, #c0392b);">
+        <h3 class="section-title" style="margin-top:0;">⚠️ Ocorrências de Ponto pendentes (${pendentes.length})</h3>
+        <table>
+          <thead><tr><th>Funcionário</th><th>Data</th><th>Motivo</th><th></th></tr></thead>
+          <tbody>
+            ${pendentes
+              .map((o) => {
+                const nome = (store.consultores.find((c) => c.id === o.consultorId) || {}).nome || "—";
+                return `
+              <tr data-id="${o.id}">
+                <td>${escapeHtml(nome)}</td>
+                <td>${formatarDataCurta(o.data)}</td>
+                <td>${escapeHtml(o.motivo)}</td>
+                <td style="white-space:nowrap;">
+                  <button class="btn btn-primary btn-sm btn-ocorrencia-aceitar">Aceitar</button>
+                  <button class="btn btn-outline btn-sm btn-ocorrencia-recusar" style="color:#c0392b;">Recusar</button>
+                </td>
+              </tr>`;
+              })
+              .join("")}
+          </tbody>
+        </table>
+      </div>
+    `;
+    cardEl.querySelectorAll(".btn-ocorrencia-aceitar").forEach((btn) => {
+      btn.addEventListener("click", (e) => {
+        const id = e.target.closest("tr").dataset.id;
+        const ocorrencia = pendentes.find((o) => o.id === id);
+        const nome = (store.consultores.find((c) => c.id === ocorrencia.consultorId) || {}).nome || "—";
+        abrirModalResponderOcorrencia(ocorrencia, nome, "Aprovada", () => {
+          carregarOcorrenciasPendentes();
+          carregar();
+        });
+      });
+    });
+    cardEl.querySelectorAll(".btn-ocorrencia-recusar").forEach((btn) => {
+      btn.addEventListener("click", (e) => {
+        const id = e.target.closest("tr").dataset.id;
+        const ocorrencia = pendentes.find((o) => o.id === id);
+        const nome = (store.consultores.find((c) => c.id === ocorrencia.consultorId) || {}).nome || "—";
+        abrirModalResponderOcorrencia(ocorrencia, nome, "Rejeitada", () => {
+          carregarOcorrenciasPendentes();
+          carregar();
+        });
+      });
+    });
+  }
 
   async function carregar() {
     const [tipo, offsetStr] = periodoValor.split(":");
@@ -420,7 +558,7 @@ async function renderGestor(root) {
   function renderizarResumo(dados, modoSemanal) {
     if (dados.resumo.length === 0) {
       conteudo.innerHTML =
-        '<div class="empty-state">Ninguém com Controle de Ponto habilitado ainda. Marque "Usa Controle de Ponto" no cadastro da pessoa em Configurações &gt; Funcionários.</div>';
+        '<div class="empty-state">Ninguém com Controle de Ponto habilitado ainda. Marque "Usa Controle de Ponto" no cadastro da pessoa em Colaborador &gt; Equipe.</div>';
       return;
     }
     conteudo.innerHTML = `
@@ -505,7 +643,11 @@ async function renderGestor(root) {
                     <td>${p.horasTrabalhadas != null ? p.horasTrabalhadas + "h" : "—"}</td>
                     <td>${p.horasEsperadas}h</td>
                     <td>${p.horasTrabalhadas != null ? tagSaldo(p.saldoHoras) : "—"}</td>
-                    <td>${isGestor() ? '<button class="btn btn-outline btn-sm btn-editar-ponto">Editar</button>' : ""}</td>
+                    <td>${
+                      isGestor() && !(consultor.id === store.usuario.id && store.usuario.bloqueiaAutoCorrecaoPonto)
+                        ? '<button class="btn btn-outline btn-sm btn-editar-ponto">Editar</button>'
+                        : ""
+                    }</td>
                   </tr>`
                   )
                   .join("")}
@@ -533,15 +675,21 @@ async function renderGestor(root) {
   const btnPontoManual = root.querySelector("#btn-ponto-manual");
   if (btnPontoManual) {
     btnPontoManual.addEventListener("click", () => {
+      // Quem tem bloqueiaAutoCorrecaoPonto não aparece como opção pra si mesma aqui —
+      // o backend já barra, isso só evita a pessoa escolher a própria linha à toa.
       const consultores = (ultimoResumo && ultimoResumo.resumo.map((r) => r.consultor)) || [];
-      if (consultores.length === 0) {
+      const consultoresDisponiveis = consultores.filter(
+        (c) => !(c.id === store.usuario.id && store.usuario.bloqueiaAutoCorrecaoPonto)
+      );
+      if (consultoresDisponiveis.length === 0) {
         showToast('Ninguém com Controle de Ponto habilitado ainda. Marque "Usa Controle de Ponto" no cadastro da pessoa primeiro.', "erro");
         return;
       }
-      abrirModalPontoManual(consultores, carregar);
+      abrirModalPontoManual(consultoresDisponiveis, carregar);
     });
   }
 
+  if (isGestor()) await carregarOcorrenciasPendentes();
   await carregar();
 }
 
@@ -551,25 +699,66 @@ async function renderMeuPonto(root) {
     <div class="view-header">
       <div>
         <h2>Meu Ponto</h2>
-        <div class="sub">A entrada é batida automaticamente quando você faz login. Não esqueça de bater a saída (e a pausa de almoço, quando houver) ao final do expediente.</div>
+        <div class="sub">Bata o ponto clicando nos botões: entrada ao chegar, pausa ao sair/voltar do almoço (quando houver) e saída ao final do expediente.</div>
       </div>
+      <button id="btn-registrar-ocorrencia" class="btn btn-outline btn-sm">+ Registrar Ocorrência</button>
     </div>
     <div id="ponto-hoje-card" class="card" style="margin-bottom:18px;"></div>
+    <h3 class="section-title">Minhas Ocorrências</h3>
+    <div class="sub" style="margin-top:-6px; margin-bottom:8px;">Não conseguiu bater o ponto no horário certo (esqueceu, imprevisto, problema técnico)? Registre aqui o motivo — o Gestor avalia e, se aceitar, corrige seu ponto.</div>
+    <div id="ponto-ocorrencias-lista" style="margin-bottom:18px;"></div>
     <h3 class="section-title">Meu Banco de Horas</h3>
     <div id="ponto-banco-horas-card" class="card" style="margin-bottom:18px;"></div>
     <h3 class="section-title">Meu histórico</h3>
     <div id="ponto-historico"></div>
   `;
 
+  document.getElementById("btn-registrar-ocorrencia").addEventListener("click", () => {
+    abrirModalRegistrarOcorrencia(carregar);
+  });
+
   async function carregar() {
-    const [hoje, historico, fechamentos] = await Promise.all([
+    const [hoje, historico, fechamentos, ocorrencias] = await Promise.all([
       api.get("/api/ponto/hoje"),
       api.get("/api/ponto/meu"),
       api.get("/api/fechamentos-ponto/meus"),
+      api.get("/api/ocorrencias-ponto/minhas"),
     ]);
     renderizarHoje(hoje);
     renderizarBancoHoras(historico, fechamentos);
     renderizarHistorico(historico);
+    renderizarOcorrencias(ocorrencias);
+  }
+
+  function renderizarOcorrencias(ocorrencias) {
+    const el = root.querySelector("#ponto-ocorrencias-lista");
+    if (ocorrencias.length === 0) {
+      el.innerHTML = '<div class="empty-state">Nenhuma ocorrência registrada.</div>';
+      return;
+    }
+    const tagStatus = (status) => {
+      if (status === "Aprovada") return '<span class="tag tag-nprazo">Aceita</span>';
+      if (status === "Rejeitada") return '<span class="tag tag-atrasada">Recusada</span>';
+      return '<span class="tag tag-standby">Aguardando</span>';
+    };
+    el.innerHTML = `
+      <table>
+        <thead><tr><th>Data</th><th>Motivo</th><th>Status</th><th>Observação do Gestor</th></tr></thead>
+        <tbody>
+          ${ocorrencias
+            .map(
+              (o) => `
+            <tr>
+              <td>${formatarDataCurta(o.data)}</td>
+              <td>${escapeHtml(o.motivo)}</td>
+              <td>${tagStatus(o.status)}</td>
+              <td>${o.respostaObservacao ? escapeHtml(o.respostaObservacao) : "—"}</td>
+            </tr>`
+            )
+            .join("")}
+        </tbody>
+      </table>
+    `;
   }
 
   // Mostra o saldo acumulado dos meses já fechados (travado, decidido pelo Gestor) +
@@ -629,7 +818,30 @@ async function renderMeuPonto(root) {
   function renderizarHoje(hoje) {
     const cardEl = root.querySelector("#ponto-hoje-card");
     if (!hoje) {
-      cardEl.innerHTML = '<div class="sub">Nenhuma batida de ponto hoje ainda — ela é registrada automaticamente no login.</div>';
+      cardEl.innerHTML = `
+        <div class="kpi-row">
+          <div class="kpi-card">
+            <div class="kpi-label">Entrada de hoje</div>
+            <div class="kpi-value">—</div>
+            <button id="btn-bater-entrada" class="btn btn-primary btn-sm" style="margin-top:8px;">Bater Entrada</button>
+          </div>
+        </div>
+      `;
+      const btnEntrada = cardEl.querySelector("#btn-bater-entrada");
+      btnEntrada.addEventListener("click", async () => {
+        btnEntrada.disabled = true;
+        btnEntrada.textContent = "Registrando...";
+        try {
+          const localizacao = await obterLocalizacao();
+          await api.post("/api/ponto/bater-entrada", localizacao || {});
+          showToast("Entrada registrada.", "sucesso");
+          carregar();
+        } catch (err) {
+          showToast(err.message, "erro");
+          btnEntrada.disabled = false;
+          btnEntrada.textContent = "Bater Entrada";
+        }
+      });
       return;
     }
     // store.consultores já vem carregado no boot — usado pra achar o bloco de

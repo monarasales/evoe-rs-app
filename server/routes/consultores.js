@@ -106,6 +106,7 @@ router.post("/", requireGestor, async (req, res) => {
     nome, email, whatsapp, perfil, ativo, username, senha,
     dataAdmissao, tipoVinculo, valorRemuneracao, beneficios, cpf, dataNascimento, endereco,
     enderecoTrabalho, modalidadeTrabalho, horarioEsperado, controlaPonto,
+    banco, agencia, conta, chavePix, bloqueiaAutoCorrecaoPonto,
   } = req.body || {};
   if (!nome || !email || !perfil || !PERFIS_ACESSO.includes(perfil)) {
     return res.status(400).json({ erro: "Nome, e-mail e perfil (Gestor/Recrutador) são obrigatórios." });
@@ -164,6 +165,18 @@ router.post("/", requireGestor, async (req, res) => {
     enderecoTrabalhoLng: geo.enderecoTrabalhoLng ?? null,
     modalidadeTrabalho: modalidadeTrabalho || "Presencial",
     horarioEsperado: horarioEsperado || null,
+    // Dados bancários/PIX: usados pra pagamento de salário/comissão. Podem ser
+    // preenchidos aqui pelo Gestor ou depois pelo próprio funcionário em Meu
+    // Cadastro (ver PATCH /me) — sempre visíveis pro Gestor em Equipe.
+    banco: banco || "",
+    agencia: agencia || "",
+    conta: conta || "",
+    chavePix: chavePix || "",
+    // Bloqueia a própria pessoa de corrigir seu próprio ponto (PATCH /api/ponto/:id
+    // e lançamento manual), mesmo tendo perfil Gestor/Supervisora — usado quando
+    // mais de uma pessoa tem acesso de Gestor e a dona da conta quer manter a
+    // correção do ponto de alguém específico só com ela mesma.
+    bloqueiaAutoCorrecaoPonto: bloqueiaAutoCorrecaoPonto === true,
   });
 
   if (usernameNormalizado) {
@@ -178,13 +191,19 @@ router.post("/", requireGestor, async (req, res) => {
 });
 
 // Autoatendimento: qualquer consultor logado pode atualizar os PRÓPRIOS dados de
-// contato/endereço (usados no Controle de Ponto) sem precisar pedir para o Gestor
-// mexer no cadastro dele. Não deixa alterar perfil, vínculo, remuneração, horário
-// esperado ou controlaPonto — isso continua exclusivo do Gestor (rota "/:id" abaixo).
+// contato/endereço/bancários (usados no Controle de Ponto e no pagamento de
+// salário/comissão) sem precisar pedir para o Gestor mexer no cadastro dele. Não
+// deixa alterar perfil, vínculo, remuneração, horário esperado ou controlaPonto —
+// isso continua exclusivo do Gestor (rota "/:id" abaixo).
 // Precisa vir ANTES de "/:id" para o Express não tratar "me" como um :id.
+//
+// Importante: db.update (server/db.js) já ignora chaves com valor undefined no
+// patch, então um campo que não veio no corpo da requisição NUNCA sobrescreve o
+// valor já salvo — cada dado preenchido fica salvo e só muda se a própria pessoa
+// mandar um valor novo para aquele campo especificamente.
 router.patch("/me", requireAuth, async (req, res) => {
   const consultor = req.consultor;
-  const { whatsapp, endereco, enderecoTrabalho } = req.body || {};
+  const { whatsapp, endereco, enderecoTrabalho, banco, agencia, conta, chavePix } = req.body || {};
 
   const geo = await geocodificarSeNecessario(
     usaControlePonto(consultor),
@@ -200,6 +219,10 @@ router.patch("/me", requireAuth, async (req, res) => {
     whatsapp,
     endereco,
     enderecoTrabalho,
+    banco,
+    agencia,
+    conta,
+    chavePix,
     ...geo,
   });
   res.json(atualizado);
@@ -213,6 +236,7 @@ router.patch("/:id", requireGestor, async (req, res) => {
     nome, email, whatsapp, perfil, ativo,
     dataAdmissao, dataDesligamento, tipoVinculo, valorRemuneracao, beneficios, cpf, dataNascimento, endereco,
     enderecoTrabalho, modalidadeTrabalho, horarioEsperado, controlaPonto,
+    banco, agencia, conta, chavePix, bloqueiaAutoCorrecaoPonto,
   } = req.body || {};
   if (perfil && !PERFIS_ACESSO.includes(perfil)) {
     return res.status(400).json({ erro: "Perfil inválido." });
@@ -248,6 +272,8 @@ router.patch("/:id", requireGestor, async (req, res) => {
     valorRemuneracao: valorRemuneracao !== undefined ? Number(valorRemuneracao) || 0 : undefined,
     beneficios, cpf, dataNascimento, endereco,
     enderecoTrabalho, modalidadeTrabalho, horarioEsperado, controlaPonto,
+    banco, agencia, conta, chavePix,
+    bloqueiaAutoCorrecaoPonto: typeof bloqueiaAutoCorrecaoPonto === "boolean" ? bloqueiaAutoCorrecaoPonto : undefined,
     ...geo,
   });
   if (!atualizado) return res.status(404).json({ erro: "Consultor não encontrado." });

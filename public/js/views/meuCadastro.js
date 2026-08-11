@@ -1,7 +1,8 @@
 // Autoatendimento: qualquer consultor logado (inclusive a Gestora) pode manter os
-// PRÓPRIOS dados de contato e os dois endereços em dia por aqui, sem depender de
-// alguém com perfil Gestor mexer no cadastro por ela/ele — importante sobretudo para
-// o Controle de Ponto, que usa esses dois endereços pra saber de onde a batida veio.
+// PRÓPRIOS dados de contato, endereços e dados bancários/PIX em dia por aqui, sem
+// depender de alguém com perfil Gestor mexer no cadastro por ela/ele — importante
+// sobretudo para o Controle de Ponto, que usa os dois endereços pra saber de onde a
+// batida veio, e para o pagamento de salário/comissão, que usa os dados bancários/PIX.
 import { api } from "../api.js";
 import { store, showToast, usaControlePonto } from "../state.js";
 import { campoEnderecoHtml, aplicarBuscaCep, montarEnderecoDosCampos } from "../enderecoCampo.js";
@@ -29,7 +30,7 @@ export async function renderMeuCadastro(root) {
     <div class="view-header">
       <div>
         <h2>Meu Cadastro</h2>
-        <div class="sub">Seus dados de contato e endereços — usados também pelo Controle de Ponto para saber de onde você bateu o ponto.</div>
+        <div class="sub">Seus dados de contato, endereços e dados bancários/PIX — usados pelo Controle de Ponto e para pagamento de salário/comissão.</div>
       </div>
     </div>
     <div class="card" style="max-width:560px;">
@@ -38,7 +39,7 @@ export async function renderMeuCadastro(root) {
         <div class="form-row"><label>E-mail</label><input type="email" value="${escapeHtml(eu.email)}" disabled /></div>
         <div class="form-row"><label>Perfil</label><input type="text" value="${escapeHtml(eu.perfil)}" disabled /></div>
       </div>
-      <div class="sub" style="margin:-4px 0 14px;">Nome, e-mail e perfil só o Gestor pode alterar (Configurações &gt; Funcionários).</div>
+      <div class="sub" style="margin:-4px 0 14px;">Nome, e-mail e perfil só o Gestor pode alterar (Colaborador &gt; Equipe).</div>
 
       <form id="form-meu-cadastro">
         <div class="form-row"><label>Telefone / WhatsApp</label><input type="text" id="mc-whatsapp" value="${escapeHtml(eu.whatsapp || "")}" /></div>
@@ -49,6 +50,18 @@ export async function renderMeuCadastro(root) {
             ? '<div class="sub" style="margin-top:-6px; margin-bottom:10px;">Preencha os dois — em dias de home office ou no escritório, o sistema identifica sozinho qual dos dois bateu mais perto.</div>'
             : ""
         }
+
+        <h3 class="section-title" style="margin-top:10px;">Dados Bancários / PIX</h3>
+        <div class="sub" style="margin-top:-6px; margin-bottom:8px;">Usados para pagamento de salário/comissão — só o Gestor vê essa informação.</div>
+        <div class="form-cols">
+          <div class="form-row"><label>Banco</label><input type="text" id="mc-banco" placeholder="ex: Nubank, Banco do Brasil" value="${escapeHtml(eu.banco || "")}" /></div>
+          <div class="form-row"><label>Agência</label><input type="text" id="mc-agencia" value="${escapeHtml(eu.agencia || "")}" /></div>
+        </div>
+        <div class="form-cols">
+          <div class="form-row"><label>Conta (com dígito)</label><input type="text" id="mc-conta" value="${escapeHtml(eu.conta || "")}" /></div>
+          <div class="form-row"><label>Chave PIX</label><input type="text" id="mc-pix" placeholder="CPF, e-mail, telefone ou aleatória" value="${escapeHtml(eu.chavePix || "")}" /></div>
+        </div>
+
         <div id="meu-cadastro-erro" class="form-erro hidden"></div>
         <button type="submit" class="btn btn-primary">Salvar</button>
       </form>
@@ -60,10 +73,34 @@ export async function renderMeuCadastro(root) {
 
   document.getElementById("form-meu-cadastro").addEventListener("submit", async (ev) => {
     ev.preventDefault();
+    const erroEl = document.getElementById("meu-cadastro-erro");
+    erroEl.classList.add("hidden");
+
+    const { endereco, erro: erroEndereco } = montarEnderecoDosCampos("mc-end", eu.endereco, "Endereço Residencial");
+    if (erroEndereco) {
+      erroEl.textContent = erroEndereco;
+      erroEl.classList.remove("hidden");
+      return;
+    }
+    const { endereco: enderecoTrabalho, erro: erroEnderecoTrabalho } = montarEnderecoDosCampos(
+      "mc-endt",
+      eu.enderecoTrabalho,
+      "Endereço de Trabalho"
+    );
+    if (erroEnderecoTrabalho) {
+      erroEl.textContent = erroEnderecoTrabalho;
+      erroEl.classList.remove("hidden");
+      return;
+    }
+
     const payload = {
       whatsapp: document.getElementById("mc-whatsapp").value.trim(),
-      endereco: montarEnderecoDosCampos("mc-end", eu.endereco),
-      enderecoTrabalho: montarEnderecoDosCampos("mc-endt", eu.enderecoTrabalho),
+      endereco,
+      enderecoTrabalho,
+      banco: document.getElementById("mc-banco").value.trim(),
+      agencia: document.getElementById("mc-agencia").value.trim(),
+      conta: document.getElementById("mc-conta").value.trim(),
+      chavePix: document.getElementById("mc-pix").value.trim(),
     };
     try {
       const atualizado = await api.patch("/api/consultores/me", payload);
@@ -75,9 +112,8 @@ export async function renderMeuCadastro(root) {
         showToast("Dados salvos.", "sucesso");
       }
     } catch (err) {
-      const box = document.getElementById("meu-cadastro-erro");
-      box.textContent = err.message;
-      box.classList.remove("hidden");
+      erroEl.textContent = err.message;
+      erroEl.classList.remove("hidden");
     }
   });
 }
