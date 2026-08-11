@@ -45,8 +45,10 @@ function formatarReal(valor) {
 // pré-preencher a caixa de texto da cláusula no formulário, com o mesmo texto que o
 // sistema geraria automaticamente. Se a usuária editar a caixa, o texto dela é que
 // vale (tanto aqui quanto no PDF/Word gerado pelo backend).
-function textoHonorariosPadrao({ tipoCobranca, percentualHonorarios, comissaoEstimada, valorFixo, valorPermuta, descricaoPermuta, parcelaInicialPct, parcelaFechamentoPct }) {
+function textoHonorariosPadrao({ tipoCobranca, percentualHonorarios, comissaoEstimada, valorFixo, valorPermuta, descricaoPermuta, parcelaInicialPct, parcelaFechamentoPct, valorTotal }) {
   const comissao = Number(comissaoEstimada) || 0;
+  const total = Number(valorTotal) || 0;
+  const trechoValor = total > 0 ? `, equivalente a ${formatarReal(total)} nesta contratação` : "";
   if (tipoCobranca === "ValorFixo") {
     return `Pela prestação dos serviços contratados, a CONTRATANTE pagará à CONTRATADA o valor fixo de ${formatarReal(valorFixo)} pela vaga trabalhada, independentemente do salário do cargo. Sendo que a primeira parcela a ser paga no percentual de ${parcelaInicialPct}% desse valor para iniciar o serviço e os outros ${parcelaFechamentoPct}% no fechamento da vaga.`;
   }
@@ -54,9 +56,9 @@ function textoHonorariosPadrao({ tipoCobranca, percentualHonorarios, comissaoEst
     return `Pela prestação dos serviços contratados, as partes acordam o pagamento em regime de permuta, no valor correspondente a ${formatarReal(valorPermuta)}${descricaoPermuta ? `, referente a ${descricaoPermuta}` : ""}, em substituição ao pagamento em espécie. Sendo que a primeira parcela a ser paga no percentual de ${parcelaInicialPct}% desse valor para iniciar o serviço e os outros ${parcelaFechamentoPct}% no fechamento da vaga.`;
   }
   if (comissao > 0) {
-    return `Pela prestação dos serviços contratados, a CONTRATANTE pagará à CONTRATADA um percentual por vaga trabalhada de ${percentualHonorarios}% em cima do salário mais comissão do cargo, aplicável às vagas da área comercial cuja remuneração contempla parte variável (comissionamento). Sendo que a primeira parcela a ser paga no percentual de ${parcelaInicialPct}% para iniciar o serviço e os outros ${parcelaFechamentoPct}% no fechamento da vaga. Vagas que a porcentagem aplicada em cima do salário mais comissão o resultado for menos que um salário-mínimo, aplicamos a cobrança da vaga o valor do salário-mínimo vigente.`;
+    return `Pela prestação dos serviços contratados, a CONTRATANTE pagará à CONTRATADA um percentual por vaga trabalhada de ${percentualHonorarios}% em cima do salário mais comissão do cargo${trechoValor}, aplicável às vagas da área comercial cuja remuneração contempla parte variável (comissionamento). Sendo que a primeira parcela a ser paga no percentual de ${parcelaInicialPct}% para iniciar o serviço e os outros ${parcelaFechamentoPct}% no fechamento da vaga. Vagas que a porcentagem aplicada em cima do salário mais comissão o resultado for menos que um salário-mínimo, aplicamos a cobrança da vaga o valor do salário-mínimo vigente.`;
   }
-  return `Pela prestação dos serviços contratados, a CONTRATANTE pagará à CONTRATADA um percentual por vaga trabalhada de ${percentualHonorarios}% em cima do salário. Sendo que a primeira parcela a ser paga no percentual de ${parcelaInicialPct}% para iniciar o serviço e os outros ${parcelaFechamentoPct}% no fechamento da vaga. Vagas que a porcentagem aplicada em cima do salário o resultado for menos que um salário-mínimo, aplicamos a cobrança da vaga o valor do salário-mínimo vigente.`;
+  return `Pela prestação dos serviços contratados, a CONTRATANTE pagará à CONTRATADA um percentual por vaga trabalhada de ${percentualHonorarios}% em cima do salário${trechoValor}. Sendo que a primeira parcela a ser paga no percentual de ${parcelaInicialPct}% para iniciar o serviço e os outros ${parcelaFechamentoPct}% no fechamento da vaga. Vagas que a porcentagem aplicada em cima do salário o resultado for menos que um salário-mínimo, aplicamos a cobrança da vaga o valor do salário-mínimo vigente.`;
 }
 
 export async function renderContratos(root) {
@@ -374,7 +376,11 @@ export async function renderContratos(root) {
       const vaga = vagas.find((v) => v.id === selectVaga.value);
       return vaga ? { salario: vaga.salario || 0, titulo: vaga.titulo } : null;
     }
-    function atualizarPreviewValor() {
+    // Calcula o valor total do contrato com as regras atuais da tela (mesma lógica do
+    // backend em calcularValorContrato): valor final manual > percentual (salário +
+    // comissão) > valor fixo > permuta. Usado tanto no resumo visual quanto pra deixar
+    // o valor já explícito na cláusula de honorários (não só o percentual).
+    function calcularValorTotalAtual() {
       const tipo = document.querySelector('input[name="ct-tipo-cobranca"]:checked').value;
       const vagaInfo = vagaSelecionada();
       let valorTotal = 0;
@@ -404,7 +410,11 @@ export async function renderContratos(root) {
         valorTotal = Number(document.getElementById("ct-valorpermuta").value) || 0;
         detalhe = "Valor da permuta — não é dinheiro em caixa, entra só como valor contratado.";
       }
+      return { valorTotal, detalhe };
+    }
 
+    function atualizarPreviewValor() {
+      const { valorTotal, detalhe } = calcularValorTotalAtual();
       const parcela1Pct = Number(document.getElementById("ct-parcela1").value) || 0;
       const parcela2Pct = Number(document.getElementById("ct-parcela2").value) || 0;
       const valorParcela1 = Math.round(((valorTotal * parcela1Pct) / 100) * 100) / 100;
@@ -434,6 +444,7 @@ export async function renderContratos(root) {
           descricaoPermuta: editando ? c.descricaoPermuta || "" : "",
           parcelaInicialPct: editando ? c.parcelaInicialPct : PADRAO.parcelaInicialPct,
           parcelaFechamentoPct: editando ? c.parcelaFechamentoPct : PADRAO.parcelaFechamentoPct,
+          valorTotal: calcularValorTotalAtual().valorTotal,
         });
     textareaClausula.addEventListener("input", () => { clausulaEditadaManualmente = true; });
     function atualizarClausulaPadrao() {
@@ -447,6 +458,7 @@ export async function renderContratos(root) {
         descricaoPermuta: document.getElementById("ct-descricaopermuta").value,
         parcelaInicialPct: document.getElementById("ct-parcela1").value,
         parcelaFechamentoPct: document.getElementById("ct-parcela2").value,
+        valorTotal: calcularValorTotalAtual().valorTotal,
       });
     }
 

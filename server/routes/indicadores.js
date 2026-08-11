@@ -98,10 +98,11 @@ router.get("/dashboard", requireAuth, (req, res) => {
 
   // Consultores considerados nos quadros "por consultor": se a visão já está
   // restrita a um único consultor (recrutador logado, ou filtro do gestor),
-  // usa só ele; senão, todos os recrutadores ativos da equipe.
+  // usa só ele; senão, todos que trabalham vagas no funil — Recrutador e
+  // Supervisora (Supervisora também recebe/fecha vaga, não só o Gestor gerencia).
   const consultoresRelevantes = scopeConsultorId
     ? consultores.filter((c) => c.id === scopeConsultorId)
-    : consultores.filter((c) => c.perfil === "Recrutador");
+    : consultores.filter((c) => c.perfil === "Recrutador" || c.perfil === "Supervisora");
 
   // --- SLA de fechamento (10 / 15 dias, com peso 2 / 1 / 0) --------------------------
   const anoMesAtual = hojeStr().slice(0, 7);

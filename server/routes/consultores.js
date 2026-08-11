@@ -55,19 +55,28 @@ function validarHorarioEsperado(horarioEsperado) {
   return null;
 }
 
-// Geocodifica endereço residencial e/ou de trabalho quando mudam (só para quem usa
-// Controle de Ponto, para não gastar chamadas à toa). Nunca derruba o cadastro se a
+// Geocodifica endereço residencial e/ou de trabalho quando mudam, ou quando o texto já
+// está preenchido mas a busca anterior falhou e ficou sem coordenada (retry automático
+// — evita um endereço ficar "preso" sem localização pra sempre só porque a tentativa
+// original deu errado, ex: serviço de mapa fora do ar na hora). Só para quem usa
+// Controle de Ponto, para não gastar chamadas à toa. Nunca derruba o cadastro se a
 // geocodificação falhar: só fica sem a checagem de distância naquele endereço.
-async function geocodificarSeNecessario(elegivel, enderecoAntigo, enderecoNovo, enderecoTrabalhoAntigo, enderecoTrabalhoNovo) {
+async function geocodificarSeNecessario(elegivel, enderecoAntigo, enderecoNovo, enderecoTrabalhoAntigo, enderecoTrabalhoNovo, latAntigo, latTrabalhoAntigo) {
   const resultado = {};
   if (!elegivel) return resultado;
 
-  if (enderecoNovo !== undefined && enderecoNovo !== enderecoAntigo) {
+  const enderecoMudou = enderecoNovo !== undefined && enderecoNovo !== enderecoAntigo;
+  const enderecoPresoSemGeo = enderecoNovo !== undefined && enderecoNovo && enderecoNovo === enderecoAntigo && !latAntigo;
+  if (enderecoMudou || enderecoPresoSemGeo) {
     const geo = await geocodificarEndereco(enderecoNovo);
     resultado.enderecoLat = geo ? geo.lat : null;
     resultado.enderecoLng = geo ? geo.lng : null;
   }
-  if (enderecoTrabalhoNovo !== undefined && enderecoTrabalhoNovo !== enderecoTrabalhoAntigo) {
+
+  const enderecoTrabalhoMudou = enderecoTrabalhoNovo !== undefined && enderecoTrabalhoNovo !== enderecoTrabalhoAntigo;
+  const enderecoTrabalhoPresoSemGeo =
+    enderecoTrabalhoNovo !== undefined && enderecoTrabalhoNovo && enderecoTrabalhoNovo === enderecoTrabalhoAntigo && !latTrabalhoAntigo;
+  if (enderecoTrabalhoMudou || enderecoTrabalhoPresoSemGeo) {
     const geo = await geocodificarEndereco(enderecoTrabalhoNovo);
     resultado.enderecoTrabalhoLat = geo ? geo.lat : null;
     resultado.enderecoTrabalhoLng = geo ? geo.lng : null;
@@ -177,7 +186,15 @@ router.patch("/me", requireAuth, async (req, res) => {
   const consultor = req.consultor;
   const { whatsapp, endereco, enderecoTrabalho } = req.body || {};
 
-  const geo = await geocodificarSeNecessario(usaControlePonto(consultor), consultor.endereco, endereco, consultor.enderecoTrabalho, enderecoTrabalho);
+  const geo = await geocodificarSeNecessario(
+    usaControlePonto(consultor),
+    consultor.endereco,
+    endereco,
+    consultor.enderecoTrabalho,
+    enderecoTrabalho,
+    consultor.enderecoLat,
+    consultor.enderecoTrabalhoLat
+  );
 
   const atualizado = db.update("consultores", consultor.id, {
     whatsapp,
@@ -215,7 +232,15 @@ router.patch("/:id", requireGestor, async (req, res) => {
     tipoVinculo: tipoVinculo !== undefined ? tipoVinculo : consultorAtual.tipoVinculo,
     controlaPonto: controlaPonto !== undefined ? controlaPonto : consultorAtual.controlaPonto,
   });
-  const geo = await geocodificarSeNecessario(elegivel, consultorAtual.endereco, endereco, consultorAtual.enderecoTrabalho, enderecoTrabalho);
+  const geo = await geocodificarSeNecessario(
+    elegivel,
+    consultorAtual.endereco,
+    endereco,
+    consultorAtual.enderecoTrabalho,
+    enderecoTrabalho,
+    consultorAtual.enderecoLat,
+    consultorAtual.enderecoTrabalhoLat
+  );
 
   const atualizado = db.update("consultores", req.params.id, {
     nome, email, whatsapp, perfil, ativo,

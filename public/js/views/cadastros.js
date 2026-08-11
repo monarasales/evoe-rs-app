@@ -33,6 +33,17 @@ function controlaPontoInicial(consultor) {
   return consultor.tipoVinculo === "Estágio";
 }
 
+// Endereço preenchido mas sem coordenadas (a busca automática no mapa falhou ou nunca
+// rodou) — enquanto isso não for corrigido, o Ponto não consegue comparar a batida
+// contra esse endereço. Se for o endereço de trabalho de quem é presencial, e só o
+// residencial tiver coordenada, a pessoa aparece "fora do alcance" mesmo estando no
+// lugar certo, porque a única referência disponível é a casa dela, não o trabalho.
+function enderecoPontoSemGeo(consultor) {
+  const enderecoSemGeo = consultor.endereco && !consultor.enderecoLat;
+  const enderecoTrabalhoSemGeo = consultor.enderecoTrabalho && !consultor.enderecoTrabalhoLat;
+  return Boolean(enderecoSemGeo || enderecoTrabalhoSemGeo);
+}
+
 function formatarReal(valor) {
   return (Number(valor) || 0).toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
 }
@@ -110,7 +121,13 @@ export async function renderConfiguracoes(root) {
               <td>${c.valorRemuneracao ? formatarReal(c.valorRemuneracao) : "—"}</td>
               <td>${c.username ? escapeHtml(c.username) : '<span class="sub">sem login</span>'}</td>
               <td><span class="tag ${c.ativo ? "tag-nprazo" : "tag-encerrada"}">${c.ativo ? "Ativo" : "Inativo"}</span></td>
-              <td>${controlaPontoInicial(c) ? '<span class="tag tag-nprazo">🕒 Ligado</span>' : '<span class="sub">Desligado</span>'}</td>
+              <td>${
+                controlaPontoInicial(c)
+                  ? enderecoPontoSemGeo(c)
+                    ? '<span class="tag tag-atrasada" title="Endereço usado no Ponto não foi localizado no mapa — a checagem de dentro/fora do alcance não funciona direito até corrigir. Edite o cadastro e deixe o endereço mais completo (bairro, cidade), depois salve de novo.">⚠️ Sem localização</span>'
+                    : '<span class="tag tag-nprazo">🕒 Ligado</span>'
+                  : '<span class="sub">Desligado</span>'
+              }</td>
               ${
                 isGestor()
                   ? `<td style="white-space:nowrap;">
@@ -204,6 +221,11 @@ export async function renderConfiguracoes(root) {
           <input type="text" inputmode="numeric" placeholder="dd/mm/aaaa" maxlength="10" id="cs-nascimento" value="${editando ? isoParaBr(consultor.dataNascimento) : ""}" style="max-width:180px;" />
         </div>
         ${campoEnderecoHtml("cs-end", "Endereço Residencial", editando ? consultor.endereco : "")}
+        ${
+          editando && consultor.endereco && !consultor.enderecoLat
+            ? '<div class="sub" style="color:#c0392b; margin-top:-6px; margin-bottom:10px;">⚠️ Não conseguimos localizar esse endereço residencial no mapa — deixe mais completo (bairro, cidade, CEP) e salve de novo.</div>'
+            : ""
+        }
         <div class="form-row" id="cs-desligamento-row" style="${!editando || consultor.ativo ? "display:none;" : ""}">
           <label>Data de desligamento</label>
           <input type="text" inputmode="numeric" placeholder="dd/mm/aaaa" maxlength="10" id="cs-desligamento" value="${editando ? isoParaBr(consultor.dataDesligamento) : ""}" />
@@ -222,6 +244,11 @@ export async function renderConfiguracoes(root) {
           <div id="cs-endereco-trabalho-row">
             ${campoEnderecoHtml("cs-endt", "Endereço de Trabalho", editando ? consultor.enderecoTrabalho : "")}
           </div>
+          ${
+            editando && consultor.enderecoTrabalho && !consultor.enderecoTrabalhoLat
+              ? '<div class="sub" style="color:#c0392b; margin-top:-6px; margin-bottom:10px;">⚠️ Não conseguimos localizar esse endereço de trabalho no mapa — enquanto isso, quem bate ponto presencialmente pode aparecer "fora do alcance" sem estar errado. Deixe o endereço mais completo (bairro, cidade, CEP) e salve de novo.</div>'
+              : ""
+          }
           <div class="sub" style="margin-top:-6px; margin-bottom:10px;">O Endereço Residencial (acima, em Dados de RH) também é usado como referência.</div>
 
           <div class="form-row"><label>Horário de trabalho</label></div>

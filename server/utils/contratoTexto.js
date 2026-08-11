@@ -37,9 +37,13 @@ function dataExtenso(dataStr) {
 /** Monta o texto padrão do item de honorários (Cláusula 5, item I), usado quando a
  * usuária não escreveu uma redação própria em `clausulaHonorariosTexto`. Para vagas
  * de área comercial (com comissão estimada preenchida), a taxa passa a incidir sobre
- * salário + comissão, e o texto deixa isso explícito. */
+ * salário + comissão, e o texto deixa isso explícito. Sempre que o valor final já é
+ * conhecido (dados.valorTotal > 0), o texto cita o valor em R$ correspondente — não
+ * fica só no percentual — pra quem assina já ler o contrato e ver o valor. */
 function montarTextoHonorarios(dados) {
   const comissao = Number(dados.comissaoEstimada) || 0;
+  const valorTotal = Number(dados.valorTotal) || 0;
+  const trechoValor = valorTotal > 0 ? `, equivalente a ${formatarReal(valorTotal)} nesta contratação` : "";
   if (dados.tipoCobranca === "ValorFixo") {
     return `Pela prestação dos serviços contratados, a CONTRATANTE pagará à CONTRATADA o valor fixo de ${formatarReal(dados.valorFixo)} pela vaga trabalhada, independentemente do salário do cargo. Sendo que a primeira parcela a ser paga no percentual de ${dados.parcelaInicialPct}% desse valor para iniciar o serviço e os outros ${dados.parcelaFechamentoPct}% no fechamento da vaga.`;
   }
@@ -47,9 +51,9 @@ function montarTextoHonorarios(dados) {
     return `Pela prestação dos serviços contratados, as partes acordam o pagamento em regime de permuta, no valor correspondente a ${formatarReal(dados.valorPermuta)}${dados.descricaoPermuta ? `, referente a ${dados.descricaoPermuta}` : ""}, em substituição ao pagamento em espécie. Sendo que a primeira parcela a ser paga no percentual de ${dados.parcelaInicialPct}% desse valor para iniciar o serviço e os outros ${dados.parcelaFechamentoPct}% no fechamento da vaga.`;
   }
   if (comissao > 0) {
-    return `Pela prestação dos serviços contratados, a CONTRATANTE pagará à CONTRATADA um percentual por vaga trabalhada de ${dados.percentualHonorarios}% em cima do salário mais comissão do cargo, aplicável às vagas da área comercial cuja remuneração contempla parte variável (comissionamento). Sendo que a primeira parcela a ser paga no percentual de ${dados.parcelaInicialPct}% para iniciar o serviço e os outros ${dados.parcelaFechamentoPct}% no fechamento da vaga. Vagas que a porcentagem aplicada em cima do salário mais comissão o resultado for menos que um salário-mínimo, aplicamos a cobrança da vaga o valor do salário-mínimo vigente.`;
+    return `Pela prestação dos serviços contratados, a CONTRATANTE pagará à CONTRATADA um percentual por vaga trabalhada de ${dados.percentualHonorarios}% em cima do salário mais comissão do cargo${trechoValor}, aplicável às vagas da área comercial cuja remuneração contempla parte variável (comissionamento). Sendo que a primeira parcela a ser paga no percentual de ${dados.parcelaInicialPct}% para iniciar o serviço e os outros ${dados.parcelaFechamentoPct}% no fechamento da vaga. Vagas que a porcentagem aplicada em cima do salário mais comissão o resultado for menos que um salário-mínimo, aplicamos a cobrança da vaga o valor do salário-mínimo vigente.`;
   }
-  return `Pela prestação dos serviços contratados, a CONTRATANTE pagará à CONTRATADA um percentual por vaga trabalhada de ${dados.percentualHonorarios}% em cima do salário. Sendo que a primeira parcela a ser paga no percentual de ${dados.parcelaInicialPct}% para iniciar o serviço e os outros ${dados.parcelaFechamentoPct}% no fechamento da vaga. Vagas que a porcentagem aplicada em cima do salário o resultado for menos que um salário-mínimo, aplicamos a cobrança da vaga o valor do salário-mínimo vigente.`;
+  return `Pela prestação dos serviços contratados, a CONTRATANTE pagará à CONTRATADA um percentual por vaga trabalhada de ${dados.percentualHonorarios}% em cima do salário${trechoValor}. Sendo que a primeira parcela a ser paga no percentual de ${dados.parcelaInicialPct}% para iniciar o serviço e os outros ${dados.parcelaFechamentoPct}% no fechamento da vaga. Vagas que a porcentagem aplicada em cima do salário o resultado for menos que um salário-mínimo, aplicamos a cobrança da vaga o valor do salário-mínimo vigente.`;
 }
 
 /**

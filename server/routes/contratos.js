@@ -2,7 +2,7 @@ const express = require("express");
 const db = require("../db");
 const { requireAuth, requireGestor } = require("../middleware/auth");
 const { CONTRATO_PADRAO, DIAS_PARCELA2_APOS_PARCELA1, TIPOS_COBRANCA_CONTRATO } = require("../utils/constants");
-const { calcularParcelas } = require("../utils/financeiro");
+const { calcularParcelas, calcularValorContrato } = require("../utils/financeiro");
 const { gerarContratoPdfBuffer } = require("../utils/contratoPdf");
 const { gerarContratoDocxBuffer } = require("../utils/contratoDocx");
 const { enviarEmail, emailConfigurado } = require("../utils/mailer");
@@ -45,8 +45,14 @@ function somarDias(dataStr, dias) {
 function montarDadosContrato(contrato) {
   const empresa = db.findById("empresas", contrato.empresaId) || {};
   const vaga = db.findById("vagas", contrato.vagaId) || {};
+  // Mesmo valor que aparece na tela de Contratos e no Financeiro (já respeita o valor
+  // final digitado à mão, se a usuária tiver preenchido) — usado pra deixar o valor em
+  // R$ explícito na cláusula de honorários, não só o percentual.
+  const { valorTotal, salarioFaltando } = calcularValorContrato(contrato, vaga);
   return {
     numero: contrato.numero,
+    valorTotal,
+    salarioFaltando,
     dataContrato: contrato.dataContrato,
     cliente: {
       nome: empresa.nome || "",
