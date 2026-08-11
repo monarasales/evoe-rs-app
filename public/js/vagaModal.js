@@ -9,6 +9,7 @@ import { navegarPara } from "./router.js";
 
 const TIPOS_VAGA_KANBAN = ["Nova", "Reposição"];
 const MOTIVOS_REPOSICAO_KANBAN = ["Desistência do Candidato", "Cliente Demitiu", "Outro"];
+const ETAPAS_ENCERRADAS_VAGA = ["11. Aprovado", "12. Cancelada/Encerrada"];
 
 function escapeHtml(str) {
   const div = document.createElement("div");
@@ -102,6 +103,15 @@ export async function abrirFormularioVaga({ vaga = null, empresaIdPadrao = null,
           <input type="date" id="v-prazo" required value="${editando ? vaga.prazoFechamento : ""}" ${podeEditar ? "" : "disabled"} />
         </div>
       </div>
+      ${
+        editando && ETAPAS_ENCERRADAS_VAGA.includes(vaga.etapaAtual)
+          ? `<div class="form-row">
+              <label>Data de Fechamento (informada pelo cliente)</label>
+              <input type="date" id="v-fechamento" value="${vaga.dataFechamento || ""}" ${podeEditar ? "" : "disabled"} />
+              <div class="sub" style="margin-top:6px;">Data em que o cliente confirmou o candidato aprovado — pode ser diferente do dia em que você atualizou aqui no sistema. É esta data (não o "Prazo de fechamento" acima) que conta para o cálculo de SLA, comissão e prazo de garantia de reposição.</div>
+            </div>`
+          : ""
+      }
       <div class="form-cols">
         <div class="form-row">
           <label>Prioridade</label>
@@ -250,6 +260,8 @@ export async function abrirFormularioVaga({ vaga = null, empresaIdPadrao = null,
       motivoReposicao: tipoVaga === "Reposição" ? document.getElementById("v-motivo-reposicao").value : "",
       vagaOrigemId: tipoVaga === "Reposição" ? document.getElementById("v-vaga-origem").value || null : null,
     };
+    const campoFechamento = document.getElementById("v-fechamento");
+    if (campoFechamento) payload.dataFechamento = campoFechamento.value || null;
     const erroBox = document.getElementById("vaga-form-erro");
     erroBox.classList.add("hidden");
     try {

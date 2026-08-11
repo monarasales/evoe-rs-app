@@ -4,7 +4,7 @@ const db = require("../db");
 const { requireAuth } = require("../middleware/auth");
 const { notifyMudancaVaga } = require("../utils/notify");
 const { computeVagaFields, computarReposicaoInfo, hojeStr } = require("../utils/vagaCompute");
-const { ETAPAS_VAGA, PRIORIDADES, TIPOS_VAGA } = require("../utils/constants");
+const { ETAPAS_VAGA, ETAPAS_ENCERRADAS, PRIORIDADES, TIPOS_VAGA } = require("../utils/constants");
 const { extrairDadosDaVaga } = require("../utils/vagaExtract");
 
 const router = express.Router();
@@ -137,11 +137,33 @@ router.patch("/:id", requireAuth, (req, res) => {
   if (!podeEditar(req, vaga)) {
     return res.status(403).json({ erro: "Você só pode editar vagas atribuídas a você." });
   }
-  const { titulo, perfilVaga, empresaId, consultorId, dataAbertura, prazoFechamento, prioridade, observacoes, salario, tipoVaga, motivoReposicao, vagaOrigemId } = req.body || {};
+  const { titulo, perfilVaga, empresaId, consultorId, dataAbertura, prazoFechamento, prioridade, observacoes, salario, tipoVaga, motivoReposicao, vagaOrigemId, dataFechamento } = req.body || {};
   if (prioridade && !PRIORIDADES.includes(prioridade)) return res.status(400).json({ erro: "Prioridade inválida." });
   if (tipoVaga && !TIPOS_VAGA.includes(tipoVaga)) return res.status(400).json({ erro: "Tipo de vaga inválido." });
   if (tipoVaga === "Reposição" && vagaOrigemId && !db.findById("vagas", vagaOrigemId)) {
     return res.status(400).json({ erro: "Vaga de origem da reposição inválida." });
+  }
+
+  // Data de Fechamento: a data em que o CLIENTE confirmou o candidato aprovado —
+  // diferente do "Prazo de fechamento" (nossa meta interna) e da data que o sistema
+  // grava sozinho ao mover o card (que é só quando o consultor mexeu na tela, podendo
+  // ficar atrasada em relação ao combinado real). Só faz sentido preencher numa vaga
+  // já Aprovada/Cancelada — e é ela, não a data do sistema, que conta pra SLA,
+  // comissão e prazo de garantia de reposição (ver vagaCompute.js).
+  let novoDataFechamento;
+  if (dataFechamento !== undefined) {
+    if (dataFechamento === "" || dataFechamento === null) {
+      novoDataFechamento = null;
+    } else {
+      if (!ETAPAS_ENCERRADAS.includes(vaga.etapaAtual)) {
+        return res.status(400).json({ erro: "Só é possível informar a data de fechamento em vagas já Aprovadas ou Canceladas/Encerradas." });
+      }
+      const dataAberturaEfetiva = dataAbertura || vaga.dataAbertura;
+      if (dataAberturaEfetiva && dataFechamento < dataAberturaEfetiva) {
+        return res.status(400).json({ erro: "A data de fechamento não pode ser anterior à data de abertura da vaga." });
+      }
+      novoDataFechamento = dataFechamento;
+    }
   }
 
   const atualizado = db.update("vagas", vaga.id, {
@@ -157,6 +179,7 @@ router.patch("/:id", requireAuth, (req, res) => {
     tipoVaga,
     motivoReposicao: tipoVaga === "Nova" ? "" : motivoReposicao,
     vagaOrigemId: tipoVaga === "Nova" ? null : vagaOrigemId,
+    dataFechamento: novoDataFechamento,
     // se o prazo mudou, os alertas de prazo/atraso podem disparar de novo
     ...(prazoFechamento && prazoFechamento !== vaga.prazoFechamento
       ? { alertaPrazoEnviado: false, alertaAtrasoEnviado: false }
@@ -208,7 +231,14 @@ router.patch("/:id/etapa", requireAuth, (req, res) => {
 
   const patch = { etapaAtual: etapa, dataEntradaEtapa: hoje };
   if (etapa === "11. Aprovado" || etapa === "12. Cancelada/Encerrada") {
+    // Pré-preenche com hoje (data em que alguém mexeu no sistema) — o Gestor pode
+    // depois corrigir no formulário de edição para a data real em que o cliente
+    // confirmou o candidato aprovado, que é o que conta para SLA/comissão/garantia.
     patch.dataFechamento = hoje;
+  } else if (ETAPAS_ENCERRADAS.includes(vaga.etapaAtual)) {
+    // Estava fechada e voltou a ficar aberta (reconsideração) — limpa a data de
+    // fechamento antiga pra não deixar um valor incorreto contando no cálculo.
+    patch.dataFechamento = null;
   }
   const atualizado = db.update("vagas", vaga.id, patch);
 
