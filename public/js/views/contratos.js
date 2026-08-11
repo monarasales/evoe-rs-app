@@ -251,17 +251,38 @@ export async function renderContratos(root) {
           </div>
         </div>
         <div id="ct-preview-valor" class="card" style="margin:10px 0; padding:12px 14px;"></div>
-        <div class="form-cols">
-          <div class="form-row" id="ct-row-percentual"><label>Percentual sobre o salário (%)</label><input type="number" id="ct-percentual" min="1" max="200" value="${editando ? c.percentualHonorarios : PADRAO.percentualHonorarios}" /></div>
-          <div class="form-row" id="ct-row-comissao"><label>Comissão estimada (R$)</label><input type="number" id="ct-comissao" min="0" step="0.01" value="${editando ? c.comissaoEstimada || 0 : PADRAO.comissaoEstimada}" /></div>
-          <div class="form-row" id="ct-row-valorfixo"><label>Valor fixo (R$)</label><input type="number" id="ct-valorfixo" min="0" step="0.01" value="${editando ? c.valorFixo || 0 : PADRAO.valorFixo}" /></div>
-          <div class="form-row" id="ct-row-valorpermuta"><label>Valor da permuta (R$)</label><input type="number" id="ct-valorpermuta" min="0" step="0.01" value="${editando ? c.valorPermuta || 0 : PADRAO.valorPermuta}" /></div>
-          <div class="form-row"><label>Prazo de reposição (dias)</label><input type="number" id="ct-reposicao" min="1" value="${editando ? c.prazoReposicaoDias : PADRAO.prazoReposicaoDias}" /></div>
-        </div>
-        <div class="sub" id="ct-sub-comissao" style="margin-top:-6px;">Preencha só para vagas da área comercial (remuneração com parte variável) — a taxa passa a ser calculada sobre salário + comissão, e a cláusula do contrato deixa isso explícito.</div>
+
+        <div class="form-row" id="ct-row-percentual"><label>Percentual sobre o salário (%)</label><input type="number" id="ct-percentual" min="1" max="200" value="${editando ? c.percentualHonorarios : PADRAO.percentualHonorarios}" /></div>
+        <div class="form-row" id="ct-row-valorfixo"><label>Valor fixo (R$)</label><input type="number" id="ct-valorfixo" min="0" step="0.01" value="${editando ? c.valorFixo || 0 : PADRAO.valorFixo}" /></div>
+        <div class="form-row" id="ct-row-valorpermuta"><label>Valor da permuta (R$)</label><input type="number" id="ct-valorpermuta" min="0" step="0.01" value="${editando ? c.valorPermuta || 0 : PADRAO.valorPermuta}" /></div>
         <div class="form-row" id="ct-row-descricaopermuta"><label>O que está sendo permutado</label><input type="text" id="ct-descricaopermuta" placeholder="ex: divulgação da vaga em troca de material publicitário" value="${editando ? escapeHtml(c.descricaoPermuta || "") : ""}" /></div>
-        <div class="form-row"><label>Valor final do contrato (R$) — opcional</label><input type="number" id="ct-valor-final" min="0" step="0.01" placeholder="deixe em branco para calcular automaticamente" value="${editando && c.valorTotalPersonalizado !== null && c.valorTotalPersonalizado !== undefined ? c.valorTotalPersonalizado : ""}" /></div>
-        <div class="sub" style="margin-top:-6px;">Se preencher, esse valor vale por cima do cálculo automático (percentual, fixo ou permuta) — tanto nas parcelas quanto no contrato.</div>
+
+        <div class="form-row" id="ct-box-comissao" style="background:#f7f9fb; border:1px dashed var(--border); border-radius:10px; padding:12px 14px;">
+          <label class="checkbox-row" style="margin-bottom:0;">
+            <input type="checkbox" id="ct-tem-comissao" ${editando && c.comissaoEstimada > 0 ? "checked" : ""} />
+            Este cargo é da área comercial e tem comissão (remuneração com parte variável)
+          </label>
+          <div class="sub" style="margin:4px 0 0;">Quando marcado, a taxa passa a ser calculada sobre salário + comissão (em vez de só salário), e a cláusula do contrato deixa isso explícito.</div>
+          <div class="form-row" id="ct-row-comissao-valor" style="margin:10px 0 0; display:none;">
+            <label>Comissão média estimada (R$)</label>
+            <input type="number" id="ct-comissao" min="0" step="0.01" value="${editando ? c.comissaoEstimada || 0 : PADRAO.comissaoEstimada}" />
+          </div>
+        </div>
+
+        <div class="form-row"><label>Prazo de reposição (dias)</label><input type="number" id="ct-reposicao" min="1" value="${editando ? c.prazoReposicaoDias : PADRAO.prazoReposicaoDias}" /></div>
+
+        <div class="form-row" id="ct-box-valor-final" style="background:#f7f9fb; border:1px dashed var(--border); border-radius:10px; padding:12px 14px;">
+          <label class="checkbox-row" style="margin-bottom:0;">
+            <input type="checkbox" id="ct-usa-valor-final" ${editando && c.valorTotalPersonalizado !== null && c.valorTotalPersonalizado !== undefined ? "checked" : ""} />
+            Prefiro digitar o valor final do contrato eu mesma
+          </label>
+          <div class="sub" style="margin:4px 0 0;">Use só se o valor combinado com o cliente for diferente do resultado do cálculo acima (salário × percentual, com ou sem comissão) — esse valor passa a valer nas parcelas e no texto do contrato.</div>
+          <div class="form-row" id="ct-row-valor-final-input" style="margin:10px 0 0; display:none;">
+            <label>Valor final do contrato (R$)</label>
+            <input type="number" id="ct-valor-final" min="0" step="0.01" value="${editando && c.valorTotalPersonalizado !== null && c.valorTotalPersonalizado !== undefined ? c.valorTotalPersonalizado : ""}" />
+          </div>
+        </div>
+
         <div class="form-cols">
           <div class="form-row"><label>1ª parcela — início do serviço (%)</label><input type="number" id="ct-parcela1" min="0" max="100" value="${editando ? c.parcelaInicialPct : PADRAO.parcelaInicialPct}" /></div>
           <div class="form-row"><label>2ª parcela — fechamento da vaga (%)</label><input type="number" id="ct-parcela2" min="0" max="100" value="${editando ? c.parcelaFechamentoPct : PADRAO.parcelaFechamentoPct}" /></div>
@@ -299,8 +320,7 @@ export async function renderContratos(root) {
     const selectVaga = document.getElementById("ct-vaga");
 
     const rowPercentual = document.getElementById("ct-row-percentual");
-    const rowComissao = document.getElementById("ct-row-comissao");
-    const subComissao = document.getElementById("ct-sub-comissao");
+    const boxComissao = document.getElementById("ct-box-comissao");
     const rowValorFixo = document.getElementById("ct-row-valorfixo");
     const rowValorPermuta = document.getElementById("ct-row-valorpermuta");
     const rowDescricaoPermuta = document.getElementById("ct-row-descricaopermuta");
@@ -308,8 +328,7 @@ export async function renderContratos(root) {
     const atualizarVisibilidadeCobranca = () => {
       const tipo = document.querySelector('input[name="ct-tipo-cobranca"]:checked').value;
       rowPercentual.style.display = tipo === "Percentual" ? "" : "none";
-      rowComissao.style.display = tipo === "Percentual" ? "" : "none";
-      subComissao.style.display = tipo === "Percentual" ? "" : "none";
+      boxComissao.style.display = tipo === "Percentual" ? "" : "none";
       rowValorFixo.style.display = tipo === "ValorFixo" ? "" : "none";
       rowValorPermuta.style.display = tipo === "Permuta" ? "" : "none";
       rowDescricaoPermuta.style.display = tipo === "Permuta" ? "" : "none";
@@ -317,6 +336,31 @@ export async function renderContratos(root) {
       atualizarClausulaPadrao();
     };
     radiosTipo.forEach((r) => r.addEventListener("change", atualizarVisibilidadeCobranca));
+
+    // Comissão (área comercial): só existe uma pergunta de sim/não — quando marcada,
+    // revela o campo de valor; quando desmarcada, zera o valor pra garantir que uma
+    // comissão escondida não continue influenciando o cálculo por engano.
+    const checkComissao = document.getElementById("ct-tem-comissao");
+    const rowComissaoValor = document.getElementById("ct-row-comissao-valor");
+    const inputComissao = document.getElementById("ct-comissao");
+    const atualizarVisibilidadeComissao = () => {
+      rowComissaoValor.style.display = checkComissao.checked ? "" : "none";
+      if (!checkComissao.checked) inputComissao.value = "0";
+      atualizarPreviewValor();
+      atualizarClausulaPadrao();
+    };
+    checkComissao.addEventListener("change", atualizarVisibilidadeComissao);
+
+    // Valor final manual: mesma lógica — some o campo quando desmarcado, pra não deixar
+    // um valor esquecido sobrepondo o cálculo automático sem a usuária perceber.
+    const checkValorFinal = document.getElementById("ct-usa-valor-final");
+    const rowValorFinalInput = document.getElementById("ct-row-valor-final-input");
+    const atualizarVisibilidadeValorFinal = () => {
+      rowValorFinalInput.style.display = checkValorFinal.checked ? "" : "none";
+      if (!checkValorFinal.checked) inputValorFinal.value = "";
+      atualizarPreviewValor();
+    };
+    checkValorFinal.addEventListener("change", atualizarVisibilidadeValorFinal);
 
     // Calcula e mostra ao vivo o valor total estimado do contrato, puxando o salário
     // já cadastrado na vaga quando o tipo de cobrança é "Percentual" (somado à comissão
@@ -350,8 +394,8 @@ export async function renderContratos(root) {
         } else {
           valorTotal = Math.round((((vagaInfo.salario + comissao) * pct) / 100) * 100) / 100;
           detalhe = comissao > 0
-            ? `(${formatarReal(vagaInfo.salario)} salário + ${formatarReal(comissao)} comissão) × ${pct}%`
-            : `${formatarReal(vagaInfo.salario)} (salário da vaga) × ${pct}%`;
+            ? `Base de cálculo: ${formatarReal(vagaInfo.salario)} (salário) + ${formatarReal(comissao)} (comissão) = ${formatarReal(vagaInfo.salario + comissao)} × ${pct}%`
+            : `Base de cálculo: ${formatarReal(vagaInfo.salario)} (salário da vaga) × ${pct}%`;
         }
       } else if (tipo === "ValorFixo") {
         valorTotal = Number(document.getElementById("ct-valorfixo").value) || 0;
@@ -414,6 +458,11 @@ export async function renderContratos(root) {
     });
     inputValorFinal.addEventListener("input", atualizarPreviewValor);
     atualizarVisibilidadeCobranca();
+    // Estado inicial dos dois blocos opcionais (comissão / valor final manual) — revela
+    // o campo de valor já preenchido quando a caixinha vem marcada (editando um contrato
+    // que já usava isso), sem mexer no valor guardado.
+    if (checkComissao.checked) rowComissaoValor.style.display = "";
+    if (checkValorFinal.checked) rowValorFinalInput.style.display = "";
 
     // Vencimento da 2ª parcela = vencimento da 1ª + 30 dias, recalculado sempre que a
     // 1ª mudar — a menos que a usuária já tenha editado a 2ª data a mão, aí respeitamos
