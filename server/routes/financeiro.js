@@ -6,7 +6,7 @@
 const express = require("express");
 const db = require("../db");
 const { requireAuth, requireGestor } = require("../middleware/auth");
-const { calcularParcelas } = require("../utils/financeiro");
+const { calcularParcelas, formatarListaCargos } = require("../utils/financeiro");
 const { ETAPAS_ENCERRADAS } = require("../utils/constants");
 const { hojeStr, computarReposicaoInfo } = require("../utils/vagaCompute");
 
@@ -28,13 +28,18 @@ router.get("/", requireAuth, requireGestor, (req, res) => {
   const vagasAbertas = vagas.filter((v) => !ETAPAS_ENCERRADAS.includes(v.etapaAtual));
   const vagasAbertasIds = new Set(vagasAbertas.map((v) => v.id));
 
+  // Um contrato pode agrupar mais de uma vaga do mesmo cliente (vagasAdicionaisIds) —
+  // continua contando como "em aberto" aqui enquanto QUALQUER uma das vagas dele ainda
+  // não tiver fechado, já que o contrato como um todo segue relevante.
   const linhas = contratos
-    .filter((c) => vagasAbertasIds.has(c.vagaId))
+    .filter((c) => vagasAbertasIds.has(c.vagaId) || (c.vagasAdicionaisIds || []).some((id) => vagasAbertasIds.has(id)))
     .map((c) => {
       const vaga = db.findById("vagas", c.vagaId);
+      const vagasAdicionais = (c.vagasAdicionaisIds || []).map((id) => db.findById("vagas", id)).filter(Boolean);
+      const todasVagasDoContrato = [vaga, ...vagasAdicionais].filter(Boolean);
       const empresa = empresas.find((e) => e.id === c.empresaId);
       const consultor = consultores.find((cs) => cs.id === c.consultorId);
-      const { valorTotal, valorParcela1, valorParcela2, salarioFaltando, ehPermuta } = calcularParcelas(c, vaga);
+      const { valorTotal, valorParcela1, valorParcela2, salarioFaltando, ehPermuta } = calcularParcelas(c, vaga, vagasAdicionais);
       const diasParcela2 = diasAte(c.dataVencimentoParcela2);
 
       let reposicaoInfo = null;
@@ -48,8 +53,11 @@ router.get("/", requireAuth, requireGestor, (req, res) => {
         contratoId: c.id,
         numero: c.numero,
         vagaId: c.vagaId,
-        vagaTitulo: vaga ? vaga.titulo : "—",
-        vagaSalario: vaga ? vaga.salario || 0 : 0,
+        vagaTitulo: formatarListaCargos(todasVagasDoContrato.map((v) => v.titulo)) || "—",
+        vagaSalario: todasVagasDoContrato.reduce((soma, v) => soma + (Number(v.salario) || 0), 0),
+        // Lista detalhada (título + salário de cada vaga do contrato) — usada pra editar
+        // vaga por vaga quando o contrato agrupa mais de uma do mesmo cliente.
+        vagasDoContrato: todasVagasDoContrato.map((v) => ({ id: v.id, titulo: v.titulo, salario: v.salario || 0 })),
         empresaNome: empresa ? empresa.nome : "—",
         consultorNome: consultor ? consultor.nome : "—",
         tipoCobranca: c.tipoCobranca,
@@ -67,7 +75,11 @@ router.get("/", requireAuth, requireGestor, (req, res) => {
     })
     .sort((a, b) => (a.dataVencimentoParcela2 || "9999-99-99") < (b.dataVencimentoParcela2 || "9999-99-99") ? -1 : 1);
 
-  const vagasComContrato = new Set(contratos.map((c) => c.vagaId));
+  const vagasComContrato = new Set();
+  contratos.forEach((c) => {
+    vagasComContrato.add(c.vagaId);
+    (c.vagasAdicionaisIds || []).forEach((id) => vagasComContrato.add(id));
+  });
   const vagasAbertasSemContrato = vagasAbertas.filter((v) => !vagasComContrato.has(v.id)).length;
 
   // Contratos em Permuta não são recebimento em dinheiro: ficam de fora do fluxo de

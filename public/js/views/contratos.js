@@ -206,17 +206,27 @@ export async function renderContratos(root) {
   async function abrirFormularioContrato(contratoExistente) {
     const editando = !!contratoExistente;
     const vagas = await api.get("/api/vagas");
+    const todosContratos = await api.get("/api/contratos");
     const vagasOrdenadas = [...vagas].sort((a, b) => (a.dataAbertura < b.dataAbertura ? 1 : -1));
     const c = contratoExistente || PADRAO;
     const tipoInicial = editando ? (c.tipoCobranca || "Percentual") : "Percentual";
+
+    // Vagas já vinculadas a QUALQUER OUTRO contrato (como principal ou adicional) não
+    // entram como opção de "vaga adicional" — evita cobrar a mesma vaga duas vezes.
+    const idsVagasJaContratadas = new Set();
+    todosContratos.forEach((ct) => {
+      if (editando && ct.id === contratoExistente.id) return;
+      if (ct.vagaId) idsVagasJaContratadas.add(ct.vagaId);
+      (ct.vagasAdicionaisIds || []).forEach((id) => idsVagasJaContratadas.add(id));
+    });
 
     abrirModal(`
       <h2>${editando ? `Editar Contrato ${escapeHtml(c.numero)}` : "Novo Contrato"}</h2>
       <form id="form-contrato">
         ${
           editando
-            ? `<div class="form-row"><label>Vaga / Cliente</label><input type="text" disabled value="${escapeHtml(c.cargoObjeto)} — ${escapeHtml(c.empresaNome)}" /></div>
-               <div class="sub" style="margin-top:-6px;">Não é possível trocar a vaga de um contrato já gerado — para isso, exclua e crie um novo.</div>`
+            ? `<div class="form-row"><label>Vaga principal / Cliente</label><input type="text" disabled value="${escapeHtml(c.cargoObjeto)} — ${escapeHtml(c.empresaNome)}" /></div>
+               <div class="sub" style="margin-top:-6px;">Não é possível trocar a vaga principal de um contrato já gerado — para isso, exclua e crie um novo. Mas dá pra adicionar ou remover outras vagas do mesmo cliente logo abaixo.</div>`
             : `<div class="form-row">
                 <label>Vaga (o cliente e o cargo são preenchidos automaticamente)</label>
                 <select id="ct-vaga" required>
@@ -231,6 +241,13 @@ export async function renderContratos(root) {
               </div>
               <div id="ct-aviso-empresa" class="form-erro hidden" style="margin-top:-6px;"></div>`
         }
+
+        <div class="form-row" id="ct-box-vagas-adicionais" style="background:#f7f9fb; border:1px dashed var(--border); border-radius:10px; padding:12px 14px;">
+          <label style="margin-bottom:0;">Outras vagas deste mesmo cliente incluídas neste contrato (opcional)</label>
+          <div class="sub" style="margin:4px 0 8px;">Quando o cliente abre mais de uma vaga junto, adicione aqui em vez de gerar um contrato separado — o percentual e as demais condições continuam os mesmos, mas o salário de cada vaga entra separadamente no cálculo do valor total.</div>
+          <div id="ct-vagas-adicionais-lista"></div>
+          <button type="button" id="btn-add-vaga-adicional" class="btn btn-outline btn-sm" style="margin-top:6px;">+ Adicionar outra vaga</button>
+        </div>
 
         <div class="form-cols">
           <div class="form-row"><label>Data do contrato</label><input type="date" id="ct-data" value="${editando ? c.dataContrato : new Date().toISOString().slice(0, 10)}" /></div>
@@ -321,6 +338,119 @@ export async function renderContratos(root) {
 
     const selectVaga = document.getElementById("ct-vaga");
 
+    // ------- Vagas adicionais (mesmo cliente, mesmo contrato) -------
+    const listaAdicionaisEl = document.getElementById("ct-vagas-adicionais-lista");
+    const btnAddAdicional = document.getElementById("btn-add-vaga-adicional");
+    let contadorLinhaAdicional = 0;
+
+    function empresaIdAtualDoContrato() {
+      if (editando) return contratoExistente.empresaId;
+      const vagaPrimaria = vagas.find((v) => v.id === selectVaga.value);
+      return vagaPrimaria ? vagaPrimaria.empresaId : null;
+    }
+
+    function vagaPrincipalIdAtual() {
+      return editando ? contratoExistente.vagaId : selectVaga.value;
+    }
+
+    function idsAdicionaisJaSelecionados(exceto) {
+      return Array.from(listaAdicionaisEl.querySelectorAll("select.ct-vaga-adicional"))
+        .filter((sel) => sel !== exceto)
+        .map((sel) => sel.value)
+        .filter(Boolean);
+    }
+
+    function opcoesVagaAdicional(valorAtual) {
+      const empresaId = empresaIdAtualDoContrato();
+      const principalId = vagaPrincipalIdAtual();
+      const jaSelecionadas = idsAdicionaisJaSelecionados();
+      return vagas.filter(
+        (v) =>
+          v.empresaId === empresaId &&
+          v.id !== principalId &&
+          (v.id === valorAtual || (!idsVagasJaContratadas.has(v.id) && !jaSelecionadas.includes(v.id)))
+      );
+    }
+
+    function preencherOpcoesLinha(select, valorSelecionado) {
+      const opcoes = opcoesVagaAdicional(valorSelecionado);
+      select.innerHTML =
+        '<option value="">Selecione a vaga...</option>' +
+        opcoes.map((v) => `<option value="${v.id}" ${v.id === valorSelecionado ? "selected" : ""}>${escapeHtml(v.titulo)}</option>`).join("");
+    }
+
+    function atualizarTodasAsOpcoesAdicionais() {
+      listaAdicionaisEl.querySelectorAll("select.ct-vaga-adicional").forEach((select) => {
+        preencherOpcoesLinha(select, select.value);
+      });
+    }
+
+    function criarLinhaAdicional(valorInicial) {
+      contadorLinhaAdicional += 1;
+      const div = document.createElement("div");
+      div.className = "form-cols";
+      div.style.marginBottom = "6px";
+      div.innerHTML = `
+        <div class="form-row" style="flex:1;">
+          <select class="ct-vaga-adicional"><option value="">Selecione a vaga...</option></select>
+        </div>
+        <button type="button" class="btn btn-outline btn-sm btn-remover-vaga-adicional" style="align-self:flex-start; margin-top:4px;">Remover</button>
+      `;
+      listaAdicionaisEl.appendChild(div);
+      const select = div.querySelector("select.ct-vaga-adicional");
+      preencherOpcoesLinha(select, valorInicial || "");
+      select.addEventListener("change", () => {
+        atualizarTodasAsOpcoesAdicionais();
+        atualizarPreviewValor();
+        atualizarClausulaPadrao();
+      });
+      div.querySelector(".btn-remover-vaga-adicional").addEventListener("click", () => {
+        div.remove();
+        atualizarTodasAsOpcoesAdicionais();
+        atualizarPreviewValor();
+        atualizarClausulaPadrao();
+      });
+    }
+
+    btnAddAdicional.addEventListener("click", () => {
+      if (!editando && !selectVaga.value) {
+        showToast("Selecione a vaga principal primeiro.", "erro");
+        return;
+      }
+      criarLinhaAdicional("");
+    });
+
+    // Ao editar um contrato que já tinha vagas adicionais, pré-preenche as linhas.
+    if (editando && c.vagasDoContrato && c.vagasDoContrato.length > 1) {
+      c.vagasDoContrato.slice(1).forEach((v) => criarLinhaAdicional(v.id));
+    }
+
+    // Reúne a vaga principal + as adicionais selecionadas no momento, com salário de
+    // cada uma — usado pelo cálculo do valor total do contrato (soma os salários).
+    function vagasParaCalculo() {
+      if (editando) {
+        if (c.vagasDoContrato && c.vagasDoContrato.length) {
+          // A vaga principal nunca muda ao editar; só as adicionais (lidas ao vivo da tela).
+          const idsAdicionaisAtuais = Array.from(listaAdicionaisEl.querySelectorAll("select.ct-vaga-adicional"))
+            .map((s) => s.value)
+            .filter(Boolean);
+          const principal = c.vagasDoContrato[0];
+          const adicionais = idsAdicionaisAtuais
+            .map((id) => vagas.find((v) => v.id === id))
+            .filter(Boolean)
+            .map((v) => ({ id: v.id, titulo: v.titulo, salario: v.salario || 0 }));
+          return [principal, ...adicionais];
+        }
+        return [{ salario: c.vagaSalario || 0, titulo: c.vagaTitulo }];
+      }
+      const primaria = vagas.find((v) => v.id === selectVaga.value);
+      const idsAdicionais = Array.from(listaAdicionaisEl.querySelectorAll("select.ct-vaga-adicional"))
+        .map((s) => s.value)
+        .filter(Boolean);
+      const adicionais = idsAdicionais.map((id) => vagas.find((v) => v.id === id)).filter(Boolean);
+      return [primaria, ...adicionais].filter(Boolean);
+    }
+
     const rowPercentual = document.getElementById("ct-row-percentual");
     const boxComissao = document.getElementById("ct-box-comissao");
     const rowValorFixo = document.getElementById("ct-row-valorfixo");
@@ -371,18 +501,13 @@ export async function renderContratos(root) {
     // preenchido, ele sobrepõe qualquer cálculo automático.
     const previewEl = document.getElementById("ct-preview-valor");
     const inputValorFinal = document.getElementById("ct-valor-final");
-    function vagaSelecionada() {
-      if (editando) return { salario: c.vagaSalario || 0, titulo: c.vagaTitulo };
-      const vaga = vagas.find((v) => v.id === selectVaga.value);
-      return vaga ? { salario: vaga.salario || 0, titulo: vaga.titulo } : null;
-    }
     // Calcula o valor total do contrato com as regras atuais da tela (mesma lógica do
-    // backend em calcularValorContrato): valor final manual > percentual (salário +
-    // comissão) > valor fixo > permuta. Usado tanto no resumo visual quanto pra deixar
-    // o valor já explícito na cláusula de honorários (não só o percentual).
+    // backend em calcularValorContrato): valor final manual > percentual (soma dos
+    // salários das vagas + comissão) > valor fixo > permuta. Usado tanto no resumo
+    // visual quanto pra deixar o valor já explícito na cláusula de honorários.
     function calcularValorTotalAtual() {
       const tipo = document.querySelector('input[name="ct-tipo-cobranca"]:checked').value;
-      const vagaInfo = vagaSelecionada();
+      const vagasInfo = vagasParaCalculo();
       let valorTotal = 0;
       let detalhe = "";
       const valorFinalManual = inputValorFinal.value !== "" ? Number(inputValorFinal.value) : null;
@@ -393,15 +518,21 @@ export async function renderContratos(root) {
       } else if (tipo === "Percentual") {
         const pct = Number(document.getElementById("ct-percentual").value) || 0;
         const comissao = Number(document.getElementById("ct-comissao").value) || 0;
-        if (!vagaInfo) {
+        const semSalario = vagasInfo.find((v) => !v.salario);
+        if (vagasInfo.length === 0) {
           detalhe = "Selecione a vaga para calcular.";
-        } else if (!vagaInfo.salario) {
-          detalhe = `Cadastre o salário do cargo na vaga "${vagaInfo.titulo}" (Funil de Vagas) para o sistema calcular automaticamente.`;
+        } else if (semSalario) {
+          detalhe = `Cadastre o salário do cargo na vaga "${semSalario.titulo}" (Funil de Vagas) para o sistema calcular automaticamente.`;
         } else {
-          valorTotal = Math.round((((vagaInfo.salario + comissao) * pct) / 100) * 100) / 100;
+          const salarioTotal = vagasInfo.reduce((soma, v) => soma + Number(v.salario), 0);
+          valorTotal = Math.round((((salarioTotal + comissao) * pct) / 100) * 100) / 100;
+          const baseVagas =
+            vagasInfo.length > 1
+              ? `${vagasInfo.map((v) => `${formatarReal(v.salario)} (${v.titulo})`).join(" + ")} = ${formatarReal(salarioTotal)}`
+              : formatarReal(salarioTotal);
           detalhe = comissao > 0
-            ? `Base de cálculo: ${formatarReal(vagaInfo.salario)} (salário) + ${formatarReal(comissao)} (comissão) = ${formatarReal(vagaInfo.salario + comissao)} × ${pct}%`
-            : `Base de cálculo: ${formatarReal(vagaInfo.salario)} (salário da vaga) × ${pct}%`;
+            ? `Base de cálculo: ${baseVagas} + ${formatarReal(comissao)} (comissão) = ${formatarReal(salarioTotal + comissao)} × ${pct}%`
+            : `Base de cálculo: ${baseVagas} (${vagasInfo.length > 1 ? "salários das vagas" : "salário da vaga"}) × ${pct}%`;
         }
       } else if (tipo === "ValorFixo") {
         valorTotal = Number(document.getElementById("ct-valorfixo").value) || 0;
@@ -492,18 +623,28 @@ export async function renderContratos(root) {
       const avisoEmpresa = document.getElementById("ct-aviso-empresa");
       selectVaga.addEventListener("change", () => {
         const vaga = vagas.find((v) => v.id === selectVaga.value);
-        if (!vaga) {
-          avisoEmpresa.classList.add("hidden");
-          return;
-        }
-        const empresa = store.empresas.find((e) => e.id === vaga.empresaId);
-        if (!empresa || !empresa.cnpj || !empresa.endereco) {
-          avisoEmpresa.textContent = `Complete o CNPJ e o Endereço de "${empresa ? empresa.nome : "—"}" em Configurações > Empresas Clientes antes de gerar o contrato.`;
-          avisoEmpresa.classList.remove("hidden");
+        if (vaga) {
+          const empresa = store.empresas.find((e) => e.id === vaga.empresaId);
+          if (!empresa || !empresa.cnpj || !empresa.endereco) {
+            avisoEmpresa.textContent = `Complete o CNPJ e o Endereço de "${empresa ? empresa.nome : "—"}" em Configurações > Empresas Clientes antes de gerar o contrato.`;
+            avisoEmpresa.classList.remove("hidden");
+          } else {
+            avisoEmpresa.classList.add("hidden");
+          }
         } else {
           avisoEmpresa.classList.add("hidden");
         }
+        // Vagas adicionais só valem para a mesma empresa da vaga principal — se ela
+        // mudou (ou foi limpa), tira da seleção qualquer vaga que não seja mais compatível.
+        listaAdicionaisEl.querySelectorAll("select.ct-vaga-adicional").forEach((select) => {
+          const selecionada = vagas.find((v) => v.id === select.value);
+          if (selecionada && (!vaga || selecionada.empresaId !== vaga.empresaId)) {
+            select.value = "";
+          }
+        });
+        atualizarTodasAsOpcoesAdicionais();
         atualizarPreviewValor();
+        atualizarClausulaPadrao();
       });
     }
 
@@ -528,6 +669,9 @@ export async function renderContratos(root) {
         prazoRescisaoAvisoDias: document.getElementById("ct-aviso").value,
         testemunha1: { nome: document.getElementById("ct-t1-nome").value.trim(), cpf: document.getElementById("ct-t1-cpf").value.trim() },
         testemunha2: { nome: document.getElementById("ct-t2-nome").value.trim(), cpf: document.getElementById("ct-t2-cpf").value.trim() },
+        vagasAdicionaisIds: Array.from(listaAdicionaisEl.querySelectorAll("select.ct-vaga-adicional"))
+          .map((s) => s.value)
+          .filter(Boolean),
       };
       if (!editando) payload.vagaId = selectVaga.value;
 

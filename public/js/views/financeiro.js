@@ -171,12 +171,23 @@ export async function renderFinanceiro(root) {
   }
 
   function abrirModalEditarVaga(linha) {
+    // Um contrato normalmente tem uma vaga só, mas pode agrupar mais de uma do mesmo
+    // cliente (vagas adicionais) — nesse caso mostra um título/salário por vaga, já
+    // que os valores costumam ser diferentes entre elas.
+    const vagasLista = linha.vagasDoContrato && linha.vagasDoContrato.length ? linha.vagasDoContrato : [{ id: linha.vagaId, titulo: linha.vagaTitulo, salario: linha.vagaSalario }];
     abrirModal(`
-      <h2>Editar Vaga</h2>
-      <div class="sub" style="margin-top:-6px; margin-bottom:14px;">Altere aqui o título ou o salário do cargo desta vaga — a mudança aparece automaticamente no Funil de Vagas também, é o mesmo cadastro.</div>
+      <h2>Editar Vaga${vagasLista.length > 1 ? "s deste Contrato" : ""}</h2>
+      <div class="sub" style="margin-top:-6px; margin-bottom:14px;">Altere aqui o título ou o salário do cargo — a mudança aparece automaticamente no Funil de Vagas também, é o mesmo cadastro.${vagasLista.length > 1 ? " Este contrato agrupa mais de uma vaga do mesmo cliente, então cada uma tem seu próprio salário." : ""}</div>
       <form id="form-vaga-fin">
-        <div class="form-row"><label>Título da vaga</label><input type="text" id="vf-titulo" required value="${escapeHtml(linha.vagaTitulo)}" /></div>
-        <div class="form-row"><label>Salário do cargo (R$)</label><input type="number" id="vf-salario" min="0" step="0.01" value="${linha.vagaSalario || ""}" /></div>
+        ${vagasLista
+          .map(
+            (v, i) => `
+          <div class="form-cols" data-vaga-id="${v.id}">
+            <div class="form-row"><label>Título da vaga</label><input type="text" class="vf-titulo" required value="${escapeHtml(v.titulo)}" /></div>
+            <div class="form-row"><label>Salário do cargo (R$)</label><input type="number" class="vf-salario" min="0" step="0.01" value="${v.salario || ""}" /></div>
+          </div>`
+          )
+          .join("")}
         <div id="vf-erro" class="form-erro hidden"></div>
         <div class="modal-close-row">
           <button type="button" id="btn-cancelar-vf" class="btn btn-outline">Fechar</button>
@@ -188,11 +199,16 @@ export async function renderFinanceiro(root) {
     document.getElementById("form-vaga-fin").addEventListener("submit", async (ev) => {
       ev.preventDefault();
       try {
-        await api.patch(`/api/vagas/${linha.vagaId}`, {
-          titulo: document.getElementById("vf-titulo").value.trim(),
-          salario: document.getElementById("vf-salario").value,
-        });
-        showToast("Vaga atualizada.", "sucesso");
+        const linhasForm = Array.from(document.querySelectorAll("#form-vaga-fin .form-cols"));
+        await Promise.all(
+          linhasForm.map((div) =>
+            api.patch(`/api/vagas/${div.dataset.vagaId}`, {
+              titulo: div.querySelector(".vf-titulo").value.trim(),
+              salario: div.querySelector(".vf-salario").value,
+            })
+          )
+        );
+        showToast(vagasLista.length > 1 ? "Vagas atualizadas." : "Vaga atualizada.", "sucesso");
         fecharModal();
         await carregarERenderizar();
       } catch (err) {

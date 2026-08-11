@@ -2,7 +2,7 @@ const express = require("express");
 const db = require("../db");
 const { requireAuth, requireGestor } = require("../middleware/auth");
 const { CONTRATO_PADRAO, DIAS_PARCELA2_APOS_PARCELA1, TIPOS_COBRANCA_CONTRATO } = require("../utils/constants");
-const { calcularParcelas, calcularValorContrato } = require("../utils/financeiro");
+const { calcularParcelas, calcularValorContrato, formatarListaCargos } = require("../utils/financeiro");
 const { gerarContratoPdfBuffer } = require("../utils/contratoPdf");
 const { gerarContratoDocxBuffer } = require("../utils/contratoDocx");
 const { enviarEmail, emailConfigurado } = require("../utils/mailer");
@@ -10,16 +10,31 @@ const { getParamContratos } = require("./config");
 
 const router = express.Router();
 
+// Um contrato normalmente cobre uma única vaga (vagaId), mas pode agrupar outras do
+// MESMO cliente (vagasAdicionaisIds) — quando o cliente abre duas vagas juntas, evita
+// ter que gerar um contrato separado pra cada uma. O percentual/condições continuam
+// os mesmos; só a base de cálculo do valor total passa a somar o salário de cada vaga.
+function vagasDoContrato(contrato) {
+  const principal = db.findById("vagas", contrato.vagaId);
+  const adicionais = (contrato.vagasAdicionaisIds || []).map((id) => db.findById("vagas", id)).filter(Boolean);
+  return [principal, ...adicionais].filter(Boolean);
+}
+
 function comDetalhes(contrato) {
   const empresa = db.findById("empresas", contrato.empresaId);
   const vaga = db.findById("vagas", contrato.vagaId);
+  const todasVagas = vagasDoContrato(contrato);
+  const vagasAdicionais = todasVagas.slice(1);
   const consultor = contrato.consultorId ? db.findById("consultores", contrato.consultorId) : null;
-  const { valorTotal, valorParcela1, valorParcela2, salarioFaltando, ehPermuta } = calcularParcelas(contrato, vaga);
+  const { valorTotal, valorParcela1, valorParcela2, salarioFaltando, ehPermuta } = calcularParcelas(contrato, vaga, vagasAdicionais);
   return {
     ...contrato,
     empresaNome: empresa ? empresa.nome : "—",
-    vagaTitulo: vaga ? vaga.titulo : "—",
-    vagaSalario: vaga ? vaga.salario || 0 : 0,
+    vagaTitulo: formatarListaCargos(todasVagas.map((v) => v.titulo)) || "—",
+    vagaSalario: todasVagas.reduce((soma, v) => soma + (Number(v.salario) || 0), 0),
+    // Lista detalhada (vaga principal + adicionais) com salário individual — usada na
+    // tela de Contratos para editar/gerenciar quais vagas estão neste contrato.
+    vagasDoContrato: todasVagas.map((v) => ({ id: v.id, titulo: v.titulo, salario: v.salario || 0 })),
     consultorNome: consultor ? consultor.nome : "—",
     valorTotalContrato: valorTotal,
     valorParcela1,
@@ -45,10 +60,12 @@ function somarDias(dataStr, dias) {
 function montarDadosContrato(contrato) {
   const empresa = db.findById("empresas", contrato.empresaId) || {};
   const vaga = db.findById("vagas", contrato.vagaId) || {};
+  const vagasAdicionais = (contrato.vagasAdicionaisIds || []).map((id) => db.findById("vagas", id)).filter(Boolean);
   // Mesmo valor que aparece na tela de Contratos e no Financeiro (já respeita o valor
-  // final digitado à mão, se a usuária tiver preenchido) — usado pra deixar o valor em
-  // R$ explícito na cláusula de honorários, não só o percentual.
-  const { valorTotal, salarioFaltando } = calcularValorContrato(contrato, vaga);
+  // final digitado à mão, se a usuária tiver preenchido, e já soma o salário de
+  // eventuais vagas adicionais do mesmo cliente) — usado pra deixar o valor em R$
+  // explícito na cláusula de honorários, não só o percentual.
+  const { valorTotal, salarioFaltando } = calcularValorContrato(contrato, vaga, vagasAdicionais);
   return {
     numero: contrato.numero,
     valorTotal,
@@ -155,8 +172,33 @@ function extrairCamposEditaveis(body) {
   };
 }
 
+// Valida a lista de "vagas adicionais" (mesmo cliente, mesmo contrato): cada uma
+// precisa existir, ser da MESMA empresa da vaga principal, e não estar vinculada a
+// nenhum outro contrato (nem como principal, nem como adicional) — nunca à mesma vaga
+// deste próprio contrato sendo editado. Devolve { erro } ou { vagas } (já resolvidas).
+function validarVagasAdicionais(idsBrutos, vagaPrincipalId, empresaId, contratoIdIgnorar) {
+  const idsUnicos = [...new Set(Array.isArray(idsBrutos) ? idsBrutos : [])].filter((id) => id && id !== vagaPrincipalId);
+  const vagas = [];
+  const todosContratos = db.readCollection("contratos");
+  for (const id of idsUnicos) {
+    const vagaAdicional = db.findById("vagas", id);
+    if (!vagaAdicional) return { erro: "Uma das vagas adicionais selecionadas é inválida." };
+    if (vagaAdicional.empresaId !== empresaId) {
+      return { erro: `A vaga "${vagaAdicional.titulo}" não é da mesma empresa da vaga principal — só é possível agrupar vagas do mesmo cliente num contrato.` };
+    }
+    const jaVinculada = todosContratos.some(
+      (ct) => ct.id !== contratoIdIgnorar && (ct.vagaId === id || (ct.vagasAdicionaisIds || []).includes(id))
+    );
+    if (jaVinculada) {
+      return { erro: `A vaga "${vagaAdicional.titulo}" já está vinculada a outro contrato.` };
+    }
+    vagas.push(vagaAdicional);
+  }
+  return { vagas };
+}
+
 router.post("/", requireAuth, (req, res) => {
-  const { vagaId } = req.body || {};
+  const { vagaId, vagasAdicionaisIds } = req.body || {};
 
   if (!vagaId) return res.status(400).json({ erro: "Selecione a vaga para a qual o contrato será gerado." });
   const vaga = db.findById("vagas", vagaId);
@@ -168,19 +210,28 @@ router.post("/", requireAuth, (req, res) => {
       erro: `Complete o cadastro de "${empresa.nome}" (CNPJ e Endereço) em Configurações > Empresas Clientes antes de gerar o contrato.`,
     });
   }
+  const jaComoAdicionalEmOutro = db.readCollection("contratos").some((ct) => (ct.vagasAdicionaisIds || []).includes(vagaId));
+  if (jaComoAdicionalEmOutro) {
+    return res.status(400).json({ erro: "Esta vaga já está vinculada como vaga adicional de outro contrato." });
+  }
+
+  const { erro: erroAdicionais, vagas: vagasAdicionais } = validarVagasAdicionais(vagasAdicionaisIds, vagaId, vaga.empresaId, null);
+  if (erroAdicionais) return res.status(400).json({ erro: erroAdicionais });
 
   const paramContratos = getParamContratos();
   const campos = extrairCamposEditaveis(req.body);
   const ano = new Date(campos.dataContrato).getFullYear() || new Date().getFullYear();
   const numero = montarNumero(paramContratos.proximoNumero, ano);
+  const cargoObjetoPadrao = formatarListaCargos([vaga, ...vagasAdicionais].map((v) => v.titulo));
 
   const contrato = db.insert("contratos", {
     numero,
     vagaId,
+    vagasAdicionaisIds: vagasAdicionais.map((v) => v.id),
     empresaId: vaga.empresaId,
     consultorId: vaga.consultorId || null,
     ...campos,
-    cargoObjeto: campos.cargoObjeto || vaga.titulo,
+    cargoObjeto: campos.cargoObjeto || cargoObjetoPadrao,
     status: "Gerado",
     geradoPorId: req.consultor.id,
     lembreteParcela2Enviado: false,
@@ -191,20 +242,47 @@ router.post("/", requireAuth, (req, res) => {
   res.status(201).json(comDetalhes(contrato));
 });
 
-// Editar os dados comerciais/administrativos de um contrato já existente (não muda vaga/empresa/número).
+// Editar os dados comerciais/administrativos de um contrato já existente (não muda a
+// vaga principal/empresa/número — mas as vagas adicionais do mesmo cliente podem ser
+// ajustadas aqui, ex: o cliente abre uma segunda vaga junto poucos dias depois).
 router.patch("/:id", requireAuth, requireGestor, (req, res) => {
   const contrato = db.findById("contratos", req.params.id);
   if (!contrato) return res.status(404).json({ erro: "Contrato não encontrado." });
 
+  let vagasAdicionaisIds = contrato.vagasAdicionaisIds || [];
+  let vagasAdicionaisMudou = false;
+  if (req.body && req.body.vagasAdicionaisIds !== undefined) {
+    const { erro: erroAdicionais, vagas: vagasAdicionaisValidadas } = validarVagasAdicionais(
+      req.body.vagasAdicionaisIds,
+      contrato.vagaId,
+      contrato.empresaId,
+      contrato.id
+    );
+    if (erroAdicionais) return res.status(400).json({ erro: erroAdicionais });
+    vagasAdicionaisIds = vagasAdicionaisValidadas.map((v) => v.id);
+    vagasAdicionaisMudou = true;
+  }
+
   const campos = extrairCamposEditaveis(req.body);
-  if (!campos.cargoObjeto) campos.cargoObjeto = contrato.cargoObjeto;
+  if (!campos.cargoObjeto) {
+    // Sem redação própria informada: se a lista de vagas mudou, o "objeto" do contrato
+    // (cargos cobertos) é recalculado a partir das vagas atuais; senão, mantém como estava.
+    if (vagasAdicionaisMudou) {
+      const vagaPrincipal = db.findById("vagas", contrato.vagaId);
+      const vagasAdicionaisResolvidas = vagasAdicionaisIds.map((id) => db.findById("vagas", id)).filter(Boolean);
+      const todasVagas = [vagaPrincipal, ...vagasAdicionaisResolvidas].filter(Boolean);
+      campos.cargoObjeto = formatarListaCargos(todasVagas.map((v) => v.titulo)) || contrato.cargoObjeto;
+    } else {
+      campos.cargoObjeto = contrato.cargoObjeto;
+    }
+  }
 
   // Se a data de vencimento da 2ª parcela mudou (ex: usuária corrigiu a mão), o lembrete
   // de cobrança volta a poder disparar de novo para a nova data.
   const lembreteParcela2Enviado =
     campos.dataVencimentoParcela2 !== contrato.dataVencimentoParcela2 ? false : contrato.lembreteParcela2Enviado;
 
-  const atualizado = db.update("contratos", contrato.id, { ...campos, status: contrato.status, lembreteParcela2Enviado });
+  const atualizado = db.update("contratos", contrato.id, { ...campos, vagasAdicionaisIds, status: contrato.status, lembreteParcela2Enviado });
   res.json(comDetalhes(atualizado));
 });
 
