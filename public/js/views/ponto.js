@@ -31,7 +31,7 @@ function tagSaldoValor(v) {
 
 function tagSaldo(saldo) {
   const v = Number(saldo) || 0;
-  if (v > 0.05) return `<span class="tag tag-nprazo">+${v}h extra</span>`;
+  if (v > 0.05) return `<span class="tag tag-nprazo">+${v}h banco de horas</span>`;
   if (v < -0.05) return `<span class="tag tag-atrasada">${v}h a descontar</span>`;
   return '<span class="tag tag-encerrada">Em dia</span>';
 }
@@ -879,8 +879,14 @@ async function renderMeuPonto(root) {
         try {
           const localizacao = await obterLocalizacao();
           await api.post("/api/ponto/bater", localizacao || {});
+          // Feedback visual claro de que a batida foi registrada — o botão fica
+          // verde com um check por um instante antes de recarregar a tela, pra
+          // quem bateu o ponto ter certeza de que funcionou.
+          btn.classList.remove("btn-primary");
+          btn.classList.add("btn-sucesso-flash");
+          btn.textContent = "✓ Ponto registrado!";
           showToast(proxima.mensagemSucesso, "sucesso");
-          carregar();
+          setTimeout(() => carregar(), 700);
         } catch (err) {
           showToast(err.message, "erro");
           btn.disabled = false;

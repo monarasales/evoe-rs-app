@@ -121,6 +121,25 @@ input, textarea, select { font-family: inherit; }
 .sidebar-notif-btn:hover { background: rgba(255,255,255,0.06); color: white; }
 .sidebar-notif-icon { position: relative; font-size: 15px; width: 18px; text-align: center; }
 .sidebar-notif-icon .badge { top: -6px; right: -8px; }
+
+/* Botão de Bater Ponto na sidebar: precisa parecer um BOTÃO de ação (não um
+   texto informativo) e ficar óbvio assim que a pessoa entra no sistema — por
+   isso o gradiente da marca + leve pulso enquanto houver uma batida pendente.
+   Ao clicar, fica verde sólido por um instante confirmando que registrou. */
+#btn-ponto-widget.ponto-widget-pendente {
+  background: var(--brand-gradient); color: white; font-weight: 700;
+  box-shadow: 0 2px 10px rgba(124, 92, 250, 0.35);
+  animation: pontoPulso 2.2s ease-in-out infinite;
+}
+#btn-ponto-widget.ponto-widget-pendente:hover { filter: brightness(1.08); animation: none; }
+#btn-ponto-widget.ponto-widget-sucesso {
+  background: var(--success) !important; color: white; font-weight: 700; animation: none;
+}
+#btn-ponto-widget.ponto-widget-completo { background: rgba(30,126,69,0.18); color: #bfe8cd; font-weight: 600; }
+@keyframes pontoPulso {
+  0%, 100% { box-shadow: 0 2px 10px rgba(124, 92, 250, 0.35); }
+  50% { box-shadow: 0 2px 16px rgba(34, 195, 182, 0.55); }
+}
 .user-chip {
   display: flex; align-items: center; justify-content: space-between; gap: 8px;
   padding: 8px 10px; border-radius: 9px; background: rgba(255,255,255,0.05);
@@ -162,6 +181,9 @@ input, textarea, select { font-family: inherit; }
 .btn-block { width: 100%; padding: 12px; }
 .btn-sm { padding: 6px 12px; font-size: 12.5px; }
 .btn:disabled { opacity: 0.5; cursor: default; }
+/* Feedback visual de "batida registrada" — o botão de Bater Ponto fica verde
+   por um instante depois de um clique bem-sucedido, antes da tela recarregar. */
+.btn.btn-sucesso-flash:disabled { opacity: 1; background: var(--success); color: white; }
 .btn-icone {
   border: none; background: transparent; color: var(--text-muted); cursor: pointer;
   font-size: 13px; padding: 2px 4px; border-radius: 5px; line-height: 1; vertical-align: middle;

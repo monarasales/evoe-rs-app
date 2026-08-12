@@ -1,6 +1,8 @@
 import { api } from "./api.js";
 import { store, showToast, isGestor, podeGerenciarVagas, usaControlePonto } from "./state.js";
 import { registrarRota, setRaiz, iniciarRouter, navegarPara } from "./router.js";
+import { blocoDoDia } from "./horarioBlocos.js";
+import { obterLocalizacao } from "./geo.js";
 import { renderKanban } from "./views/kanban.js";
 import { renderCandidatos } from "./views/candidatos.js";
 import { renderDashboard } from "./views/dashboard.js";
@@ -158,11 +160,69 @@ function mostrarApp() {
 const btnPontoWidget = document.getElementById("btn-ponto-widget");
 const pontoWidgetTexto = document.getElementById("ponto-widget-texto");
 
-btnPontoWidget.addEventListener("click", () => navegarPara("#/ponto"));
+// Estado da próxima batida pendente, guardado pra o clique do botão saber o que
+// fazer sem precisar refazer a conta. Some quando o dia está completo ou quando
+// o Controle de Ponto não se aplica à pessoa.
+let proximaBatidaWidget = null;
 
-// Controle de Ponto: mostra na sidebar o horário da entrada de hoje, se já foi
-// batida (a pessoa bate pelo botão em Controle de Ponto — ver ponto.js). Se ainda
-// não bateu, mantém o texto padrão "Ponto"; clicar sempre leva pra tela de bater.
+// Descobre qual é a PRÓXIMA batida do dia (mesma lógica usada em Controle de
+// Ponto — ver views/ponto.js) só que aqui pro botão fixo da barra lateral, que
+// fica visível em QUALQUER tela do sistema assim que a pessoa faz login — é
+// esse o "botão de bater ponto" que precisa ser óbvio de primeira.
+function calcularProximaBatida(hoje) {
+  const meuRegistro = store.consultores.find((c) => c.id === store.usuario.id);
+  const diaSemanaHoje = hoje ? hoje.diaSemana : new Intl.DateTimeFormat("pt-BR", { weekday: "long" }).format(new Date());
+  const blocoHoje = meuRegistro ? blocoDoDia(meuRegistro.horarioEsperado, diaSemanaHoje) : null;
+  const temPausa = blocoHoje ? (Number(blocoHoje.pausaAlmocoMinutos) || 0) > 0 : false;
+  if (!hoje) return { rotulo: "Bater Entrada", mensagemSucesso: "Entrada registrada." };
+  if (hoje.horaSaida) return null; // dia completo
+  if (temPausa && !hoje.pausaSaida) return { rotulo: "Sair p/ Almoço", mensagemSucesso: "Saída para o almoço registrada." };
+  if (temPausa && hoje.pausaSaida && !hoje.pausaEntrada) return { rotulo: "Voltar do Almoço", mensagemSucesso: "Volta do almoço registrada." };
+  return { rotulo: "Bater Saída", mensagemSucesso: "Saída registrada." };
+}
+
+function pintarBotaoPontoWidget() {
+  btnPontoWidget.classList.remove("ponto-widget-pendente", "ponto-widget-completo");
+  if (proximaBatidaWidget) {
+    pontoWidgetTexto.textContent = `Bater Ponto — ${proximaBatidaWidget.rotulo}`;
+    btnPontoWidget.classList.add("ponto-widget-pendente");
+  } else {
+    pontoWidgetTexto.textContent = "✓ Ponto de hoje completo";
+    btnPontoWidget.classList.add("ponto-widget-completo");
+  }
+}
+
+// Controle de Ponto: o botão da sidebar é o próprio relógio de ponto — um clique
+// já registra a batida (entrada, pausa ou saída, o que for a vez), com feedback
+// visual de cor pra deixar claro que funcionou. Fica visível em todas as telas,
+// não só em Controle de Ponto, pra ninguém "perder" o botão.
+btnPontoWidget.addEventListener("click", async () => {
+  if (!proximaBatidaWidget) {
+    navegarPara("#/ponto");
+    return;
+  }
+  const acaoAtual = proximaBatidaWidget;
+  btnPontoWidget.disabled = true;
+  pontoWidgetTexto.textContent = "Registrando...";
+  try {
+    const localizacao = await obterLocalizacao();
+    await api.post("/api/ponto/bater", localizacao || {});
+    btnPontoWidget.classList.remove("ponto-widget-pendente");
+    btnPontoWidget.classList.add("ponto-widget-sucesso");
+    pontoWidgetTexto.textContent = "✓ Registrado!";
+    showToast(acaoAtual.mensagemSucesso, "sucesso");
+    setTimeout(async () => {
+      btnPontoWidget.classList.remove("ponto-widget-sucesso");
+      btnPontoWidget.disabled = false;
+      await inicializarPontoDoDia();
+    }, 900);
+  } catch (err) {
+    showToast(err.message, "erro");
+    btnPontoWidget.disabled = false;
+    pintarBotaoPontoWidget();
+  }
+});
+
 async function inicializarPontoDoDia() {
   if (!usaControlePonto()) {
     btnPontoWidget.classList.add("hidden");
@@ -171,8 +231,8 @@ async function inicializarPontoDoDia() {
   btnPontoWidget.classList.remove("hidden");
   try {
     const hoje = await api.get("/api/ponto/hoje");
-    if (!hoje) return;
-    pontoWidgetTexto.textContent = hoje.horaSaida ? `Ponto: ${hoje.horaEntrada}–${hoje.horaSaida}` : `Entrada: ${hoje.horaEntrada}`;
+    proximaBatidaWidget = calcularProximaBatida(hoje);
+    pintarBotaoPontoWidget();
   } catch (e) {
     /* silencioso: ponto é um extra, não pode travar o login por falha aqui */
   }
