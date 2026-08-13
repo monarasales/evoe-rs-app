@@ -623,48 +623,168 @@ async function renderGestor(root) {
     const detalheEl = conteudo.querySelector("#ponto-detalhe");
     detalheEl.innerHTML = '<div class="empty-state">Carregando...</div>';
     const registros = (await api.get(`/api/ponto?consultorId=${consultor.id}`)).filter((p) => p.data >= inicio && p.data <= fim);
-    detalheEl.innerHTML = `
-      <h3 class="section-title">${escapeHtml(consultor.nome)} — dia a dia</h3>
-      ${
-        registros.length === 0
-          ? '<div class="empty-state">Nenhuma batida de ponto neste período.</div>'
-          : `<table>
-              <thead><tr><th>Data</th><th>Dia</th><th>Entrada</th><th>Almoço</th><th>Saída</th><th>Trabalhadas</th><th>Esperadas</th><th>Saldo</th><th></th></tr></thead>
-              <tbody>
-                ${registros
-                  .map(
-                    (p) => `
-                  <tr data-id="${p.id}">
-                    <td>${formatarDataCurta(p.data)}${p.corrigidoManualmente || p.lancadoManualmente ? ' <span title="Corrigido/lançado manualmente">✏️</span>' : ""}</td>
-                    <td>${p.diaSemana}</td>
-                    <td>${localizacaoCelula(p.horaEntrada, p.entradaLat, p.entradaLng, p.entradaForaDoLocal, p.entradaDistanciaMetros, p.entradaReferencia)}</td>
-                    <td>${p.pausaSaida || p.pausaEntrada ? `${p.pausaSaida || "—"} → ${p.pausaEntrada || "—"}` : "—"}</td>
-                    <td>${localizacaoCelula(p.horaSaida, p.saidaLat, p.saidaLng, p.saidaForaDoLocal, p.saidaDistanciaMetros, p.saidaReferencia)}</td>
-                    <td>${p.horasTrabalhadas != null ? p.horasTrabalhadas + "h" : "—"}</td>
-                    <td>${p.horasEsperadas}h</td>
-                    <td>${p.horasTrabalhadas != null ? tagSaldo(p.saldoHoras) : "—"}</td>
-                    <td>${
-                      isGestor() && !(consultor.id === store.usuario.id && store.usuario.bloqueiaAutoCorrecaoPonto)
-                        ? '<button class="btn btn-outline btn-sm btn-editar-ponto">Editar</button>'
-                        : ""
-                    }</td>
-                  </tr>`
-                  )
-                  .join("")}
-              </tbody>
-            </table>`
+    const podeEditar = isGestor() && !(consultor.id === store.usuario.id && store.usuario.bloqueiaAutoCorrecaoPonto);
+    // Edição em lote: em vez de abrir um modal por dia (o jeito antigo, lento pra
+    // corrigir vários dias seguidos), a tabela vira uma "planilha" — os horários
+    // ficam editáveis direto nas células, dá pra mexer em quantos dias quiser e
+    // salvar tudo de uma vez só. O botão "Editar" (modal, um dia por vez) continua
+    // disponível pra correções pontuais.
+    let modoLote = false;
+
+    function desenhar() {
+      detalheEl.innerHTML = `
+        <div style="display:flex; align-items:center; justify-content:space-between; flex-wrap:wrap; gap:8px;">
+          <h3 class="section-title" style="margin:0;">${escapeHtml(consultor.nome)} — dia a dia</h3>
+          ${
+            podeEditar && registros.length > 0
+              ? modoLote
+                ? '<div style="display:flex; gap:8px;"><button id="btn-cancelar-lote" class="btn btn-outline btn-sm">Cancelar</button><button id="btn-salvar-lote" class="btn btn-primary btn-sm">💾 Salvar todas as correções</button></div>'
+                : '<button id="btn-editar-lote" class="btn btn-outline btn-sm">✏️ Corrigir vários dias de uma vez</button>'
+              : ""
+          }
+        </div>
+        ${
+          modoLote
+            ? '<div class="sub" style="margin:6px 0 10px;">Ajuste os horários direto na tabela — pode mexer em quantos dias quiser — e clique em "Salvar todas as correções" no final. Deixe em branco o que não foi batido.</div>'
+            : ""
+        }
+        ${
+          registros.length === 0
+            ? '<div class="empty-state">Nenhuma batida de ponto neste período.</div>'
+            : `<table>
+                <thead><tr><th>Data</th><th>Dia</th><th>Entrada</th><th>Almoço</th><th>Saída</th><th>Trabalhadas</th><th>Esperadas</th><th>Saldo</th><th></th></tr></thead>
+                <tbody>
+                  ${registros
+                    .map((p) => {
+                      if (modoLote && podeEditar) {
+                        return `
+                    <tr data-id="${p.id}">
+                      <td>${formatarDataCurta(p.data)}${p.corrigidoManualmente || p.lancadoManualmente ? ' <span title="Corrigido/lançado manualmente">✏️</span>' : ""}</td>
+                      <td>${p.diaSemana}</td>
+                      <td><input type="time" class="lote-entrada" value="${p.horaEntrada || ""}" style="width:112px;" /></td>
+                      <td style="white-space:nowrap;">
+                        <input type="time" class="lote-pausa-saida" value="${p.pausaSaida || ""}" style="width:100px;" /> →
+                        <input type="time" class="lote-pausa-entrada" value="${p.pausaEntrada || ""}" style="width:100px;" />
+                      </td>
+                      <td><input type="time" class="lote-saida" value="${p.horaSaida || ""}" style="width:112px;" /></td>
+                      <td>${p.horasTrabalhadas != null ? p.horasTrabalhadas + "h" : "—"}</td>
+                      <td>${p.horasEsperadas}h</td>
+                      <td>${p.horasTrabalhadas != null ? tagSaldo(p.saldoHoras) : "—"}</td>
+                      <td></td>
+                    </tr>`;
+                      }
+                      return `
+                    <tr data-id="${p.id}">
+                      <td>${formatarDataCurta(p.data)}${p.corrigidoManualmente || p.lancadoManualmente ? ' <span title="Corrigido/lançado manualmente">✏️</span>' : ""}</td>
+                      <td>${p.diaSemana}</td>
+                      <td>${localizacaoCelula(p.horaEntrada, p.entradaLat, p.entradaLng, p.entradaForaDoLocal, p.entradaDistanciaMetros, p.entradaReferencia)}</td>
+                      <td>${p.pausaSaida || p.pausaEntrada ? `${p.pausaSaida || "—"} → ${p.pausaEntrada || "—"}` : "—"}</td>
+                      <td>${localizacaoCelula(p.horaSaida, p.saidaLat, p.saidaLng, p.saidaForaDoLocal, p.saidaDistanciaMetros, p.saidaReferencia)}</td>
+                      <td>${p.horasTrabalhadas != null ? p.horasTrabalhadas + "h" : "—"}</td>
+                      <td>${p.horasEsperadas}h</td>
+                      <td>${p.horasTrabalhadas != null ? tagSaldo(p.saldoHoras) : "—"}</td>
+                      <td>${podeEditar ? '<button class="btn btn-outline btn-sm btn-editar-ponto">Editar</button>' : ""}</td>
+                    </tr>`;
+                    })
+                    .join("")}
+                </tbody>
+              </table>`
+        }
+      `;
+
+      const btnEditarLote = detalheEl.querySelector("#btn-editar-lote");
+      if (btnEditarLote) {
+        btnEditarLote.addEventListener("click", () => {
+          modoLote = true;
+          desenhar();
+        });
       }
-    `;
-    detalheEl.querySelectorAll(".btn-editar-ponto").forEach((btn) => {
-      btn.addEventListener("click", (e) => {
-        const id = e.target.closest("tr").dataset.id;
-        const registro = registros.find((r) => r.id === id);
-        abrirModalEditarPonto(registro, consultor.nome, () => {
+      const btnCancelarLote = detalheEl.querySelector("#btn-cancelar-lote");
+      if (btnCancelarLote) {
+        btnCancelarLote.addEventListener("click", () => {
+          modoLote = false;
+          desenhar();
+        });
+      }
+      const btnSalvarLote = detalheEl.querySelector("#btn-salvar-lote");
+      if (btnSalvarLote) {
+        btnSalvarLote.addEventListener("click", async () => {
+          btnSalvarLote.disabled = true;
+          btnSalvarLote.textContent = "Salvando...";
+
+          const alteracoes = [];
+          detalheEl.querySelectorAll("tbody tr").forEach((tr) => {
+            const entradaEl = tr.querySelector(".lote-entrada");
+            if (!entradaEl) return; // linha não editável (ex: bloqueada por bloqueiaAutoCorrecaoPonto)
+            const registro = registros.find((r) => r.id === tr.dataset.id);
+            const novaEntrada = entradaEl.value;
+            const novaSaida = tr.querySelector(".lote-saida").value;
+            const novaPausaSaida = tr.querySelector(".lote-pausa-saida").value;
+            const novaPausaEntrada = tr.querySelector(".lote-pausa-entrada").value;
+            const mudou =
+              novaEntrada !== (registro.horaEntrada || "") ||
+              novaSaida !== (registro.horaSaida || "") ||
+              novaPausaSaida !== (registro.pausaSaida || "") ||
+              novaPausaEntrada !== (registro.pausaEntrada || "");
+            if (mudou) {
+              alteracoes.push({
+                id: registro.id,
+                data: registro.data,
+                horaEntrada: novaEntrada,
+                horaSaida: novaSaida || null,
+                pausaSaida: novaPausaSaida || null,
+                pausaEntrada: novaPausaEntrada || null,
+              });
+            }
+          });
+
+          if (alteracoes.length === 0) {
+            showToast("Nenhum dia foi alterado.", "");
+            btnSalvarLote.disabled = false;
+            btnSalvarLote.textContent = "💾 Salvar todas as correções";
+            return;
+          }
+
+          const resultados = await Promise.allSettled(
+            alteracoes.map((a) =>
+              api.patch(`/api/ponto/${a.id}`, {
+                horaEntrada: a.horaEntrada,
+                horaSaida: a.horaSaida,
+                pausaSaida: a.pausaSaida,
+                pausaEntrada: a.pausaEntrada,
+              })
+            )
+          );
+          const falhas = resultados
+            .map((r, i) => (r.status === "rejected" ? { data: alteracoes[i].data, erro: (r.reason && r.reason.message) || "erro desconhecido" } : null))
+            .filter(Boolean);
+          const sucesso = resultados.length - falhas.length;
+
+          let mensagem = "";
+          if (sucesso > 0) mensagem += `${sucesso} dia${sucesso > 1 ? "s" : ""} corrigido${sucesso > 1 ? "s" : ""} com sucesso.`;
+          if (falhas.length > 0) {
+            mensagem += `${mensagem ? " " : ""}Falha em ${falhas.length} dia(s) (${falhas.map((f) => formatarDataCurta(f.data)).join(", ")}) — confira e tente de novo.`;
+          }
+          showToast(mensagem, falhas.length > 0 ? "erro" : "sucesso");
+
           carregar();
-          abrirDetalhe(consultor, inicio, fim);
+          await abrirDetalhe(consultor, inicio, fim);
+        });
+      }
+
+      detalheEl.querySelectorAll(".btn-editar-ponto").forEach((btn) => {
+        btn.addEventListener("click", (e) => {
+          const id = e.target.closest("tr").dataset.id;
+          const registro = registros.find((r) => r.id === id);
+          abrirModalEditarPonto(registro, consultor.nome, () => {
+            carregar();
+            abrirDetalhe(consultor, inicio, fim);
+          });
         });
       });
-    });
+    }
+
+    desenhar();
   }
 
   periodoSelect.addEventListener("change", () => {
