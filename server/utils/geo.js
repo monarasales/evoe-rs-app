@@ -7,7 +7,11 @@
 async function geocodificarEndereco(endereco) {
   if (!endereco || !endereco.trim()) return null;
   try {
-    const url = `https://nominatim.openstreetmap.org/search?format=json&limit=1&q=${encodeURIComponent(endereco.trim())}`;
+    // countrycodes=br restringe a busca ao Brasil — sem isso, um nome de rua comum
+    // (ex: "Rua das Flores") pode "casar" com um resultado em outro país e o pino
+    // sair a milhares de km do endereço real, fazendo o Controle de Ponto marcar
+    // toda batida como "fora do local" mesmo com a pessoa no lugar certo.
+    const url = `https://nominatim.openstreetmap.org/search?format=json&limit=1&countrycodes=br&q=${encodeURIComponent(endereco.trim())}`;
     const resposta = await fetch(url, {
       headers: {
         // Exigido pela política de uso do Nominatim: identifica o app fazendo a chamada.

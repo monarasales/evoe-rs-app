@@ -38,6 +38,51 @@ function enderecoPontoSemGeo(consultor) {
   return Boolean(enderecoSemGeo || enderecoTrabalhoSemGeo);
 }
 
+// A geocodificação automática (endereço em texto -> coordenada no mapa) às vezes erra
+// o pino — cai numa rua parecida em outra cidade, ou fica impreciso demais em endereços
+// novos/incompletos — e a pessoa passa a ser marcada como "fora do local" mesmo batendo
+// o ponto no lugar certo. Este bloco deixa o Gestor CONFERIR o pino atual no mapa e, se
+// estiver errado, corrigir a coordenada manualmente (copiada do Google Maps).
+function blocoCorrecaoLocalizacao(prefixo, lat, lng) {
+  const temCoord = lat != null && lng != null;
+  const linkMapa = temCoord ? `https://www.google.com/maps?q=${lat},${lng}` : null;
+  return `
+    <div class="card" style="padding:10px 14px; margin:-4px 0 14px; background:#f8f9fb; box-shadow:none; border:1px solid var(--border);">
+      <div class="sub" style="margin:0;">
+        ${
+          temCoord
+            ? `📍 Local encontrado no mapa: <a href="${linkMapa}" target="_blank" rel="noopener">ver no Google Maps</a> — confira se o pino está no lugar certo antes de confiar no Controle de Ponto.`
+            : "📍 Ainda não localizamos esse endereço no mapa automaticamente."
+        }
+      </div>
+      <div class="sub" style="margin:6px 0 6px;">
+        Se o pino estiver no lugar errado (ou a pessoa aparecer sempre "fora do local" mesmo batendo o ponto lá), corrija manualmente:
+        abra o local certo no Google Maps, clique com o botão direito nele e escolha as coordenadas para copiar, e cole abaixo.
+      </div>
+      <div class="form-cols">
+        <div class="form-row"><label style="font-weight:400;">Latitude manual</label><input type="text" inputmode="decimal" id="${prefixo}-lat-manual" placeholder="ex: -3.7327" /></div>
+        <div class="form-row"><label style="font-weight:400;">Longitude manual</label><input type="text" inputmode="decimal" id="${prefixo}-lng-manual" placeholder="ex: -38.5267" /></div>
+      </div>
+    </div>
+  `;
+}
+
+// Lê o par de coordenadas manuais digitado (se os dois campos estiverem preenchidos
+// com números válidos — aceita vírgula como separador decimal, comum no Brasil).
+// Devolve null quando os campos estão vazios (não altera nada) ou incompletos.
+function lerCoordenadaManual(prefixo) {
+  const latEl = document.getElementById(`${prefixo}-lat-manual`);
+  const lngEl = document.getElementById(`${prefixo}-lng-manual`);
+  if (!latEl || !lngEl) return null;
+  const latTexto = latEl.value.trim().replace(",", ".");
+  const lngTexto = lngEl.value.trim().replace(",", ".");
+  if (!latTexto || !lngTexto) return null;
+  const lat = Number(latTexto);
+  const lng = Number(lngTexto);
+  if (!Number.isFinite(lat) || !Number.isFinite(lng)) return null;
+  return { lat, lng };
+}
+
 function formatarReal(valor) {
   return (Number(valor) || 0).toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
 }
@@ -186,6 +231,7 @@ function abrirFormularioConsultor(consultor, root) {
           ? '<div class="sub" style="color:#c0392b; margin-top:-6px; margin-bottom:10px;">⚠️ Não conseguimos localizar esse endereço residencial no mapa — deixe mais completo (bairro, cidade, CEP) e salve de novo.</div>'
           : ""
       }
+      ${editando && consultor.endereco && pontoInicial ? blocoCorrecaoLocalizacao("cs-end", consultor.enderecoLat, consultor.enderecoLng) : ""}
       <div class="form-row" id="cs-desligamento-row" style="${!editando || consultor.ativo ? "display:none;" : ""}">
         <label>Data de desligamento</label>
         <input type="text" inputmode="numeric" placeholder="dd/mm/aaaa" maxlength="10" id="cs-desligamento" value="${editando ? isoParaBr(consultor.dataDesligamento) : ""}" />
@@ -220,6 +266,7 @@ function abrirFormularioConsultor(consultor, root) {
             ? '<div class="sub" style="color:#c0392b; margin-top:-6px; margin-bottom:10px;">⚠️ Não conseguimos localizar esse endereço de trabalho no mapa — enquanto isso, quem bate ponto presencialmente pode aparecer "fora do alcance" sem estar errado. Deixe o endereço mais completo (bairro, cidade, CEP) e salve de novo.</div>'
             : ""
         }
+        ${editando && consultor.enderecoTrabalho ? blocoCorrecaoLocalizacao("cs-endt", consultor.enderecoTrabalhoLat, consultor.enderecoTrabalhoLng) : ""}
         <div class="sub" style="margin-top:-6px; margin-bottom:10px;">O Endereço Residencial (acima, em Dados de RH) também é usado como referência.</div>
 
         <div class="form-row"><label>Horário de trabalho</label></div>
@@ -425,6 +472,20 @@ function abrirFormularioConsultor(consultor, root) {
       chavePix: document.getElementById("cs-pix").value.trim(),
       bloqueiaAutoCorrecaoPonto: document.getElementById("cs-bloqueia-autocorrecao").checked,
     };
+
+    // Correção manual de localização (ver blocoCorrecaoLocalizacao acima): só entra
+    // no payload quando a pessoa realmente preencheu os dois campos — do contrário a
+    // geocodificação automática continua valendo normalmente, sem interferência.
+    const coordManualResidencial = lerCoordenadaManual("cs-end");
+    if (coordManualResidencial) {
+      payload.enderecoLatManual = coordManualResidencial.lat;
+      payload.enderecoLngManual = coordManualResidencial.lng;
+    }
+    const coordManualTrabalho = lerCoordenadaManual("cs-endt");
+    if (coordManualTrabalho) {
+      payload.enderecoTrabalhoLatManual = coordManualTrabalho.lat;
+      payload.enderecoTrabalhoLngManual = coordManualTrabalho.lng;
+    }
     const username = document.getElementById("cs-username").value.trim();
     const senha = document.getElementById("cs-senha").value;
     if (!editando) {

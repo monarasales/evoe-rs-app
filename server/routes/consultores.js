@@ -84,6 +84,33 @@ async function geocodificarSeNecessario(elegivel, enderecoAntigo, enderecoNovo, 
   return resultado;
 }
 
+// A geocodificação automática (Nominatim/OpenStreetMap) às vezes erra o pino — sobra
+// numa rua parecida em outra cidade, ou fica impreciso demais para endereços novos —
+// e a pessoa passa a ser marcada como "fora do local" mesmo batendo o ponto no lugar
+// certo. Quando o Gestor manda coordenadas manuais (copiadas do Google Maps na tela
+// de Equipe), elas sempre valem por cima do resultado automático. Só usa o par quando
+// os dois números (lat e lng) vêm válidos juntos, pra nunca salvar metade de um par.
+function comCoordenadasManuais(geo, body) {
+  const resultado = { ...geo };
+  if (body.enderecoLatManual !== undefined && body.enderecoLngManual !== undefined) {
+    const lat = Number(body.enderecoLatManual);
+    const lng = Number(body.enderecoLngManual);
+    if (Number.isFinite(lat) && Number.isFinite(lng)) {
+      resultado.enderecoLat = lat;
+      resultado.enderecoLng = lng;
+    }
+  }
+  if (body.enderecoTrabalhoLatManual !== undefined && body.enderecoTrabalhoLngManual !== undefined) {
+    const lat = Number(body.enderecoTrabalhoLatManual);
+    const lng = Number(body.enderecoTrabalhoLngManual);
+    if (Number.isFinite(lat) && Number.isFinite(lng)) {
+      resultado.enderecoTrabalhoLat = lat;
+      resultado.enderecoTrabalhoLng = lng;
+    }
+  }
+  return resultado;
+}
+
 // Qualquer usuário autenticado pode listar consultores (precisa para os seletores de formulário).
 router.get("/", (req, res) => {
   const users = db.readCollection("users");
@@ -139,7 +166,10 @@ router.post("/", requireGestor, async (req, res) => {
   // pessoa (Guilherme pode ser CLT e ainda assim usar ponto, por exemplo). Sem escolha
   // explícita no formulário, mantém o padrão histórico (ligado para quem é Estágio).
   const controlaPontoFinal = typeof controlaPonto === "boolean" ? controlaPonto : tipoVinculo === "Estágio";
-  const geo = await geocodificarSeNecessario(controlaPontoFinal, undefined, endereco || "", undefined, enderecoTrabalho || "");
+  const geo = comCoordenadasManuais(
+    await geocodificarSeNecessario(controlaPontoFinal, undefined, endereco || "", undefined, enderecoTrabalho || ""),
+    req.body || {}
+  );
 
   const consultor = db.insert("consultores", {
     nome,
@@ -256,14 +286,17 @@ router.patch("/:id", requireGestor, async (req, res) => {
     tipoVinculo: tipoVinculo !== undefined ? tipoVinculo : consultorAtual.tipoVinculo,
     controlaPonto: controlaPonto !== undefined ? controlaPonto : consultorAtual.controlaPonto,
   });
-  const geo = await geocodificarSeNecessario(
-    elegivel,
-    consultorAtual.endereco,
-    endereco,
-    consultorAtual.enderecoTrabalho,
-    enderecoTrabalho,
-    consultorAtual.enderecoLat,
-    consultorAtual.enderecoTrabalhoLat
+  const geo = comCoordenadasManuais(
+    await geocodificarSeNecessario(
+      elegivel,
+      consultorAtual.endereco,
+      endereco,
+      consultorAtual.enderecoTrabalho,
+      enderecoTrabalho,
+      consultorAtual.enderecoLat,
+      consultorAtual.enderecoTrabalhoLat
+    ),
+    req.body || {}
   );
 
   const atualizado = db.update("consultores", req.params.id, {
