@@ -11,8 +11,11 @@ router.post("/login", (req, res) => {
   if (!username || !senha) {
     return res.status(400).json({ erro: "Informe usuário e senha." });
   }
-  const user = db.readCollection("users").find((u) => u.username === String(username).toLowerCase());
-  if (!user || !bcrypt.compareSync(senha, user.passwordHash)) {
+  // trim() nos dois lados (usuário e senha) evita que um espaço acidental no início/fim
+  // — comum em copiar e colar de WhatsApp/Notas, ou autocorreção do teclado do celular —
+  // faça o login falhar mesmo com usuário e senha "certos" aos olhos de quem está digitando.
+  const user = db.readCollection("users").find((u) => u.username === String(username).trim().toLowerCase());
+  if (!user || !bcrypt.compareSync(String(senha).trim(), user.passwordHash)) {
     return res.status(401).json({ erro: "Usuário ou senha inválidos." });
   }
   const consultor = db.findById("consultores", user.consultorId);

@@ -137,6 +137,7 @@ async function carregarConsultores(root) {
               isGestor()
                 ? `<td style="white-space:nowrap;">
                     <button class="btn btn-outline btn-sm btn-editar-consultor">Editar</button>
+                    <button class="btn btn-outline btn-sm btn-redefinir-senha" title="Redefinir usuário/senha de login">🔑 Senha</button>
                     <button class="btn btn-outline btn-sm btn-excluir-consultor" style="color:#c0392b;">Excluir</button>
                   </td>`
                 : ""
@@ -169,7 +170,54 @@ async function carregarConsultores(root) {
         }
       })
     );
+    el.querySelectorAll(".btn-redefinir-senha").forEach((btn) =>
+      btn.addEventListener("click", (e) => {
+        const id = e.target.closest("tr").dataset.id;
+        abrirModalRedefinirSenha(consultores.find((x) => x.id === id), root);
+      })
+    );
   }
+}
+
+// Ação rápida e isolada pra redefinir usuário/senha — separada do formulário grande de
+// edição (que tem dezenas de campos) justamente pra evitar o erro mais comum: alterar
+// só a senha e esquecer de conferir o usuário junto, ou salvar o resto do cadastro sem
+// perceber que a senha não foi junto. O campo de senha é texto visível (não oculto) de
+// propósito, pra dar pra CONFERIR exatamente o que foi digitado antes de enviar — um
+// espaço a mais/a menos aqui é a causa mais comum de "mudei a senha e não funcionou".
+function abrirModalRedefinirSenha(consultor, root) {
+  abrirModal(`
+    <h2>Redefinir Senha — ${escapeHtml(consultor.nome)}</h2>
+    <p class="sub">Confira o usuário e digite a nova senha. Depois de salvar, repasse os dois pra pessoa (ex: por WhatsApp) — evite copiar e colar com espaço extra no início/fim.</p>
+    <form id="form-redefinir-senha">
+      <div class="form-row"><label>Usuário de login</label><input type="text" id="rs-username" autocapitalize="off" autocorrect="off" spellcheck="false" value="${consultor.username ? escapeHtml(consultor.username) : ""}" required /></div>
+      <div class="form-row"><label>Nova senha</label><input type="text" id="rs-senha" autocapitalize="off" autocorrect="off" spellcheck="false" placeholder="digite a nova senha" required /></div>
+      <div id="redefinir-senha-erro" class="form-erro hidden"></div>
+      <div class="modal-close-row">
+        <button type="button" id="btn-cancelar-rs" class="btn btn-outline">Fechar</button>
+        <button type="submit" class="btn btn-primary">Redefinir</button>
+      </div>
+    </form>
+  `);
+  document.getElementById("btn-cancelar-rs").addEventListener("click", fecharModal);
+  document.getElementById("form-redefinir-senha").addEventListener("submit", async (ev) => {
+    ev.preventDefault();
+    const erroEl = document.getElementById("redefinir-senha-erro");
+    erroEl.classList.add("hidden");
+    const username = document.getElementById("rs-username").value.trim();
+    const senha = document.getElementById("rs-senha").value.trim();
+    try {
+      const resultado = await api.patch(`/api/consultores/${consultor.id}/credenciais`, { username, senha });
+      showToast(`Senha redefinida para o usuário "${resultado.username}". Repasse a nova senha pra ${consultor.nome}.`, "sucesso");
+      fecharModal();
+      carregarConsultores(root);
+      const atualizados = await api.get("/api/consultores");
+      store.consultores = atualizados;
+    } catch (err) {
+      erroEl.textContent = err.message;
+      erroEl.classList.remove("hidden");
+    }
+  });
 }
 
 function abrirFormularioConsultor(consultor, root) {
@@ -289,15 +337,15 @@ function abrirFormularioConsultor(consultor, root) {
         !editando
           ? `
       <div class="form-cols">
-        <div class="form-row"><label>Usuário de login</label><input type="text" id="cs-username" placeholder="ex: joana" /></div>
-        <div class="form-row"><label>Senha inicial</label><input type="text" id="cs-senha" placeholder="ex: evoe123" /></div>
+        <div class="form-row"><label>Usuário de login</label><input type="text" id="cs-username" autocapitalize="off" autocorrect="off" spellcheck="false" placeholder="ex: joana" /></div>
+        <div class="form-row"><label>Senha inicial</label><input type="text" id="cs-senha" autocapitalize="off" autocorrect="off" spellcheck="false" placeholder="ex: evoe123" /></div>
       </div>`
           : `
       <div class="form-cols">
-        <div class="form-row"><label>Usuário de login</label><input type="text" id="cs-username" placeholder="ex: joana" value="${consultor.username ? escapeHtml(consultor.username) : ""}" /></div>
-        <div class="form-row"><label>Nova senha</label><input type="text" id="cs-senha" placeholder="deixe em branco para manter a atual" /></div>
+        <div class="form-row"><label>Usuário de login</label><input type="text" id="cs-username" autocapitalize="off" autocorrect="off" spellcheck="false" placeholder="ex: joana" value="${consultor.username ? escapeHtml(consultor.username) : ""}" /></div>
+        <div class="form-row"><label>Nova senha</label><input type="text" id="cs-senha" autocapitalize="off" autocorrect="off" spellcheck="false" placeholder="deixe em branco para manter a atual" /></div>
       </div>
-      <p class="sub">Preencha usuário e nova senha juntos só se quiser redefinir o login. Deixando a senha em branco, o login atual não muda.</p>`
+      <p class="sub">Preencha usuário e nova senha juntos só se quiser redefinir o login (deixando a senha em branco, o login atual não muda). Dica: pra só resetar a senha, o botão "🔑 Senha" na tabela é mais rápido e evita esquecer algum campo.</p>`
       }
       <div id="consultor-form-erro" class="form-erro hidden"></div>
       <div class="modal-close-row">

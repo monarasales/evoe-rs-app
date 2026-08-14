@@ -210,10 +210,13 @@ router.post("/", requireGestor, async (req, res) => {
   });
 
   if (usernameNormalizado) {
+    // trim() aqui espelha o trim() feito no login (auth.js) — sem isso, um espaço
+    // acidental no início/fim da senha (comum em copiar/colar) gera um hash que nunca
+    // vai bater no login, mesmo com a senha "certa" aos olhos de quem digitou.
     db.insert("users", {
       consultorId: consultor.id,
       username: usernameNormalizado,
-      passwordHash: bcrypt.hashSync(senha, 10),
+      passwordHash: bcrypt.hashSync(String(senha).trim(), 10),
     });
   }
 
@@ -319,7 +322,7 @@ router.patch("/:id/credenciais", requireGestor, (req, res) => {
   if (!consultor) return res.status(404).json({ erro: "Consultor não encontrado." });
 
   const { username, senha } = req.body || {};
-  if (!username || !senha) {
+  if (!username || !String(username).trim() || !senha || !String(senha).trim()) {
     return res.status(400).json({ erro: "Usuário e senha são obrigatórios." });
   }
 
@@ -333,7 +336,9 @@ router.patch("/:id/credenciais", requireGestor, (req, res) => {
   }
 
   const existente = users.find((u) => u.consultorId === consultor.id);
-  const passwordHash = bcrypt.hashSync(senha, 10);
+  // trim() espelha o login (auth.js) — evita que um espaço acidental no início/fim
+  // (comum em copiar/colar de WhatsApp/Notas) deixe a senha nova sem funcionar.
+  const passwordHash = bcrypt.hashSync(String(senha).trim(), 10);
   if (existente) {
     db.update("users", existente.id, { username: usernameNormalizado, passwordHash });
   } else {
