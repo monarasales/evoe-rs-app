@@ -16,6 +16,12 @@ function removerArquivoCurriculo(candidato) {
   if (fs.existsSync(filePath)) fs.unlinkSync(filePath);
 }
 
+function removerArquivoParecerPorNome(nomeArquivo) {
+  if (!nomeArquivo) return;
+  const filePath = path.join(UPLOADS_DIR, nomeArquivo);
+  if (fs.existsSync(filePath)) fs.unlinkSync(filePath);
+}
+
 function podeEditar(req, vaga) {
   if (!vaga) return true;
   return (
@@ -68,6 +74,7 @@ router.post("/", requireAuth, (req, res) => {
     jusbrasilOk: false,
     obsReferencia: "",
     parecerComportamental: "",
+    pareceres: [], // array de {arquivo, nomeOriginal, tamanho, uploadedAt}
     dataRetornoCliente: null,
     // Lista Negra: candidato não recomendado para futuras vagas — independe da etapa,
     // pode ser marcado a qualquer momento (ver rota PATCH).
@@ -201,6 +208,75 @@ router.delete("/:id/curriculo", requireAuth, (req, res) => {
     curriculoTamanho: null,
     curriculoUploadedAt: null,
   });
+  res.json(atualizado);
+});
+
+// --- Pareceres (múltiplos arquivos) -------------------------------------------------
+// Consultores podem anexar vários arquivos de parecer (ex: parecer psicológico, técnico, etc).
+// Cada parecer fica num objeto com {arquivo, nomeOriginal, tamanho, uploadedAt}.
+
+router.post("/:id/pareceres", requireAuth, (req, res, next) => {
+  uploadCurriculo.single("arquivo")(req, res, (err) => {
+    if (err) return res.status(400).json({ erro: err.message || "Falha ao enviar o arquivo." });
+
+    const candidato = db.findById("candidatos", req.params.id);
+    if (!candidato) return res.status(404).json({ erro: "Candidato não encontrado." });
+    const vaga = db.findById("vagas", candidato.vagaId);
+    if (!podeEditar(req, vaga)) {
+      if (req.file) fs.unlinkSync(req.file.path);
+      return res.status(403).json({ erro: "Você só pode anexar pareceres em candidatos de vagas atribuídas a você." });
+    }
+    if (!req.file) return res.status(400).json({ erro: "Nenhum arquivo enviado." });
+
+    // Adiciona um novo parecer ao array (sem substituir anteriores)
+    const novoParecerObj = {
+      arquivo: req.file.filename,
+      nomeOriginal: req.file.originalname,
+      tamanho: req.file.size,
+      uploadedAt: db.nowIso(),
+    };
+    const pareceres = (candidato.pareceres || []).concat([novoParecerObj]);
+    const atualizado = db.update("candidatos", candidato.id, { pareceres });
+    res.json(atualizado);
+  });
+});
+
+router.get("/:id/pareceres", requireAuth, (req, res) => {
+  const candidato = db.findById("candidatos", req.params.id);
+  if (!candidato) return res.status(404).json({ erro: "Candidato não encontrado." });
+  res.json(candidato.pareceres || []);
+});
+
+router.get("/:id/pareceres/:parecerIdx", requireAuth, (req, res) => {
+  const candidato = db.findById("candidatos", req.params.id);
+  if (!candidato) return res.status(404).json({ erro: "Candidato não encontrado." });
+  const idx = parseInt(req.params.parecerIdx, 10);
+  if (!Number.isFinite(idx) || idx < 0 || idx >= (candidato.pareceres || []).length) {
+    return res.status(404).json({ erro: "Parecer não encontrado." });
+  }
+  const parecer = candidato.pareceres[idx];
+  const filePath = path.join(UPLOADS_DIR, parecer.arquivo);
+  if (!fs.existsSync(filePath)) {
+    return res.status(404).json({ erro: "O arquivo não foi encontrado no servidor." });
+  }
+  res.download(filePath, parecer.nomeOriginal || "parecer.pdf");
+});
+
+router.delete("/:id/pareceres/:parecerIdx", requireAuth, (req, res) => {
+  const candidato = db.findById("candidatos", req.params.id);
+  if (!candidato) return res.status(404).json({ erro: "Candidato não encontrado." });
+  const vaga = db.findById("vagas", candidato.vagaId);
+  if (!podeEditar(req, vaga)) {
+    return res.status(403).json({ erro: "Você só pode remover pareceres de candidatos de vagas atribuídas a você." });
+  }
+  const idx = parseInt(req.params.parecerIdx, 10);
+  if (!Number.isFinite(idx) || idx < 0 || idx >= (candidato.pareceres || []).length) {
+    return res.status(404).json({ erro: "Parecer não encontrado." });
+  }
+  const parecer = candidato.pareceres[idx];
+  removerArquivoParecerPorNome(parecer.arquivo);
+  const novoArrayPareceres = candidato.pareceres.filter((_, i) => i !== idx);
+  const atualizado = db.update("candidatos", candidato.id, { pareceres: novoArrayPareceres });
   res.json(atualizado);
 });
 

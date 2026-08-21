@@ -255,7 +255,7 @@ export async function renderCandidatos(root, params) {
               .map(
                 (c) => `
               <tr data-id="${c.id}">
-                <td>${escapeHtml(c.nome)}${c.curriculoArquivo ? ' <span title="Tem currículo anexado">📎</span>' : ""}${tagListaNegra(c)}</td>
+                <td>${escapeHtml(c.nome)}${c.curriculoArquivo ? ' <span title="Tem currículo anexado">📎</span>' : ""}${c.pareceres && c.pareceres.length > 0 ? ` <span title="Tem ${c.pareceres.length} parecer(es) anexado(s)">📋</span>` : ""}${tagListaNegra(c)}</td>
                 <td title="${vagaCadastroTitle(c.vagaId)}">${escapeHtml(vagaTitulo(c.vagaId))}</td>
                 <td>${escapeHtml(c.etapaCandidato)}</td>
                 <td>${escapeHtml(c.telefone) || "—"}</td>
@@ -284,11 +284,11 @@ export async function renderCandidatos(root, params) {
               .map(
                 (c) => `
               <tr data-id="${c.id}">
-                <td>${escapeHtml(c.nome)}${c.curriculoArquivo ? ' <span title="Tem currículo anexado">📎</span>' : ""}${tagListaNegra(c)}</td>
+                <td>${escapeHtml(c.nome)}${c.curriculoArquivo ? ' <span title="Tem currículo anexado">📎</span>' : ""}${c.pareceres && c.pareceres.length > 0 ? ` <span title="Tem ${c.pareceres.length} parecer(es) anexado(s)">📋</span>` : ""}${tagListaNegra(c)}</td>
                 <td title="${vagaCadastroTitle(c.vagaId)}">${escapeHtml(vagaTitulo(c.vagaId))}</td>
                 <td>${escapeHtml(c.etapaCandidato)}</td>
                 <td>${c.jusbrasilOk ? "✅" : "—"}</td>
-                <td>${(c.parecerComportamental || "").trim() ? "✅" : "—"}</td>
+                <td>${(c.parecerComportamental || "").trim() ? "✅" : "—"}${c.pareceres && c.pareceres.length > 0 ? ` (${c.pareceres.length} arquivo${c.pareceres.length > 1 ? "s" : ""})` : ""}</td>
                 <td>${formatarDataCurta(c.dataEntrevista)}</td>
                 <td>${formatarDataCurta(c.dataEntrevistaEmpresa)}</td>
                 <td>${formatarDataCurta(c.dataRetornoCliente)}</td>
@@ -553,8 +553,14 @@ export async function renderCandidatos(root, params) {
           <textarea id="c-obs-referencia">${escapeHtml(candidato.obsReferencia || "")}</textarea>
         </div>
         <div class="form-row">
-          <label>Parecer comportamental</label>
+          <label>Parecer comportamental (texto)</label>
           <textarea id="c-parecer">${escapeHtml(candidato.parecerComportamental || "")}</textarea>
+        </div>
+        <div class="form-row">
+          <label>Pareceres (arquivos - PDF/DOC/DOCX)</label>
+          <div id="pareceres-lista" style="margin-bottom:8px;"></div>
+          <input type="file" id="c-parecer-input" accept=".pdf,.doc,.docx" style="margin-top:8px;" />
+          <div class="sub" style="margin-top:4px;">Formatos aceitos: PDF, DOC ou DOCX (até 10MB). Você pode anexar quantos pareceres quiser.</div>
         </div>
         <div class="form-row checkbox-row">
           <input type="checkbox" id="c-lista-negra" ${candidato.listaNegra ? "checked" : ""} />
@@ -636,6 +642,8 @@ export async function renderCandidatos(root, params) {
       });
 
       renderizarStatusCurriculo();
+      renderizarListaPareceres();
+
       const inputCurriculo = document.getElementById("c-curriculo-input");
       inputCurriculo.addEventListener("change", async () => {
         const arquivo = inputCurriculo.files[0];
@@ -655,6 +663,26 @@ export async function renderCandidatos(root, params) {
           inputCurriculo.value = "";
         }
       });
+
+      const inputParecer = document.getElementById("c-parecer-input");
+      if (inputParecer) {
+        inputParecer.addEventListener("change", async () => {
+          const arquivo = inputParecer.files[0];
+          if (!arquivo) return;
+          try {
+            const atualizado = await api.upload(`/api/candidatos/${candidato.id}/pareceres`, arquivo);
+            candidato.pareceres = atualizado.pareceres || [];
+            renderizarListaPareceres();
+            showToast("Parecer anexado.", "sucesso");
+            const idxCandidato = todosCandidatos.findIndex((c) => c.id === candidato.id);
+            if (idxCandidato >= 0) todosCandidatos[idxCandidato] = { ...todosCandidatos[idxCandidato], ...atualizado };
+          } catch (err) {
+            showToast(err.message, "erro");
+          } finally {
+            inputParecer.value = "";
+          }
+        });
+      }
     }
 
     function renderizarStatusCurriculo() {
@@ -682,6 +710,50 @@ export async function renderCandidatos(root, params) {
         } catch (err) {
           showToast(err.message, "erro");
         }
+      });
+    }
+
+    function renderizarListaPareceres() {
+      const listaEl = document.getElementById("pareceres-lista");
+      if (!listaEl) return;
+      const pareceres = candidato.pareceres || [];
+      if (pareceres.length === 0) {
+        listaEl.innerHTML = '<span class="sub">Nenhum parecer anexado ainda.</span>';
+        return;
+      }
+      listaEl.innerHTML = `
+        <div class="sub" style="margin-bottom:8px;">Pareceres anexados:</div>
+        <div style="display:flex; flex-direction:column; gap:6px;">
+          ${pareceres
+            .map(
+              (p, idx) => `
+            <div style="display:flex; align-items:center; justify-content:space-between; padding:6px 8px; background:var(--bg-alt); border-radius:4px;">
+              <div style="flex:1;">
+                <a href="/api/candidatos/${candidato.id}/pareceres/${idx}" target="_blank" style="color:var(--text); text-decoration:none; font-weight:500;">📎 ${escapeHtml(p.nomeOriginal || "parecer")}${p.tamanho ? ` (${formatarTamanho(p.tamanho)})` : ""}</a>
+                <div class="sub" style="margin-top:2px;">Enviado em ${new Date(p.uploadedAt).toLocaleDateString("pt-BR")}</div>
+              </div>
+              <button type="button" class="btn-remover-parecer" data-idx="${idx}" class="btn btn-outline btn-sm" style="margin-left:8px; padding:4px 8px; font-size:12px;">Remover</button>
+            </div>
+          `
+            )
+            .join("")}
+        </div>
+      `;
+      listaEl.querySelectorAll(".btn-remover-parecer").forEach((btn) => {
+        btn.addEventListener("click", async (e) => {
+          const idx = parseInt(e.target.dataset.idx, 10);
+          if (!confirm("Remover este parecer?")) return;
+          try {
+            const atualizado = await api.del(`/api/candidatos/${candidato.id}/pareceres/${idx}`);
+            candidato.pareceres = atualizado.pareceres || [];
+            renderizarListaPareceres();
+            showToast("Parecer removido.", "sucesso");
+            const idxCandidato = todosCandidatos.findIndex((c) => c.id === candidato.id);
+            if (idxCandidato >= 0) todosCandidatos[idxCandidato] = { ...todosCandidatos[idxCandidato], ...atualizado };
+          } catch (err) {
+            showToast(err.message, "erro");
+          }
+        });
       });
     }
 
