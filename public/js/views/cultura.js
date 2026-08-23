@@ -23,10 +23,12 @@ export async function renderCultura(root) {
     <div class="view-header">
       <div>
         <h2>Cultura Organizacional</h2>
-        <div class="sub">Gerenciar projetos de implementação de cultura dos clientes.</div>
+        <div class="sub">Implementação de cultura: diagnóstico → planejamento → implementação → acompanhamento.</div>
       </div>
       <button id="btn-novo-projeto" class="btn btn-primary">+ Novo Projeto</button>
     </div>
+
+    <div id="cultura-resumo" style="display:flex; gap:16px; margin-bottom:16px;"></div>
 
     <div class="kanban-toolbar">
       <label>
@@ -57,6 +59,7 @@ export async function renderCultura(root) {
   const btnNovo = root.querySelector("#btn-novo-projeto");
   const projetosEl = root.querySelector("#cultura-projetos");
   const detalheEl = root.querySelector("#cultura-detalhe");
+  const resumoEl = root.querySelector("#cultura-resumo");
 
   async function carregar() {
     try {
@@ -67,10 +70,43 @@ export async function renderCultura(root) {
 
       empresas = await api.get("/api/empresas");
       atualizarFiltros();
+      renderizarResumo();
       renderizarProjetos();
     } catch (err) {
       showToast(err.message, "erro");
     }
+  }
+
+  function renderizarResumo() {
+    const total = projetos.length;
+    const emAndamento = projetos.filter(p => ['Diagnóstico', 'Planejamento', 'Implementação', 'Acompanhamento'].includes(p.status)).length;
+    const concluidos = projetos.filter(p => p.status === 'Encerramento').length;
+    const progresso = total > 0 ? Math.round((projetos.reduce((sum, p) => sum + (p.progresso || 0), 0) / total)) : 0;
+
+    resumoEl.innerHTML = `
+      <div class="kpi-card">
+        <div class="kpi-label">Total de Projetos</div>
+        <div class="kpi-value">${total}</div>
+        <div class="kpi-sub">Todos os clientes</div>
+      </div>
+      <div class="kpi-card">
+        <div class="kpi-label">Em Andamento</div>
+        <div class="kpi-value">${emAndamento}</div>
+        <div class="kpi-sub">Diagnóstico até Acompanhamento</div>
+      </div>
+      <div class="kpi-card">
+        <div class="kpi-label">Concluídos</div>
+        <div class="kpi-value">${concluidos}</div>
+        <div class="kpi-sub">Encerramento</div>
+      </div>
+      <div class="kpi-card">
+        <div class="kpi-label">Progresso Médio</div>
+        <div class="kpi-value">${progresso}%</div>
+        <div style="height:4px; background:#e0e0e0; border-radius:2px; margin-top:4px;">
+          <div style="height:100%; background:#4CAF50; border-radius:2px; width:${progresso}%;"></div>
+        </div>
+      </div>
+    `;
   }
 
   function atualizarFiltros() {
@@ -84,27 +120,35 @@ export async function renderCultura(root) {
       return;
     }
 
-    projetosEl.innerHTML = projetos.map(p => `
-      <div class="kanban-card" data-id="${p.id}" style="cursor:pointer;">
-        <div style="margin-bottom:8px;">
-          <strong>${escapeHtml(p.titulo)}</strong>
-          <div class="sub">${nomeEmpresa(p.empresaId)}</div>
-        </div>
-        <div style="margin-bottom:8px;">
-          <span class="tag tag-${p.status === 'Encerramento' ? 'ok' : p.status === 'Implementação' ? 'atrasada' : ''}">${p.status}</span>
-        </div>
-        <div class="sub" style="margin-bottom:6px;">
-          Início: ${formatarData(p.dataInicio)}<br>
-          Fim: ${formatarData(p.dataFim)}
-        </div>
-        <div style="display:flex; gap:6px;">
-          <div style="flex:1; height:6px; background:#e0e0e0; border-radius:3px;">
-            <div style="height:100%; background:#4CAF50; border-radius:3px; width:${p.progresso}%;"></div>
+    projetosEl.innerHTML = projetos.map(p => {
+      const statusColor = p.status === 'Diagnóstico' ? '#0074D9' :
+                          p.status === 'Planejamento' ? '#FF4136' :
+                          p.status === 'Implementação' ? '#FF851B' :
+                          p.status === 'Acompanhamento' ? '#2ECC40' :
+                          '#111111';
+      return `
+        <div class="kanban-card" data-id="${p.id}" style="cursor:pointer; border-left:4px solid ${statusColor};">
+          <div style="margin-bottom:8px;">
+            <strong>${escapeHtml(p.titulo)}</strong>
+            <div class="sub">${nomeEmpresa(p.empresaId)}</div>
           </div>
-          <span class="sub" style="min-width:30px;">${p.progresso}%</span>
+          <div style="margin-bottom:8px;">
+            <span class="tag" style="background:${statusColor}; color:white; font-size:12px; padding:4px 8px; border-radius:3px;">${p.status}</span>
+          </div>
+          <div class="sub" style="margin-bottom:6px; font-size:12px;">
+            ${p.dataInicio ? `📅 ${formatarData(p.dataInicio)}` : 'Sem data de início'}
+          </div>
+          <div style="margin-bottom:8px;">
+            <div style="font-size:12px; font-weight:500; margin-bottom:2px;">Progresso: ${p.progresso || 0}%</div>
+            <div style="display:flex; gap:6px;">
+              <div style="flex:1; height:8px; background:#e0e0e0; border-radius:4px;">
+                <div style="height:100%; background:${statusColor}; border-radius:4px; width:${p.progresso || 0}%;"></div>
+              </div>
+            </div>
+          </div>
         </div>
-      </div>
-    `).join("");
+      `;
+    }).join("");
 
     projetosEl.querySelectorAll(".kanban-card").forEach(card => {
       card.addEventListener("click", () => {
@@ -121,23 +165,58 @@ export async function renderCultura(root) {
       return;
     }
 
+    const statusColor = projetoSelecionado.status === 'Diagnóstico' ? '#0074D9' :
+                        projetoSelecionado.status === 'Planejamento' ? '#FF4136' :
+                        projetoSelecionado.status === 'Implementação' ? '#FF851B' :
+                        projetoSelecionado.status === 'Acompanhamento' ? '#2ECC40' :
+                        '#111111';
+
     detalheEl.innerHTML = `
       <div style="border-top:1px solid var(--divider); padding-top:20px; margin-top:20px;">
         <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:16px;">
-          <h3 class="section-title" style="margin:0;">${escapeHtml(projetoSelecionado.titulo)}</h3>
+          <div>
+            <h3 class="section-title" style="margin:0;">${escapeHtml(projetoSelecionado.titulo)}</h3>
+            <div class="sub" style="margin-top:4px;">${nomeEmpresa(projetoSelecionado.empresaId)}</div>
+          </div>
           <div style="display:flex; gap:8px;">
             <button id="btn-editar-projeto" class="btn btn-outline btn-sm">Editar</button>
             <button id="btn-nova-acao" class="btn btn-primary btn-sm">+ Ação</button>
           </div>
         </div>
-        <div style="margin-bottom:16px;">
-          <strong>Descrição:</strong><br>
-          <div class="sub">${escapeHtml(projetoSelecionado.descricao || "—")}</div>
+
+        <div style="display:grid; grid-template-columns:repeat(auto-fit, minmax(150px, 1fr)); gap:12px; margin-bottom:16px;">
+          <div style="padding:12px; background:var(--bg-alt); border-radius:4px;">
+            <div class="sub">Status</div>
+            <div style="font-weight:600; color:white; background:${statusColor}; display:inline-block; padding:4px 8px; border-radius:3px; margin-top:4px;">${projetoSelecionado.status}</div>
+          </div>
+          <div style="padding:12px; background:var(--bg-alt); border-radius:4px;">
+            <div class="sub">Progresso</div>
+            <div style="font-weight:600; font-size:18px; margin-top:4px;">${projetoSelecionado.progresso || 0}%</div>
+            <div style="height:4px; background:#e0e0e0; border-radius:2px; margin-top:4px;">
+              <div style="height:100%; background:${statusColor}; border-radius:2px; width:${projetoSelecionado.progresso || 0}%;"></div>
+            </div>
+          </div>
+          <div style="padding:12px; background:var(--bg-alt); border-radius:4px;">
+            <div class="sub">Data Início</div>
+            <div style="font-weight:600; margin-top:4px;">${formatarData(projetoSelecionado.dataInicio)}</div>
+          </div>
+          <div style="padding:12px; background:var(--bg-alt); border-radius:4px;">
+            <div class="sub">Previsão Fim</div>
+            <div style="font-weight:600; margin-top:4px;">${formatarData(projetoSelecionado.dataFim)}</div>
+          </div>
         </div>
-        <div style="margin-bottom:16px;">
-          <strong>Objetivos:</strong><br>
-          <div class="sub">${escapeHtml(projetoSelecionado.objetivos || "—")}</div>
+
+        <div style="display:grid; grid-template-columns:1fr 1fr; gap:16px; margin-bottom:16px;">
+          <div>
+            <strong style="display:block; margin-bottom:6px;">Descrição:</strong>
+            <div class="sub">${escapeHtml(projetoSelecionado.descricao || "—")}</div>
+          </div>
+          <div>
+            <strong style="display:block; margin-bottom:6px;">Objetivos:</strong>
+            <div class="sub">${escapeHtml(projetoSelecionado.objetivos || "—")}</div>
+          </div>
         </div>
+
         <div id="acoes-timeline"></div>
       </div>
     `;
@@ -166,28 +245,56 @@ export async function renderCultura(root) {
       return;
     }
 
+    const etapaOrdem = ['Diagnóstico', 'Planejamento', 'Implementação', 'Acompanhamento', 'Encerramento'];
+    const acoesPorEtapa = {};
+    etapaOrdem.forEach(e => { acoesPorEtapa[e] = []; });
+    acoes.forEach(a => {
+      if (acoesPorEtapa[a.etapa]) {
+        acoesPorEtapa[a.etapa].push(a);
+      }
+    });
+
+    const etapasComAcoes = etapaOrdem.filter(e => acoesPorEtapa[e].length > 0);
+
     timelineEl.innerHTML = `
-      <strong style="display:block; margin-bottom:12px;">Timeline de Ações:</strong>
-      <div style="display:flex; flex-direction:column; gap:12px;">
-        ${acoes.map((a, i) => `
-          <div style="display:flex; gap:12px; padding:12px; background:var(--bg-alt); border-radius:4px;">
-            <div style="flex-shrink:0; width:32px; height:32px; border-radius:50%; background:${a.status === 'Concluída' ? '#4CAF50' : a.status === 'Atrasada' ? '#f44336' : '#2196F3'}; display:flex; align-items:center; justify-content:center; color:white; font-weight:bold;">
-              ${i + 1}
-            </div>
-            <div style="flex:1;">
-              <div style="font-weight:500; margin-bottom:4px;">${escapeHtml(a.titulo)}</div>
-              <div class="sub" style="margin-bottom:6px;">${escapeHtml(a.descricao || "")}</div>
-              <div style="display:flex; gap:12px; font-size:12px;">
-                <span class="tag tag-${a.status === 'Concluída' ? 'ok' : a.status === 'Atrasada' ? 'atrasada' : ''}">${a.status}</span>
-                <span class="sub">Etapa: ${a.etapa}</span>
-                <span class="sub">Prazo: ${formatarData(a.dataVencimento)}</span>
+      <div style="margin-top:16px;">
+        <strong style="display:block; margin-bottom:12px;">Timeline de Ações por Etapa:</strong>
+        <div style="display:grid; grid-template-columns:repeat(auto-fit, minmax(280px, 1fr)); gap:12px;">
+          ${etapasComAcoes.map(etapa => {
+            const etapaColor = etapa === 'Diagnóstico' ? '#0074D9' :
+                              etapa === 'Planejamento' ? '#FF4136' :
+                              etapa === 'Implementação' ? '#FF851B' :
+                              etapa === 'Acompanhamento' ? '#2ECC40' :
+                              '#111111';
+            return `
+              <div style="border:1px solid ${etapaColor}; border-radius:4px; overflow:hidden;">
+                <div style="background:${etapaColor}; color:white; padding:8px 12px; font-weight:600; font-size:14px;">
+                  ${etapa}
+                </div>
+                <div style="padding:12px; display:flex; flex-direction:column; gap:8px;">
+                  ${acoesPorEtapa[etapa].map(a => {
+                    const acaoStatusColor = a.status === 'Concluída' ? '#4CAF50' :
+                                           a.status === 'Atrasada' ? '#f44336' :
+                                           a.status === 'Em Andamento' ? '#FF9800' : '#BDBDBD';
+                    return `
+                      <div style="padding:8px; background:var(--bg-alt); border-radius:3px; border-left:3px solid ${acaoStatusColor};">
+                        <div style="font-weight:500; font-size:13px; margin-bottom:4px;">${escapeHtml(a.titulo)}</div>
+                        <div class="sub" style="font-size:12px; margin-bottom:4px;">${escapeHtml(a.descricao || "")}</div>
+                        <div style="display:flex; gap:8px; flex-wrap:wrap; font-size:11px; margin-bottom:4px;">
+                          <span style="background:${acaoStatusColor}; color:white; padding:2px 6px; border-radius:2px;">${a.status}</span>
+                          <span class="sub">Prazo: ${formatarData(a.dataVencimento)}</span>
+                        </div>
+                        <button class="btn-editar-acao" data-id="${a.id}" style="font-size:11px; cursor:pointer; border:none; background:transparent; color:var(--link); text-decoration:underline; padding:0; margin:0;">
+                          Editar
+                        </button>
+                      </div>
+                    `;
+                  }).join("")}
+                </div>
               </div>
-              <button class="btn-editar-acao" data-id="${a.id}" style="margin-top:8px; padding:4px 8px; font-size:12px; cursor:pointer; border:none; background:transparent; color:var(--text); text-decoration:underline;">
-                Editar
-              </button>
-            </div>
-          </div>
-        `).join("")}
+            `;
+          }).join("")}
+        </div>
       </div>
     `;
 

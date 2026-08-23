@@ -119,9 +119,16 @@ export async function renderDespesas(root) {
     const pagas = despesas.filter(d => d.dataPagamento);
     const totalPago = pagas.reduce((sum, d) => sum + (d.valor || 0), 0);
 
+    // Totais por categoria
+    const porCategoria = {};
+    categorias.forEach(cat => {
+      const catDespesas = despesas.filter(d => d.categoria === cat);
+      porCategoria[cat] = catDespesas.reduce((sum, d) => sum + (d.valor || 0), 0);
+    });
+
     resumoEl.innerHTML = `
       <div class="kpi-card">
-        <div class="kpi-label">Total Despesas</div>
+        <div class="kpi-label">Total Geral</div>
         <div class="kpi-value">${formatarMoeda(totalDespesa)}</div>
         <div class="kpi-sub">${despesas.length} itens</div>
       </div>
@@ -134,6 +141,17 @@ export async function renderDespesas(root) {
         <div class="kpi-label">Pagas</div>
         <div class="kpi-value">${formatarMoeda(totalPago)}</div>
         <div class="kpi-sub">${pagas.length} itens</div>
+      </div>
+      <div style="grid-column:1/-1; border-top:1px solid var(--divider); padding-top:16px; margin-top:16px;">
+        <strong style="display:block; margin-bottom:8px;">Por Categoria:</strong>
+        <div style="display:grid; grid-template-columns:repeat(auto-fit, minmax(150px, 1fr)); gap:8px;">
+          ${categorias.map(cat => `
+            <div style="padding:8px; background:var(--bg-alt); border-radius:4px; text-align:center;">
+              <div class="sub" style="margin-bottom:4px;">${cat}</div>
+              <div style="font-weight:500; color:var(--text);">${formatarMoeda(porCategoria[cat] || 0)}</div>
+            </div>
+          `).join("")}
+        </div>
       </div>
     `;
 
