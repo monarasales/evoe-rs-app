@@ -268,6 +268,109 @@ function seed() {
   ].map((p) => ({ ...p, createdAt: db.nowIso(), updatedAt: db.nowIso() }));
   db.writeCollection("prospects", prospects);
 
+  const despesas = [
+    {
+      descricao: "Folha de Pagamento - Agosto 2026",
+      categoria: "Folha de Pagamento",
+      valor: 12800,
+      dataPeriodo: "2026-08",
+      status: "Aprovado",
+      dataPagamento: "2026-08-25",
+      origem: "Manual",
+      observacoes: "Salários do mês de agosto",
+    },
+    {
+      descricao: "Vale Refeição - Agosto 2026",
+      categoria: "Benefício",
+      valor: 1700,
+      dataPeriodo: "2026-08",
+      status: "Aprovado",
+      dataPagamento: null,
+      origem: "Manual",
+      observacoes: "Vale refeição para 3 funcionários",
+    },
+    {
+      descricao: "Adobe Creative Cloud - Licença mensal",
+      categoria: "Sistema/Ferramenta",
+      valor: 120,
+      dataPeriodo: "2026-08",
+      status: "Aprovado",
+      dataPagamento: "2026-08-01",
+      origem: "Manual",
+      observacoes: "Assinatura de ferramentas de design",
+    },
+    {
+      descricao: "Slack - Plano Pro",
+      categoria: "Sistema/Ferramenta",
+      valor: 85,
+      dataPeriodo: "2026-08",
+      status: "Pendente Aprovação",
+      dataPagamento: null,
+      origem: "Manual",
+      observacoes: "Comunicação da equipe",
+    },
+  ].map((d) => ({ id: db.newId(), ...d, createdAt: db.nowIso(), updatedAt: db.nowIso() }));
+  db.writeCollection("despesas", despesas);
+
+  const projetosCultura = [
+    {
+      titulo: "Implementação Cultura Organizacional - Cliente ABC",
+      empresaId: "emp-abc",
+      descricao: "Projeto completo de diagnóstico e implementação de cultura para ABC Consultoria",
+      objetivos: "Fortalecer valores, aumentar engajamento, melhorar retenção",
+      dataInicio: "2026-08-01",
+      dataFim: "2026-12-31",
+      consultorResponsavel: "cons-mariana",
+      status: "Implementação",
+      progresso: 35,
+    },
+  ].map((p) => ({ id: db.newId(), ...p, createdAt: db.nowIso(), updatedAt: db.nowIso() }));
+  db.writeCollection("projetosCultura", projetosCultura);
+
+  const acoesCultura = [
+    {
+      projetoId: projetosCultura[0].id,
+      titulo: "Diagnóstico cultural com entrevistas",
+      descricao: "Realizar entrevistas com 20+ líderes da empresa para entender valores atuais",
+      etapa: "Diagnóstico",
+      dataVencimento: "2026-08-30",
+      responsavel: "cons-mariana",
+      status: "Concluída",
+      observacoes: "Entrevistas realizadas com sucesso",
+    },
+    {
+      projetoId: projetosCultura[0].id,
+      titulo: "Análise e relatório diagnóstico",
+      descricao: "Consolidar dados e gerar relatório de diagnóstico",
+      etapa: "Diagnóstico",
+      dataVencimento: "2026-09-15",
+      responsavel: "cons-mariana",
+      status: "Em Andamento",
+      observacoes: "50% concluído",
+    },
+    {
+      projetoId: projetosCultura[0].id,
+      titulo: "Planejamento de mudanças culturais",
+      descricao: "Definir estratégia, objetivos e plano de ação",
+      etapa: "Planejamento",
+      dataVencimento: "2026-10-01",
+      responsavel: "cons-mariana",
+      status: "Não Iniciada",
+      observacoes: "Aguardando aprovação do diagnóstico",
+    },
+    {
+      projetoId: projetosCultura[0].id,
+      titulo: "Treinamento de líderes",
+      descricao: "Workshop de 2 dias com foco em liderança transformacional",
+      etapa: "Implementação",
+      dataVencimento: "2026-11-15",
+      responsavel: "cons-mariana",
+      status: "Não Iniciada",
+      observacoes: "",
+    },
+  ].map((a) => ({ id: db.newId(), ...a, createdAt: db.nowIso(), updatedAt: db.nowIso() }));
+  db.writeCollection("acoesCultura", acoesCultura);
+
   const parametros = [
     { id: "param-contratos", chave: "contratos", proximoNumero: 31, anoBase: 2025 },
   ].map((p) => ({ ...p, createdAt: db.nowIso(), updatedAt: db.nowIso() }));
