@@ -58,6 +58,8 @@ app.use("/api/fechamentos-ponto", require("./routes/fechamentosPonto"));
 // Solicitações de Vaga: o POST é público (sem login) — usado pelo formulário em
 // public/solicitar-vaga.html — as demais rotas (listar/aprovar/rejeitar) exigem login.
 app.use("/api/solicitacoes-vaga", require("./routes/solicitacoesVaga"));
+app.use("/api/despesas", require("./routes/despesas"));
+app.use("/api/cultura", require("./routes/cultura"));
 
 app.use(express.static(path.join(__dirname, "..", "public")));
 

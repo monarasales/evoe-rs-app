@@ -167,6 +167,8 @@ function extrairCamposEditaveis(body) {
     dataContrato: dataContrato || new Date().toISOString().slice(0, 10),
     dataVencimentoParcela1: venc1,
     dataVencimentoParcela2: venc2,
+    dataPagamentoParcela1: body.dataPagamentoParcela1 || null, // Quando foi efetivamente pago
+    dataPagamentoParcela2: body.dataPagamentoParcela2 || null, // Quando foi efetivamente pago
     testemunha1Nome: (testemunha1 && testemunha1.nome) || "",
     testemunha1Cpf: (testemunha1 && testemunha1.cpf) || "",
     testemunha2Nome: (testemunha2 && testemunha2.nome) || "",
