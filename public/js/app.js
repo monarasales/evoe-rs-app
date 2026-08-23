@@ -16,6 +16,8 @@ import { renderPonto } from "./views/ponto.js";
 import { renderMeuCadastro } from "./views/meuCadastro.js";
 import { renderEquipe } from "./views/equipe.js";
 import { renderSolicitacoesVaga } from "./views/solicitacoesVaga.js";
+import { renderDespesas } from "./views/despesas.js";
+import { renderCultura } from "./views/cultura.js";
 
 const loginScreen = document.getElementById("login-screen");
 const mainScreen = document.getElementById("main-screen");
@@ -68,6 +70,13 @@ const NAV_SECOES = [
       // Ficha cadastro da equipe (era "Configurações > Funcionários") — mora aqui
       // porque é sobre as pessoas do time, não um parâmetro do sistema.
       { href: "#/equipe", label: "Equipe", icone: "🧑‍🤝‍🧑", somenteGestor: true },
+    ],
+  },
+  {
+    titulo: "Gestão Interna",
+    itens: [
+      { href: "#/despesas", label: "Despesas", icone: "💸", somenteGestor: true },
+      { href: "#/cultura", label: "Cultura Organizacional", icone: "🌱", somenteGestor: true },
     ],
   },
   {
@@ -304,6 +313,8 @@ function registrarRotas() {
   registrarRota("/meu-cadastro", renderMeuCadastro);
   registrarRota("/equipe", renderEquipe);
   registrarRota("/solicitacoes-vaga", renderSolicitacoesVaga);
+  registrarRota("/despesas", renderDespesas);
+  registrarRota("/cultura", renderCultura);
 }
 
 async function init() {
