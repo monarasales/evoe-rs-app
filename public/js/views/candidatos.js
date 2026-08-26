@@ -255,7 +255,7 @@ export async function renderCandidatos(root, params) {
               .map(
                 (c) => `
               <tr data-id="${c.id}">
-                <td>${escapeHtml(c.nome)}${c.curriculoArquivo ? ' <span title="Tem currículo anexado">📎</span>' : ""}${c.pareceres && c.pareceres.length > 0 ? ` <span title="Tem ${c.pareceres.length} parecer(es) anexado(s)">📋</span>` : ""}${tagListaNegra(c)}</td>
+                <td>${escapeHtml(c.nome)}${c.linkedin ? ` <a href="${escapeHtml(c.linkedin)}" target="_blank" rel="noopener" title="Abrir perfil no LinkedIn" style="text-decoration:none; color:var(--link); cursor:pointer; margin-left:6px;">🔗</a>` : ""}${c.curriculoArquivo ? ' <span title="Tem currículo anexado">📎</span>' : ""}${c.pareceres && c.pareceres.length > 0 ? ` <span title="Tem ${c.pareceres.length} parecer(es) anexado(s)">📋</span>` : ""}${tagListaNegra(c)}</td>
                 <td title="${vagaCadastroTitle(c.vagaId)}">${escapeHtml(vagaTitulo(c.vagaId))}</td>
                 <td>${escapeHtml(c.etapaCandidato)}</td>
                 <td>${escapeHtml(c.telefone) || "—"}</td>
@@ -284,7 +284,7 @@ export async function renderCandidatos(root, params) {
               .map(
                 (c) => `
               <tr data-id="${c.id}">
-                <td>${escapeHtml(c.nome)}${c.curriculoArquivo ? ' <span title="Tem currículo anexado">📎</span>' : ""}${c.pareceres && c.pareceres.length > 0 ? ` <span title="Tem ${c.pareceres.length} parecer(es) anexado(s)">📋</span>` : ""}${tagListaNegra(c)}</td>
+                <td>${escapeHtml(c.nome)}${c.linkedin ? ` <a href="${escapeHtml(c.linkedin)}" target="_blank" rel="noopener" title="Abrir perfil no LinkedIn" style="text-decoration:none; color:var(--link); cursor:pointer; margin-left:6px;">🔗</a>` : ""}${c.curriculoArquivo ? ' <span title="Tem currículo anexado">📎</span>' : ""}${c.pareceres && c.pareceres.length > 0 ? ` <span title="Tem ${c.pareceres.length} parecer(es) anexado(s)">📋</span>` : ""}${tagListaNegra(c)}</td>
                 <td title="${vagaCadastroTitle(c.vagaId)}">${escapeHtml(vagaTitulo(c.vagaId))}</td>
                 <td>${escapeHtml(c.etapaCandidato)}</td>
                 <td>${c.jusbrasilOk ? "✅" : "—"}</td>
@@ -512,6 +512,12 @@ export async function renderCandidatos(root, params) {
             <label>Telefone/WhatsApp</label>
             <input type="text" id="c-telefone" value="${editando ? escapeHtml(candidato.telefone) : ""}" />
           </div>
+        </div>
+        <div class="form-row">
+          <label>🔗 LinkedIn</label>
+          <input type="url" id="c-linkedin" placeholder="https://linkedin.com/in/seu-perfil" value="${editando ? escapeHtml(candidato.linkedin || "") : ""}" />
+          <div class="sub" style="margin-top:4px;">Cole a URL do perfil LinkedIn (opcional). Ex: https://linkedin.com/in/joao-silva</div>
+          ${editando && candidato.linkedin ? `<a href="${escapeHtml(candidato.linkedin)}" target="_blank" rel="noopener" class="btn btn-outline btn-sm" style="margin-top:8px;">👤 Abrir perfil</a>` : ""}
         </div>
         <div class="form-row">
           <label>Vaga</label>
@@ -765,6 +771,7 @@ export async function renderCandidatos(root, params) {
         nome: document.getElementById("c-nome").value.trim(),
         email: document.getElementById("c-email").value.trim(),
         telefone: document.getElementById("c-telefone").value.trim(),
+        linkedin: document.getElementById("c-linkedin").value.trim(),
         etapaCandidato: document.getElementById("c-etapa").value,
       };
       try {

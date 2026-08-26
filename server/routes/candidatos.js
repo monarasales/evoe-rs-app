@@ -53,7 +53,7 @@ router.get("/:id", (req, res) => {
 });
 
 router.post("/", requireAuth, (req, res) => {
-  const { nome, email, telefone, vagaId, etapaCandidato } = req.body || {};
+  const { nome, email, telefone, linkedin, vagaId, etapaCandidato } = req.body || {};
   if (!nome || !vagaId) return res.status(400).json({ erro: "Nome e vaga são obrigatórios." });
   const vaga = db.findById("vagas", vagaId);
   if (!vaga) return res.status(400).json({ erro: "Vaga inválida." });
@@ -63,6 +63,7 @@ router.post("/", requireAuth, (req, res) => {
     nome,
     email: email || "",
     telefone: telefone || "",
+    linkedin: linkedin || "", // URL do perfil LinkedIn
     vagaId,
     etapaCandidato: etapaCandidato && ETAPAS_CANDIDATO.includes(etapaCandidato) ? etapaCandidato : "Inscrito",
     // Três momentos distintos do sub-funil, para não misturar "conversamos com o
@@ -93,7 +94,7 @@ router.patch("/:id", requireAuth, (req, res) => {
   if (!podeEditar(req, vaga)) return res.status(403).json({ erro: "Você só pode editar candidatos de vagas atribuídas a você." });
 
   const {
-    nome, email, telefone, etapaCandidato, dataEntrevista, dataEntrevistaEmpresa,
+    nome, email, telefone, linkedin, etapaCandidato, dataEntrevista, dataEntrevistaEmpresa,
     jusbrasilOk, obsReferencia, parecerComportamental, dataRetornoCliente,
     listaNegra, motivoListaNegra, obsListaNegra,
   } = req.body || {};
@@ -115,7 +116,7 @@ router.patch("/:id", requireAuth, (req, res) => {
       : { listaNegra: false, motivoListaNegra: "", obsListaNegra: "", dataListaNegra: null };
 
   const atualizado = db.update("candidatos", candidato.id, {
-    nome, email, telefone, etapaCandidato, dataEntrevista, dataEntrevistaEmpresa, jusbrasilOk, obsReferencia, parecerComportamental, dataRetornoCliente,
+    nome, email, telefone, linkedin, etapaCandidato, dataEntrevista, dataEntrevistaEmpresa, jusbrasilOk, obsReferencia, parecerComportamental, dataRetornoCliente,
     ...patchListaNegra,
   });
 
