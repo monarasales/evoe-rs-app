@@ -18,6 +18,7 @@ import { renderEquipe } from "./views/equipe.js";
 import { renderSolicitacoesVaga } from "./views/solicitacoesVaga.js";
 import { renderDespesas } from "./views/despesas.js";
 import { renderCultura } from "./views/cultura.js";
+import { renderAcompanhamento } from "./views/acompanhamento.js";
 
 const loginScreen = document.getElementById("login-screen");
 const mainScreen = document.getElementById("main-screen");
@@ -55,6 +56,7 @@ const NAV_SECOES = [
       // para Recrutador/Supervisora editarem livremente.
       { href: "#/crm", label: "CRM", icone: "🤝", somenteGestor: true },
       { href: "#/financeiro", label: "Financeiro", icone: "💰", somenteGestor: true },
+      { href: "#/acompanhamento", label: "Acompanhamento de Garantia", icone: "📋", somenteGestor: true },
     ],
   },
   {
@@ -308,6 +310,7 @@ function registrarRotas() {
   registrarRota("/contratos", renderContratos);
   registrarRota("/crm", renderCrm);
   registrarRota("/financeiro", renderFinanceiro);
+  registrarRota("/acompanhamento", renderAcompanhamento);
   registrarRota("/comissoes", renderComissoes);
   registrarRota("/ponto", renderPonto);
   registrarRota("/meu-cadastro", renderMeuCadastro);

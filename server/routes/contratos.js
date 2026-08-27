@@ -239,6 +239,10 @@ router.post("/", requireGestor, (req, res) => {
     status: "Gerado",
     geradoPorId: req.consultor.id,
     lembreteParcela2Enviado: false,
+    // Período de garantia (experiência): 45, 60 ou 90 dias
+    periodoGarantiaDias: null,
+    dataFechamentoReal: null, // Data quando candidato foi aprovado/começou
+    acompanhamentos: [], // Array de {data, status, notas, consultorId}
   });
 
   db.update("parametros", paramContratos.id, { proximoNumero: paramContratos.proximoNumero + 1 });
@@ -388,6 +392,109 @@ router.post("/:id/enviar-email", requireGestor, async (req, res) => {
     if (err.naoConfigurado) return res.status(400).json({ erro: err.message });
     res.status(500).json({ erro: "Falha ao enviar o e-mail.", detalhe: err.message });
   }
+});
+
+// --- PERÍODO DE EXPERIÊNCIA / GARANTIA ---
+// Sistema de acompanhamento: quando candidato é aprovado, marca-se 45/60/90 dias de garantia
+// com check-ins automáticos a cada 30 dias para validar que tudo está ok.
+
+router.patch("/:id/periodo-experiencia", requireAuth, requireGestor, (req, res) => {
+  const contrato = db.findById("contratos", req.params.id);
+  if (!contrato) return res.status(404).json({ erro: "Contrato não encontrado." });
+
+  const { periodoGarantiaDias, dataFechamentoReal } = req.body || {};
+
+  if (!periodoGarantiaDias || ![45, 60, 90].includes(Number(periodoGarantiaDias))) {
+    return res.status(400).json({ erro: "Período de garantia deve ser 45, 60 ou 90 dias." });
+  }
+
+  const atualizado = db.update("contratos", contrato.id, {
+    periodoGarantiaDias: Number(periodoGarantiaDias),
+    dataFechamentoReal: dataFechamentoReal || new Date().toISOString().slice(0, 10),
+    acompanhamentos: [], // Reseta acompanhamentos ao iniciar novo período
+  });
+
+  res.json(comDetalhes(atualizado));
+});
+
+// Registrar check-in de acompanhamento (30, 60, 90 dias)
+router.post("/:id/acompanhamentos", requireAuth, requireGestor, (req, res) => {
+  const contrato = db.findById("contratos", req.params.id);
+  if (!contrato) return res.status(404).json({ erro: "Contrato não encontrado." });
+
+  const { status, notas } = req.body || {};
+  if (!status || !["tudo-ok", "problema"].includes(status)) {
+    return res.status(400).json({ erro: "Status deve ser 'tudo-ok' ou 'problema'." });
+  }
+
+  const novoAcompanhamento = {
+    data: new Date().toISOString().slice(0, 10),
+    status,
+    notas: notas || "",
+    consultorId: req.consultor.id,
+  };
+
+  const acompanhamentos = (contrato.acompanhamentos || []).concat([novoAcompanhamento]);
+  const atualizado = db.update("contratos", contrato.id, { acompanhamentos });
+
+  res.json(comDetalhes(atualizado));
+});
+
+// Listar contratos em período de garantia (com próximos check-ins pendentes)
+router.get("/acompanhamento/pendentes", requireAuth, requireGestor, (req, res) => {
+  const contratos = db.readCollection("contratos");
+  const hoje = new Date().toISOString().slice(0, 10);
+
+  const emGarantia = contratos
+    .filter(c => c.periodoGarantiaDias && c.dataFechamentoReal)
+    .map(c => {
+      const dataFechamento = new Date(c.dataFechamentoReal);
+      const dataVencimento = new Date(dataFechamento);
+      dataVencimento.setDate(dataVencimento.getDate() + c.periodoGarantiaDias);
+      const dataVencimentoStr = dataVencimento.toISOString().slice(0, 10);
+
+      // Próximos check-ins: 30, 60, 90 dias (se houver período maior)
+      const checkinsEsperados = [30, 60, 90].filter(d => d <= c.periodoGarantiaDias);
+      const checkinsRealizados = (c.acompanhamentos || []).length;
+      const proximoCheckIn = checkinsEsperados[checkinsRealizados] || null;
+
+      let statusGarantia = "ativo";
+      if (hoje > dataVencimentoStr) statusGarantia = "vencido";
+      else if (proximoCheckIn && new Date(hoje) >= new Date(dataFechamento.toISOString().slice(0, 10).split('-').map((s, i) => i < 2 ? s : String(Number(s) + Math.floor(proximoCheckIn / 30))).join('-')))
+        statusGarantia = "checkin-pendente";
+
+      return {
+        ...comDetalhes(c),
+        statusGarantia,
+        dataVencimento: dataVencimentoStr,
+        proximoCheckinDias: proximoCheckIn,
+        checkinsRealizados,
+      };
+    })
+    .sort((a, b) => new Date(a.dataVencimento) - new Date(b.dataVencimento));
+
+  res.json(emGarantia);
+});
+
+// Relatório de sucesso na garantia
+router.get("/acompanhamento/relatorio", requireAuth, requireGestor, (req, res) => {
+  const contratos = db.readCollection("contratos");
+  const comGarantia = contratos.filter(c => c.periodoGarantiaDias && c.dataFechamentoReal);
+
+  const totalGarantia = comGarantia.length;
+  const sucessos = comGarantia.filter(c =>
+    c.acompanhamentos && c.acompanhamentos.every(a => a.status === "tudo-ok")
+  ).length;
+  const problemas = comGarantia.filter(c =>
+    c.acompanhamentos && c.acompanhamentos.some(a => a.status === "problema")
+  ).length;
+
+  res.json({
+    totalContratos: totalGarantia,
+    sucessos,
+    problemas,
+    taxaSucesso: totalGarantia > 0 ? ((sucessos / totalGarantia) * 100).toFixed(1) + "%" : "N/A",
+  });
 });
 
 module.exports = router;

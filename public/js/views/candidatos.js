@@ -588,8 +588,8 @@ export async function renderCandidatos(root, params) {
         <div class="form-row">
           <label>Currículo</label>
           <div id="curriculo-status"></div>
-          <input type="file" id="c-curriculo-input" accept=".pdf,.doc,.docx" style="margin-top:8px;" />
-          <div class="sub" style="margin-top:4px;">Formatos aceitos: PDF, DOC ou DOCX (até 10MB). Selecionar um novo arquivo substitui o anterior.</div>
+          <input type="file" id="c-curriculo-input" accept=".pdf,.doc,.docx,.jpg,.jpeg,.png" style="margin-top:8px;" />
+          <div class="sub" style="margin-top:4px;">Formatos: PDF, DOC, DOCX, JPG ou PNG (até 10MB). Selecionar novo arquivo substitui o anterior.</div>
         </div>`
             : ""
         }

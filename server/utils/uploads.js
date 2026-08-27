@@ -16,7 +16,7 @@ function ensureUploadsDir() {
   }
 }
 
-const EXTENSOES_PERMITIDAS = [".pdf", ".doc", ".docx"];
+const EXTENSOES_PERMITIDAS = [".pdf", ".doc", ".docx", ".jpg", ".jpeg", ".png"];
 const TAMANHO_MAXIMO_BYTES = 10 * 1024 * 1024; // 10MB
 
 const storage = multer.diskStorage({
