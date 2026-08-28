@@ -19,6 +19,7 @@ import { renderSolicitacoesVaga } from "./views/solicitacoesVaga.js";
 import { renderDespesas } from "./views/despesas.js";
 import { renderCultura } from "./views/cultura.js";
 import { renderAcompanhamento } from "./views/acompanhamento.js";
+import { renderDashboardFinanceiro } from "./views/dashboard-financeiro.js";
 
 const loginScreen = document.getElementById("login-screen");
 const mainScreen = document.getElementById("main-screen");
@@ -55,7 +56,12 @@ const NAV_SECOES = [
       // CRM só para Gestor: dados de clientes/prospects não devem ficar abertos
       // para Recrutador/Supervisora editarem livremente.
       { href: "#/crm", label: "CRM", icone: "🤝", somenteGestor: true },
-      { href: "#/financeiro", label: "Financeiro", icone: "💰", somenteGestor: true },
+    ],
+  },
+  {
+    titulo: "Financeiro",
+    itens: [
+      { href: "#/dashboard-financeiro", label: "Dashboard Financeiro", icone: "📊", somenteGestor: true },
       { href: "#/acompanhamento", label: "Acompanhamento de Garantia", icone: "📋", somenteGestor: true },
     ],
   },
@@ -318,6 +324,7 @@ function registrarRotas() {
   registrarRota("/solicitacoes-vaga", renderSolicitacoesVaga);
   registrarRota("/despesas", renderDespesas);
   registrarRota("/cultura", renderCultura);
+  registrarRota("/dashboard-financeiro", renderDashboardFinanceiro);
 }
 
 async function init() {
