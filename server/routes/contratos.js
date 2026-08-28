@@ -506,4 +506,14 @@ router.get("/acompanhamento/relatorio", requireAuth, requireGestor, (req, res) =
   });
 });
 
+// Cancelar contrato (marca como Cancelado para remover do cálculo financeiro)
+router.patch("/:id/cancelar", requireAuth, requireGestor, (req, res) => {
+  const contrato = db.findById("contratos", req.params.id);
+  if (!contrato) return res.status(404).json({ erro: "Contrato não encontrado." });
+
+  db.update("contratos", req.params.id, { status: "Cancelado" });
+  const atualizado = db.findById("contratos", req.params.id);
+  res.json(comDetalhes(atualizado));
+});
+
 module.exports = router;

@@ -31,8 +31,9 @@ router.get("/", requireAuth, requireGestor, (req, res) => {
   // Um contrato pode agrupar mais de uma vaga do mesmo cliente (vagasAdicionaisIds) —
   // continua contando como "em aberto" aqui enquanto QUALQUER uma das vagas dele ainda
   // não tiver fechado, já que o contrato como um todo segue relevante.
+  // Excluir contratos cancelados do cálculo financeiro.
   const linhas = contratos
-    .filter((c) => vagasAbertasIds.has(c.vagaId) || (c.vagasAdicionaisIds || []).some((id) => vagasAbertasIds.has(id)))
+    .filter((c) => c.status !== "Cancelado" && (vagasAbertasIds.has(c.vagaId) || (c.vagasAdicionaisIds || []).some((id) => vagasAbertasIds.has(id))))
     .map((c) => {
       const vaga = db.findById("vagas", c.vagaId);
       const vagasAdicionais = (c.vagasAdicionaisIds || []).map((id) => db.findById("vagas", id)).filter(Boolean);

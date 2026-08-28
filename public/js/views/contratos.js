@@ -107,6 +107,8 @@ export async function renderContratos(root) {
                 <button class="btn btn-outline btn-sm btn-email" title="Enviar por e-mail">✉️ E-mail</button>
                 <button class="btn btn-outline btn-sm btn-whats" title="Enviar por WhatsApp">💬 WhatsApp</button>
                 ${isGestor() ? '<button class="btn btn-outline btn-sm btn-editar-contrato" title="Editar dados do contrato">✏️ Editar</button>' : ""}
+                ${isGestor() && c.status !== "Cancelado" ? '<button class="btn btn-outline btn-sm btn-cancelar-contrato" title="Cancelar (remove do cálculo financeiro)" style="color:#d32f2f;">❌ Cancelar</button>' : ""}
+                ${isGestor() && c.status === "Cancelado" ? '<span class="tag tag-encerrada">Cancelado</span>' : ""}
                 ${isGestor() ? '<button class="btn btn-outline btn-sm btn-excluir-contrato" title="Excluir">🗑️</button>' : ""}
               </td>
             </tr>`
@@ -161,6 +163,20 @@ export async function renderContratos(root) {
     );
 
     if (isGestor()) {
+      el.querySelectorAll(".btn-cancelar-contrato").forEach((btn) =>
+        btn.addEventListener("click", async (e) => {
+          const id = e.target.closest("tr").dataset.id;
+          if (!confirm("Cancelar este contrato? Será removido do cálculo financeiro.")) return;
+          try {
+            await api.patch(`/api/contratos/${id}/cancelar`, {});
+            showToast("Contrato cancelado. Removido do cálculo financeiro.", "sucesso");
+            carregarLista();
+          } catch (err) {
+            showToast(err.message, "erro");
+          }
+        })
+      );
+
       el.querySelectorAll(".btn-excluir-contrato").forEach((btn) =>
         btn.addEventListener("click", async (e) => {
           const id = e.target.closest("tr").dataset.id;
@@ -302,9 +318,26 @@ export async function renderContratos(root) {
           </div>
         </div>
 
-        <div class="form-cols">
+        <div class="form-row">
+          <label>Formato de parcelamento</label>
+          <div style="display:flex; gap:16px; margin-top:4px;">
+            <label style="display:flex; align-items:center; gap:6px; font-weight:normal; cursor:pointer;">
+              <input type="radio" name="ct-num-parcelas" value="2" ${editando && c.numParcelas === 3 ? "" : "checked"} />
+              2 Parcelas (entrada + fechamento)
+            </label>
+            <label style="display:flex; align-items:center; gap:6px; font-weight:normal; cursor:pointer;">
+              <input type="radio" name="ct-num-parcelas" value="3" ${editando && c.numParcelas === 3 ? "checked" : ""} />
+              3 Parcelas Iguais (33,33% cada)
+            </label>
+          </div>
+        </div>
+
+        <div id="ct-box-parcelas-2" class="form-cols" style="display:none;">
           <div class="form-row"><label>1ª parcela — início do serviço (%)</label><input type="number" id="ct-parcela1" min="0" max="100" value="${editando ? c.parcelaInicialPct : PADRAO.parcelaInicialPct}" /></div>
           <div class="form-row"><label>2ª parcela — fechamento da vaga (%)</label><input type="number" id="ct-parcela2" min="0" max="100" value="${editando ? c.parcelaFechamentoPct : PADRAO.parcelaFechamentoPct}" /></div>
+        </div>
+        <div id="ct-box-parcelas-3" class="form-cols" style="display:none;">
+          <div class="form-row" style="opacity:0.6;"><input type="text" disabled value="1ª: 33,33% | 2ª: 33,33% | 3ª: 33,33%" /></div>
         </div>
         <div class="form-row"><label>Texto da Cláusula de Honorários (Cláusula 5, item I)</label><textarea id="ct-clausula-honorarios" rows="4"></textarea></div>
         <div class="sub" style="margin-top:-6px;">Preenchido automaticamente de acordo com o tipo de cobrança acima — edite à vontade se precisar de uma redação diferente para este contrato específico.</div>
@@ -468,6 +501,27 @@ export async function renderContratos(root) {
       atualizarClausulaPadrao();
     };
     radiosTipo.forEach((r) => r.addEventListener("change", atualizarVisibilidadeCobranca));
+
+    // Controlar visibilidade de 2 vs 3 parcelas
+    const radiosNumParcelas = document.querySelectorAll('input[name="ct-num-parcelas"]');
+    const boxParcelas2 = document.getElementById("ct-box-parcelas-2");
+    const boxParcelas3 = document.getElementById("ct-box-parcelas-3");
+
+    const atualizarVisibilidadeParcelas = () => {
+      const numParcelas = document.querySelector('input[name="ct-num-parcelas"]:checked').value;
+      if (numParcelas === "3") {
+        boxParcelas2.style.display = "none";
+        boxParcelas3.style.display = "";
+        // Limpar os inputs de parcelas 2 quando mudar pra 3
+        document.getElementById("ct-parcela1").value = "";
+        document.getElementById("ct-parcela2").value = "";
+      } else {
+        boxParcelas2.style.display = "";
+        boxParcelas3.style.display = "none";
+      }
+    };
+    radiosNumParcelas.forEach((r) => r.addEventListener("change", atualizarVisibilidadeParcelas));
+    atualizarVisibilidadeParcelas();
 
     // Comissão (área comercial): só existe uma pergunta de sim/não — quando marcada,
     // revela o campo de valor; quando desmarcada, zera o valor pra garantir que uma
@@ -650,6 +704,7 @@ export async function renderContratos(root) {
 
     document.getElementById("form-contrato").addEventListener("submit", async (ev) => {
       ev.preventDefault();
+      const numParcelas = document.querySelector('input[name="ct-num-parcelas"]:checked').value;
       const payload = {
         dataContrato: document.getElementById("ct-data").value,
         vigenciaDias: document.getElementById("ct-vigencia").value,
@@ -662,8 +717,9 @@ export async function renderContratos(root) {
         valorPermuta: document.getElementById("ct-valorpermuta").value,
         descricaoPermuta: document.getElementById("ct-descricaopermuta").value.trim(),
         prazoReposicaoDias: document.getElementById("ct-reposicao").value,
-        parcelaInicialPct: document.getElementById("ct-parcela1").value,
-        parcelaFechamentoPct: document.getElementById("ct-parcela2").value,
+        parcelaInicialPct: numParcelas === "3" ? 33.33 : document.getElementById("ct-parcela1").value,
+        parcelaIntermediariaPct: numParcelas === "3" ? 33.33 : null,
+        parcelaFechamentoPct: numParcelas === "3" ? 33.33 : document.getElementById("ct-parcela2").value,
         dataVencimentoParcela1: document.getElementById("ct-venc-p1").value,
         dataVencimentoParcela2: document.getElementById("ct-venc-p2").value,
         prazoRescisaoAvisoDias: document.getElementById("ct-aviso").value,
