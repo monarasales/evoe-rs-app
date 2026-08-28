@@ -26,7 +26,7 @@ function comDetalhes(contrato) {
   const todasVagas = vagasDoContrato(contrato);
   const vagasAdicionais = todasVagas.slice(1);
   const consultor = contrato.consultorId ? db.findById("consultores", contrato.consultorId) : null;
-  const { valorTotal, valorParcela1, valorParcela2, salarioFaltando, ehPermuta } = calcularParcelas(contrato, vaga, vagasAdicionais);
+  const { valorTotal, valorParcela1, valorParcela2, valorParcela3, numParcelas, salarioFaltando, ehPermuta } = calcularParcelas(contrato, vaga, vagasAdicionais);
   return {
     ...contrato,
     empresaNome: empresa ? empresa.nome : "—",
@@ -39,6 +39,8 @@ function comDetalhes(contrato) {
     valorTotalContrato: valorTotal,
     valorParcela1,
     valorParcela2,
+    valorParcela3: valorParcela3 || 0,
+    numParcelas: numParcelas || 2,
     salarioFaltando,
     ehPermuta,
     ehAjusteManual: contrato.valorManualOverride !== null && contrato.valorManualOverride !== undefined,
@@ -123,6 +125,7 @@ function extrairCamposEditaveis(body) {
     valorPermuta,
     descricaoPermuta,
     parcelaInicialPct,
+    parcelaIntermediariaPct,
     parcelaFechamentoPct,
     prazoReposicaoDias,
     vigenciaDias,
@@ -130,14 +133,17 @@ function extrairCamposEditaveis(body) {
     dataContrato,
     dataVencimentoParcela1,
     dataVencimentoParcela2,
+    dataVencimentoParcela3,
     testemunha1,
     testemunha2,
   } = body || {};
 
   // A 2ª parcela vence automaticamente 30 dias após a 1ª — só é recalculada aqui
   // quando o formulário não mandou um valor próprio (ex: usuária editou a mão).
+  // A 3ª parcela vence automaticamente 60 dias após a 1ª (se existir).
   const venc1 = dataVencimentoParcela1 || "";
   const venc2 = dataVencimentoParcela2 || (venc1 ? somarDias(venc1, DIAS_PARCELA2_APOS_PARCELA1) : "");
+  const venc3 = dataVencimentoParcela3 || (venc1 && parcelaIntermediariaPct ? somarDias(venc1, DIAS_PARCELA2_APOS_PARCELA1 * 2) : "");
 
   return {
     cargoObjeto: cargoObjeto !== undefined ? cargoObjeto : undefined,
@@ -160,6 +166,7 @@ function extrairCamposEditaveis(body) {
     valorPermuta: Number(valorPermuta) || 0,
     descricaoPermuta: descricaoPermuta || "",
     parcelaInicialPct: Number(parcelaInicialPct) || CONTRATO_PADRAO.parcelaInicialPct,
+    parcelaIntermediariaPct: Number(parcelaIntermediariaPct) || null,
     parcelaFechamentoPct: Number(parcelaFechamentoPct) || CONTRATO_PADRAO.parcelaFechamentoPct,
     prazoReposicaoDias: Number(prazoReposicaoDias) || CONTRATO_PADRAO.prazoReposicaoDias,
     vigenciaDias: Number(vigenciaDias) || CONTRATO_PADRAO.vigenciaDias,
@@ -167,8 +174,10 @@ function extrairCamposEditaveis(body) {
     dataContrato: dataContrato || new Date().toISOString().slice(0, 10),
     dataVencimentoParcela1: venc1,
     dataVencimentoParcela2: venc2,
+    dataVencimentoParcela3: venc3,
     dataPagamentoParcela1: body.dataPagamentoParcela1 || null, // Quando foi efetivamente pago
     dataPagamentoParcela2: body.dataPagamentoParcela2 || null, // Quando foi efetivamente pago
+    dataPagamentoParcela3: body.dataPagamentoParcela3 || null, // Quando foi efetivamente pago
     testemunha1Nome: (testemunha1 && testemunha1.nome) || "",
     testemunha1Cpf: (testemunha1 && testemunha1.cpf) || "",
     testemunha2Nome: (testemunha2 && testemunha2.nome) || "",

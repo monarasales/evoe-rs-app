@@ -45,13 +45,26 @@ function calcularValorContrato(contrato, vaga, vagasAdicionais = []) {
   return { valorTotal, salarioFaltando: false, ehPermuta: false };
 }
 
-/** Divide o valor total do contrato nas duas parcelas (percentuais definidos no
- * próprio contrato), a partir do valor calculado por calcularValorContrato. */
+/** Divide o valor total do contrato nas parcelas (percentuais definidos no
+ * próprio contrato), a partir do valor calculado por calcularValorContrato.
+ * Suporta 2 ou 3 parcelas: se parcelaIntermediariaPct estiver preenchido, usa 3 parcelas. */
 function calcularParcelas(contrato, vaga, vagasAdicionais = []) {
   const { valorTotal, salarioFaltando, ehPermuta } = calcularValorContrato(contrato, vaga, vagasAdicionais);
-  const valorParcela1 = Math.round(((valorTotal * (Number(contrato.parcelaInicialPct) || 0)) / 100) * 100) / 100;
-  const valorParcela2 = Math.round(((valorTotal * (Number(contrato.parcelaFechamentoPct) || 0)) / 100) * 100) / 100;
-  return { valorTotal, valorParcela1, valorParcela2, salarioFaltando, ehPermuta };
+
+  const temParcela3 = contrato.parcelaIntermediariaPct !== null && contrato.parcelaIntermediariaPct !== undefined && Number(contrato.parcelaIntermediariaPct) > 0;
+
+  if (temParcela3) {
+    // Modo 3 parcelas
+    const valorParcela1 = Math.round(((valorTotal * (Number(contrato.parcelaInicialPct) || 0)) / 100) * 100) / 100;
+    const valorParcela2 = Math.round(((valorTotal * (Number(contrato.parcelaIntermediariaPct) || 0)) / 100) * 100) / 100;
+    const valorParcela3 = Math.round(((valorTotal * (Number(contrato.parcelaFechamentoPct) || 0)) / 100) * 100) / 100;
+    return { valorTotal, valorParcela1, valorParcela2, valorParcela3, numParcelas: 3, salarioFaltando, ehPermuta };
+  } else {
+    // Modo 2 parcelas (compatibilidade com contratos antigos)
+    const valorParcela1 = Math.round(((valorTotal * (Number(contrato.parcelaInicialPct) || 0)) / 100) * 100) / 100;
+    const valorParcela2 = Math.round(((valorTotal * (Number(contrato.parcelaFechamentoPct) || 0)) / 100) * 100) / 100);
+    return { valorTotal, valorParcela1, valorParcela2, valorParcela3: 0, numParcelas: 2, salarioFaltando, ehPermuta };
+  }
 }
 
 /** Junta uma lista de nomes de cargo numa frase em português ("A", "A e B", "A, B e C") —

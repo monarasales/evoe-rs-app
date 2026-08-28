@@ -78,12 +78,12 @@ export async function renderFinanceiro(root) {
       <div class="kpi-card kpi-destaque">
         <div class="kpi-label">Previsto — Próximos 30 dias</div>
         <div class="kpi-value">${formatarReal(resumo.previsto30dias)}</div>
-        <div class="kpi-sub">Só a 2ª parcela com vencimento nos próximos 30 dias — o que vence depois entra em "Ainda a Receber", não aqui</div>
+        <div class="kpi-sub">Próximas parcelas (2ª, 3ª, etc) com vencimento nos próximos 30 dias</div>
       </div>
       <div class="kpi-card kpi-destaque ${resumo.vencidoNaoRecebido > 0 ? "kpi-destaque-alerta" : ""}">
         <div class="kpi-label">Vencido e Não Cobrado</div>
         <div class="kpi-value">${formatarReal(resumo.vencidoNaoRecebido)}</div>
-        <div class="kpi-sub">2ª parcela com vencimento já passado</div>
+        <div class="kpi-sub">Parcelas com vencimento já passado</div>
       </div>
       <div class="kpi-card">
         <div class="kpi-label">Total Contratado (vagas abertas)</div>
@@ -116,14 +116,16 @@ export async function renderFinanceiro(root) {
         <thead>
           <tr>
             <th>Contrato</th><th>Vaga</th><th>Empresa</th><th>Consultor</th><th>Tipo</th>
-            <th>Valor Total</th><th>1ª Parcela (recebido)</th><th>2ª Parcela (previsto)</th><th>Vencimento 2ª Parcela</th><th>Reposição</th>
+            <th>Valor Total</th><th>1ª Parcela</th><th>2ª Parcela</th><th style="display:none;" class="col-parcela3">3ª Parcela</th><th>Próx. Vencimento</th><th>Reposição</th>
           </tr>
         </thead>
         <tbody>
           ${linhas
             .map(
-              (l) => `
-            <tr data-contrato-id="${l.contratoId}" data-vaga-id="${l.vagaId}">
+              (l) => {
+                const tem3Parcelas = l.numParcelas === 3;
+                return `
+            <tr data-contrato-id="${l.contratoId}" data-vaga-id="${l.vagaId}" class="${tem3Parcelas ? 'tem-3-parcelas' : ''}">
               <td><strong>${escapeHtml(l.numero)}</strong></td>
               <td>
                 ${escapeHtml(l.vagaTitulo)}
@@ -137,9 +139,19 @@ export async function renderFinanceiro(root) {
                 ${l.ehAjusteManual ? ' <span class="tag tag-standby" title="Valor ajustado manualmente, fora do cálculo automático">ajustado</span>' : ""}
                 <button type="button" class="btn-icone btn-ajustar-valor-fin" title="Ajustar manualmente o valor total deste contrato">✎</button>
               </td>
-              <td>${formatarReal(l.valorParcela1)}${l.ehPermuta ? ' <span class="sub">(permuta)</span>' : ""}</td>
-              <td>${formatarReal(l.valorParcela2)}${l.ehPermuta ? ' <span class="sub">(permuta)</span>' : ""}</td>
-              <td>${l.dataVencimentoParcela2 ? formatarData(l.dataVencimentoParcela2) : "—"} ${tagVencimento(l.diasParcela2)}</td>
+              <td>
+                <div>${formatarReal(l.valorParcela1)}${l.ehPermuta ? ' <span class="sub">(permuta)</span>' : ""}</div>
+                <div class="sub">${l.dataVencimentoParcela1 ? formatarData(l.dataVencimentoParcela1) : "—"}</div>
+              </td>
+              <td>
+                <div>${formatarReal(l.valorParcela2)}${l.ehPermuta ? ' <span class="sub">(permuta)</span>' : ""}</div>
+                <div class="sub">${l.dataVencimentoParcela2 ? formatarData(l.dataVencimentoParcela2) : "—"}</div>
+              </td>
+              <td style="display:none;" class="col-parcela3">
+                <div>${formatarReal(l.valorParcela3 || 0)}${l.ehPermuta ? ' <span class="sub">(permuta)</span>' : ""}</div>
+                <div class="sub">${l.dataVencimentoParcela3 ? formatarData(l.dataVencimentoParcela3) : "—"}</div>
+              </td>
+              <td>${tem3Parcelas ? (l.dataVencimentoParcela3 ? formatarData(l.dataVencimentoParcela3) : "—") : (l.dataVencimentoParcela2 ? formatarData(l.dataVencimentoParcela2) : "—")} ${tem3Parcelas ? tagVencimento(l.diasParcela3) : tagVencimento(l.diasParcela2)}</td>
               <td>${
                 !l.reposicaoInfo
                   ? "—"
@@ -147,12 +159,19 @@ export async function renderFinanceiro(root) {
                   ? '<span class="tag tag-atraso" title="Dentro do prazo de garantia — confirme antes de cobrar de novo">🔁 Em garantia</span>'
                   : '<span class="tag tag-reposicao" title="Reposição fora do prazo de garantia">🔁 Reposição</span>'
               }</td>
-            </tr>`
+            </tr>`;
+              }
             )
             .join("")}
         </tbody>
       </table>
     `;
+
+    // Se houver pelo menos um contrato com 3 parcelas, mostra a coluna
+    const tem3Parcelas = linhas.some(l => l.numParcelas === 3);
+    if (tem3Parcelas) {
+      tabelaEl.querySelectorAll('.col-parcela3').forEach(el => el.style.display = '');
+    }
 
     tabelaEl.querySelectorAll(".btn-editar-vaga-fin").forEach((btn) => {
       btn.addEventListener("click", (e) => {

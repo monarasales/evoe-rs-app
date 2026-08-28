@@ -39,8 +39,9 @@ router.get("/", requireAuth, requireGestor, (req, res) => {
       const todasVagasDoContrato = [vaga, ...vagasAdicionais].filter(Boolean);
       const empresa = empresas.find((e) => e.id === c.empresaId);
       const consultor = consultores.find((cs) => cs.id === c.consultorId);
-      const { valorTotal, valorParcela1, valorParcela2, salarioFaltando, ehPermuta } = calcularParcelas(c, vaga, vagasAdicionais);
+      const { valorTotal, valorParcela1, valorParcela2, valorParcela3, numParcelas, salarioFaltando, ehPermuta } = calcularParcelas(c, vaga, vagasAdicionais);
       const diasParcela2 = diasAte(c.dataVencimentoParcela2);
+      const diasParcela3 = diasAte(c.dataVencimentoParcela3);
 
       let reposicaoInfo = null;
       if (vaga && vaga.tipoVaga === "Reposição" && vaga.vagaOrigemId) {
@@ -64,9 +65,13 @@ router.get("/", requireAuth, requireGestor, (req, res) => {
         valorTotal,
         valorParcela1,
         valorParcela2,
+        valorParcela3: valorParcela3 || 0,
+        numParcelas: numParcelas || 2,
         dataVencimentoParcela1: c.dataVencimentoParcela1 || null,
         dataVencimentoParcela2: c.dataVencimentoParcela2 || null,
+        dataVencimentoParcela3: c.dataVencimentoParcela3 || null,
         diasParcela2,
+        diasParcela3,
         salarioFaltando,
         ehPermuta,
         ehAjusteManual: c.valorManualOverride !== null && c.valorManualOverride !== undefined,
