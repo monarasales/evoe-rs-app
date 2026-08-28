@@ -47,18 +47,16 @@ function calcularValorContrato(contrato, vaga, vagasAdicionais = []) {
 
 /** Divide o valor total do contrato nas parcelas (percentuais definidos no
  * próprio contrato), a partir do valor calculado por calcularValorContrato.
- * Suporta 2 ou 3 parcelas: se parcelaIntermediariaPct estiver preenchido, usa 3 parcelas. */
+ * Suporta 2 ou 3 parcelas: se parcelaIntermediariaPct estiver preenchido, usa 3 parcelas IGUAIS (33.33% cada). */
 function calcularParcelas(contrato, vaga, vagasAdicionais = []) {
   const { valorTotal, salarioFaltando, ehPermuta } = calcularValorContrato(contrato, vaga, vagasAdicionais);
 
   const temParcela3 = contrato.parcelaIntermediariaPct !== null && contrato.parcelaIntermediariaPct !== undefined && Number(contrato.parcelaIntermediariaPct) > 0;
 
   if (temParcela3) {
-    // Modo 3 parcelas
-    const valorParcela1 = Math.round(((valorTotal * (Number(contrato.parcelaInicialPct) || 0)) / 100) * 100) / 100;
-    const valorParcela2 = Math.round(((valorTotal * (Number(contrato.parcelaIntermediariaPct) || 0)) / 100) * 100) / 100;
-    const valorParcela3 = Math.round(((valorTotal * (Number(contrato.parcelaFechamentoPct) || 0)) / 100) * 100) / 100;
-    return { valorTotal, valorParcela1, valorParcela2, valorParcela3, numParcelas: 3, salarioFaltando, ehPermuta };
+    // Modo 3 parcelas IGUAIS: divide o total por 3 (33.33% cada)
+    const parcelaValor = Math.round((valorTotal / 3) * 100) / 100;
+    return { valorTotal, valorParcela1: parcelaValor, valorParcela2: parcelaValor, valorParcela3: parcelaValor, numParcelas: 3, salarioFaltando, ehPermuta };
   } else {
     // Modo 2 parcelas (compatibilidade com contratos antigos)
     const valorParcela1 = Math.round(((valorTotal * (Number(contrato.parcelaInicialPct) || 0)) / 100) * 100) / 100;
