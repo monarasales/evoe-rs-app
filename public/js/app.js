@@ -20,6 +20,7 @@ import { renderDespesas } from "./views/despesas.js";
 import { renderCultura } from "./views/cultura.js";
 import { renderAcompanhamento } from "./views/acompanhamento.js";
 import { renderDashboardFinanceiro } from "./views/dashboard-financeiro.js";
+import { renderDashboardFinanceiro } from "./views/dashboard-financeiro.js";
 
 const loginScreen = document.getElementById("login-screen");
 const mainScreen = document.getElementById("main-screen");
@@ -324,6 +325,7 @@ function registrarRotas() {
   registrarRota("/solicitacoes-vaga", renderSolicitacoesVaga);
   registrarRota("/despesas", renderDespesas);
   registrarRota("/cultura", renderCultura);
+  registrarRota("/dashboard-financeiro", renderDashboardFinanceiro);
   registrarRota("/dashboard-financeiro", renderDashboardFinanceiro);
 }
 
