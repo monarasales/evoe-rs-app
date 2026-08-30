@@ -325,7 +325,6 @@ function registrarRotas() {
   registrarRota("/despesas", renderDespesas);
   registrarRota("/cultura", renderCultura);
   registrarRota("/dashboard-financeiro", renderDashboardFinanceiro);
-  registrarRota("/dashboard-financeiro", renderDashboardFinanceiro);
 }
 
 async function init() {
