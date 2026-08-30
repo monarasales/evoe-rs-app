@@ -60,7 +60,7 @@ function calcularParcelas(contrato, vaga, vagasAdicionais = []) {
   } else {
     // Modo 2 parcelas (compatibilidade com contratos antigos)
     const valorParcela1 = Math.round(((valorTotal * (Number(contrato.parcelaInicialPct) || 0)) / 100) * 100) / 100;
-    const valorParcela2 = Math.round(((valorTotal * (Number(contrato.parcelaFechamentoPct) || 0)) / 100) * 100) / 100);
+    const valorParcela2 = Math.round(((valorTotal * (Number(contrato.parcelaFechamentoPct) || 0)) / 100) * 100) / 100;
     return { valorTotal, valorParcela1, valorParcela2, valorParcela3: 0, numParcelas: 2, salarioFaltando, ehPermuta };
   }
 }
