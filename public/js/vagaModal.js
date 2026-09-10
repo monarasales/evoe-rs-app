@@ -125,13 +125,48 @@ export async function abrirFormularioVaga({ vaga = null, empresaIdPadrao = null,
         </div>
       </div>
       <div class="sub" style="margin-top:-6px;">Usado para calcular o valor do contrato quando os honorários forem cobrados em % sobre o salário (tela Financeiro).</div>
+
+      <h3 style="margin-top:20px; margin-bottom:12px; border-bottom:1px solid var(--border); padding-bottom:8px;">📋 Detalhes da Vaga</h3>
+
       <div class="form-row">
-        <label>Perfil da vaga (requisitos e cultura)</label>
-        <textarea id="v-perfil" ${podeEditar ? "" : "disabled"}>${editando ? escapeHtml(vaga.perfilVaga || "") : ""}</textarea>
+        <label>Cargo / Título</label>
+        <input type="text" id="v-cargo" placeholder="ex: Analista Financeiro Pleno" value="${editando && vaga.vagaEstrutura ? escapeHtml(vaga.vagaEstrutura.cargo || "") : ""}" ${podeEditar ? "" : "disabled"} />
       </div>
+
       <div class="form-row">
-        <label>Observações</label>
-        <textarea id="v-obs" ${podeEditar ? "" : "disabled"}>${editando ? escapeHtml(vaga.observacoes || "") : ""}</textarea>
+        <label>Requisitos (Formação e Experiência)</label>
+        <textarea id="v-requisitos" placeholder="Formação em ..., experiência com ..." ${podeEditar ? "" : "disabled"}>${editando && vaga.vagaEstrutura ? escapeHtml(vaga.vagaEstrutura.requisitos || "") : ""}</textarea>
+      </div>
+
+      <div class="form-row">
+        <label>Cultura da Empresa</label>
+        <textarea id="v-cultura" placeholder="Valores, modo de trabalho, ambiente..." ${podeEditar ? "" : "disabled"}>${editando && vaga.vagaEstrutura ? escapeHtml(vaga.vagaEstrutura.culturaDaEmpresa || "") : ""}</textarea>
+      </div>
+
+      <div class="form-row">
+        <label>Atividades / Responsabilidades Principais</label>
+        <textarea id="v-atividades" placeholder="Tarefas principais e diárias..." ${podeEditar ? "" : "disabled"}>${editando && vaga.vagaEstrutura ? escapeHtml(vaga.vagaEstrutura.atividades || "") : ""}</textarea>
+      </div>
+
+      <div class="form-row">
+        <label>Comportamentos Desajados</label>
+        <textarea id="v-desajados" placeholder="O que NÃO queremos neste cargo..." ${podeEditar ? "" : "disabled"}>${editando && vaga.vagaEstrutura ? escapeHtml(vaga.vagaEstrutura.comportamentosDesajados || "") : ""}</textarea>
+        <div class="sub" style="margin-top:6px;">Aqui você lista características negativas ou incompatíveis com a cultura.</div>
+      </div>
+
+      <div class="form-row">
+        <label>Horário / Modalidade / Endereço</label>
+        <textarea id="v-horario" placeholder="Seg-sex 8h-17h, presencial, Av. Paulista 1000..." ${podeEditar ? "" : "disabled"}>${editando && vaga.vagaEstrutura ? escapeHtml(vaga.vagaEstrutura.horario || "") : ""}</textarea>
+      </div>
+
+      <div class="form-row">
+        <label>Benefícios</label>
+        <textarea id="v-beneficios" placeholder="Vale refeição, transporte, odontológico, vale psicólogo..." ${podeEditar ? "" : "disabled"}>${editando && vaga.vagaEstrutura ? escapeHtml(vaga.vagaEstrutura.beneficios || "") : ""}</textarea>
+      </div>
+
+      <div class="form-row">
+        <label>Observações Adicionais</label>
+        <textarea id="v-obs" placeholder="Informações que não se encaixam nos campos acima..." ${podeEditar ? "" : "disabled"}>${editando ? escapeHtml(vaga.observacoes || "") : ""}</textarea>
       </div>
       ${editando ? `<div class="form-row"><button type="button" id="btn-ver-candidatos" class="link-btn">Ver candidatos desta vaga (${vaga.qtdCandidatos}) →</button></div>` : ""}
       ${editando && podeEditar && !["11. Aprovado", "12. Cancelada/Encerrada"].includes(vaga.etapaAtual) ? `
@@ -246,6 +281,18 @@ export async function abrirFormularioVaga({ vaga = null, empresaIdPadrao = null,
   document.getElementById("form-vaga").addEventListener("submit", async (e) => {
     e.preventDefault();
     const tipoVaga = document.getElementById("v-tipo").value;
+
+    // Montar estrutura da vaga com campos específicos
+    const vagaEstrutura = {
+      cargo: (document.getElementById("v-cargo") || {}).value || "",
+      requisitos: (document.getElementById("v-requisitos") || {}).value || "",
+      culturaDaEmpresa: (document.getElementById("v-cultura") || {}).value || "",
+      atividades: (document.getElementById("v-atividades") || {}).value || "",
+      comportamentosDesajados: (document.getElementById("v-desajados") || {}).value || "",
+      horario: (document.getElementById("v-horario") || {}).value || "",
+      beneficios: (document.getElementById("v-beneficios") || {}).value || ""
+    };
+
     const payload = {
       titulo: document.getElementById("v-titulo").value.trim(),
       empresaId: document.getElementById("v-empresa").value,
@@ -254,7 +301,8 @@ export async function abrirFormularioVaga({ vaga = null, empresaIdPadrao = null,
       prazoFechamento: document.getElementById("v-prazo").value,
       prioridade: document.getElementById("v-prioridade").value,
       salario: document.getElementById("v-salario").value,
-      perfilVaga: document.getElementById("v-perfil").value,
+      perfilVaga: document.getElementById("v-perfil") ? document.getElementById("v-perfil").value : "",
+      vagaEstrutura,
       observacoes: document.getElementById("v-obs").value,
       tipoVaga,
       motivoReposicao: tipoVaga === "Reposição" ? document.getElementById("v-motivo-reposicao").value : "",
