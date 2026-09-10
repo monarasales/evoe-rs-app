@@ -516,4 +516,70 @@ router.patch("/:id/cancelar", requireAuth, requireGestor, (req, res) => {
   res.json(comDetalhes(atualizado));
 });
 
+// Marcar parcela como paga (com auditoria)
+router.patch("/:id/marcar-pagamento", requireAuth, requireGestor, (req, res) => {
+  const contrato = db.findById("contratos", req.params.id);
+  if (!contrato) return res.status(404).json({ erro: "Contrato não encontrado." });
+
+  const { numeroParcela, dataPagamento, observacoes } = req.body;
+
+  if (![1, 2, 3].includes(numeroParcela)) {
+    return res.status(400).json({ erro: "Número de parcela inválido (1, 2 ou 3)." });
+  }
+  if (!dataPagamento || !/^\d{4}-\d{2}-\d{2}$/.test(dataPagamento)) {
+    return res.status(400).json({ erro: "Informe uma data de pagamento válida (AAAA-MM-DD)." });
+  }
+
+  const novoHistorico = (contrato.historicoPagamentos || []).concat([
+    {
+      numeroParcela,
+      dataPagamento,
+      dataRegistro: new Date().toISOString(),
+      usuarioId: req.consultor.id,
+      usuarioNome: req.consultor.nome,
+      observacoes: observacoes || ""
+    }
+  ]);
+
+  const updates = {
+    [`dataPagamentoParcela${numeroParcela}`]: dataPagamento,
+    historicoPagamentos: novoHistorico
+  };
+
+  db.update("contratos", contrato.id, updates);
+  const atualizado = db.findById("contratos", contrato.id);
+  res.json(comDetalhes(atualizado));
+});
+
+// Desmarcar pagamento de parcela (remover marcação)
+router.patch("/:id/desmarcar-pagamento", requireAuth, requireGestor, (req, res) => {
+  const contrato = db.findById("contratos", req.params.id);
+  if (!contrato) return res.status(404).json({ erro: "Contrato não encontrado." });
+
+  const { numeroParcela } = req.body;
+  if (![1, 2, 3].includes(numeroParcela)) {
+    return res.status(400).json({ erro: "Número de parcela inválido (1, 2 ou 3)." });
+  }
+
+  const novoHistorico = (contrato.historicoPagamentos || []).concat([
+    {
+      numeroParcela,
+      dataPagamento: null,
+      dataRegistro: new Date().toISOString(),
+      usuarioId: req.consultor.id,
+      usuarioNome: req.consultor.nome,
+      observacoes: "[DESMARCADO]"
+    }
+  ]);
+
+  const updates = {
+    [`dataPagamentoParcela${numeroParcela}`]: null,
+    historicoPagamentos: novoHistorico
+  };
+
+  db.update("contratos", contrato.id, updates);
+  const atualizado = db.findById("contratos", contrato.id);
+  res.json(comDetalhes(atualizado));
+});
+
 module.exports = router;

@@ -70,7 +70,7 @@ router.get("/:id", (req, res) => {
 });
 
 router.post("/", requireAuth, (req, res) => {
-  const { titulo, perfilVaga, empresaId, consultorId, dataAbertura, prazoFechamento, prioridade, observacoes, salario, tipoVaga, motivoReposicao, vagaOrigemId } = req.body || {};
+  const { titulo, perfilVaga, vagaEstrutura, empresaId, consultorId, dataAbertura, prazoFechamento, prioridade, observacoes, salario, tipoVaga, motivoReposicao, vagaOrigemId } = req.body || {};
 
   if (!titulo || !empresaId || !consultorId || !dataAbertura || !prazoFechamento) {
     return res.status(400).json({ erro: "Título, empresa, consultor, data de abertura e prazo de fechamento são obrigatórios." });
@@ -86,6 +86,15 @@ router.post("/", requireAuth, (req, res) => {
   const vaga = db.insert("vagas", {
     titulo,
     perfilVaga: perfilVaga || "",
+    vagaEstrutura: vagaEstrutura || {
+      cargo: "",
+      requisitos: "",
+      culturaDaEmpresa: "",
+      atividades: "",
+      comportamentosDesajados: "",
+      horario: "",
+      beneficios: ""
+    },
     empresaId,
     consultorId,
     dataAbertura,
@@ -137,7 +146,7 @@ router.patch("/:id", requireAuth, (req, res) => {
   if (!podeEditar(req, vaga)) {
     return res.status(403).json({ erro: "Você só pode editar vagas atribuídas a você." });
   }
-  const { titulo, perfilVaga, empresaId, consultorId, dataAbertura, prazoFechamento, prioridade, observacoes, salario, tipoVaga, motivoReposicao, vagaOrigemId, dataFechamento } = req.body || {};
+  const { titulo, perfilVaga, vagaEstrutura, empresaId, consultorId, dataAbertura, prazoFechamento, prioridade, observacoes, salario, tipoVaga, motivoReposicao, vagaOrigemId, dataFechamento } = req.body || {};
   if (prioridade && !PRIORIDADES.includes(prioridade)) return res.status(400).json({ erro: "Prioridade inválida." });
   if (tipoVaga && !TIPOS_VAGA.includes(tipoVaga)) return res.status(400).json({ erro: "Tipo de vaga inválido." });
   if (tipoVaga === "Reposição" && vagaOrigemId && !db.findById("vagas", vagaOrigemId)) {
@@ -169,6 +178,7 @@ router.patch("/:id", requireAuth, (req, res) => {
   const atualizado = db.update("vagas", vaga.id, {
     titulo,
     perfilVaga,
+    vagaEstrutura,
     empresaId,
     consultorId,
     dataAbertura,
