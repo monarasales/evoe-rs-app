@@ -40,6 +40,7 @@ app.use(
 app.use(attachUser);
 
 app.use("/api/auth", require("./routes/auth"));
+app.use("/api/admin", require("./routes/admin"));
 app.use("/api/consultores", require("./routes/consultores"));
 app.use("/api/empresas", require("./routes/empresas"));
 app.use("/api/vagas", require("./routes/vagas"));
