@@ -20,6 +20,39 @@ function tagVencimento(dias) {
   return `<span class="tag tag-nprazo">em ${dias}d</span>`;
 }
 
+function renderizarParcela(valor, dataPagamento, dataVencimento, diasAteVencimento, numeroParcela, ehPermuta, contratoId) {
+  // Se já foi paga, mostrar verde
+  if (dataPagamento) {
+    return `
+      <div style="background:rgba(76,175,80,0.1); border:1px solid #4caf50; border-radius:4px; padding:8px; text-align:center;">
+        <div style="color:#2e7d32; font-weight:bold;">✅ PAGA</div>
+        <div class="sub">${formatarData(dataPagamento)}</div>
+        <button type="button" class="btn-icone btn-desmarcar-pagamento" data-contrato="${contratoId}" data-parcela="${numeroParcela}" title="Desmarcar como pago">✕</button>
+      </div>
+    `;
+  }
+
+  // Se ainda não venceu - mostrar AMARELO (próxima a vencer)
+  if (diasAteVencimento >= 0) {
+    return `
+      <div style="background:rgba(255,193,7,0.15); border:2px solid #ffc107; border-radius:4px; padding:8px;">
+        <div>${formatarReal(valor)}${ehPermuta ? ' <span class="sub">(permuta)</span>' : ""}</div>
+        <div class="sub" style="font-weight:bold; color:#f57f17;">⚠️ Próxima: ${formatarData(dataVencimento)}</div>
+        <button type="button" class="btn btn-sm btn-success btn-marcar-pagamento" data-contrato="${contratoId}" data-parcela="${numeroParcela}" style="margin-top:6px; width:100%; padding:6px 4px; font-size:12px;">💰 Marcar Pago</button>
+      </div>
+    `;
+  }
+
+  // Se venceu - mostrar VERMELHO (cobrar!)
+  return `
+    <div style="background:rgba(244,67,54,0.15); border:2px solid #f44336; border-radius:4px; padding:8px;">
+      <div>${formatarReal(valor)}${ehPermuta ? ' <span class="sub">(permuta)</span>' : ""}</div>
+      <div class="sub" style="font-weight:bold; color:#c62828;">🔴 VENCIDA há ${Math.abs(diasAteVencimento)}d</div>
+      <button type="button" class="btn btn-sm btn-success btn-marcar-pagamento" data-contrato="${contratoId}" data-parcela="${numeroParcela}" style="margin-top:6px; width:100%; padding:6px 4px; font-size:12px; background:#4caf50;">✅ Marcar Pago</button>
+    </div>
+  `;
+}
+
 export async function renderFinanceiro(root) {
   if (!isGestor()) {
     root.innerHTML = '<div class="empty-state">Esta área é restrita ao perfil Gestor.</div>';
@@ -140,12 +173,10 @@ export async function renderFinanceiro(root) {
                 <button type="button" class="btn-icone btn-ajustar-valor-fin" title="Ajustar manualmente o valor total deste contrato">✎</button>
               </td>
               <td>
-                <div>${formatarReal(l.valorParcela1)}${l.ehPermuta ? ' <span class="sub">(permuta)</span>' : ""}</div>
-                <div class="sub">${l.dataVencimentoParcela1 ? formatarData(l.dataVencimentoParcela1) : "—"}</div>
+                ${renderizarParcela(l.valorParcela1, l.dataPagamentoParcela1, l.dataVencimentoParcela1, l.diasParcela1, 1, l.ehPermuta, l.contratoId)}
               </td>
               <td>
-                <div>${formatarReal(l.valorParcela2)}${l.ehPermuta ? ' <span class="sub">(permuta)</span>' : ""}</div>
-                <div class="sub">${l.dataVencimentoParcela2 ? formatarData(l.dataVencimentoParcela2) : "—"}</div>
+                ${renderizarParcela(l.valorParcela2, l.dataPagamentoParcela2, l.dataVencimentoParcela2, l.diasParcela2, 2, l.ehPermuta, l.contratoId)}
               </td>
               <td style="display:none;" class="col-parcela3">
                 <div>${formatarReal(l.valorParcela3 || 0)}${l.ehPermuta ? ' <span class="sub">(permuta)</span>' : ""}</div>
@@ -185,6 +216,55 @@ export async function renderFinanceiro(root) {
         const tr = e.target.closest("tr");
         const linha = linhas.find((l) => l.contratoId === tr.dataset.contratoId);
         abrirModalAjusteValor(linha);
+      });
+    });
+
+    // Marcar parcela como paga
+    tabelaEl.querySelectorAll(".btn-marcar-pagamento").forEach((btn) => {
+      btn.addEventListener("click", async (e) => {
+        const contratoId = btn.dataset.contrato;
+        const numeroParcela = parseInt(btn.dataset.parcela);
+
+        const dataPagamento = prompt("Em que data o cliente pagou? (DD/MM/YYYY):");
+        if (!dataPagamento) return;
+
+        // Converter DD/MM/YYYY para YYYY-MM-DD
+        const [dia, mes, ano] = dataPagamento.split("/");
+        const dataFormatada = `${ano}-${mes.padStart(2, "0")}-${dia.padStart(2, "0")}`;
+
+        const observacoes = prompt("Observações (opcional):", "");
+
+        try {
+          await api.patch(`/api/contratos/${contratoId}/marcar-pagamento`, {
+            numeroParcela,
+            dataPagamento: dataFormatada,
+            observacoes
+          });
+          showToast(`✅ 2ª parcela marcada como paga!`, "sucesso");
+          carregarERenderizar();
+        } catch (err) {
+          showToast(err.message, "erro");
+        }
+      });
+    });
+
+    // Desmarcar pagamento
+    tabelaEl.querySelectorAll(".btn-desmarcar-pagamento").forEach((btn) => {
+      btn.addEventListener("click", async (e) => {
+        const contratoId = btn.dataset.contrato;
+        const numeroParcela = parseInt(btn.dataset.parcela);
+
+        if (!confirm("Desmarcar esta parcela como paga? Ela voltará para status 'pendente'.")) return;
+
+        try {
+          await api.patch(`/api/contratos/${contratoId}/desmarcar-pagamento`, {
+            numeroParcela
+          });
+          showToast(`✅ Marcação removida — parcela voltou a pendente`, "sucesso");
+          carregarERenderizar();
+        } catch (err) {
+          showToast(err.message, "erro");
+        }
       });
     });
   }
