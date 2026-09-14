@@ -8,7 +8,11 @@ const bcrypt = require("bcryptjs");
 const db = require("./db");
 
 function jaSemeado() {
-  return db.readCollection("consultores").length > 0;
+  const temConsultores = db.readCollection("consultores").length > 0;
+  const temUsers = db.readCollection("users").length > 0;
+  // Se uma das coleções está vazia, precisa semear tudo novamente
+  // (isso garante que mesmo que um arquivo JSON seja deletado, o seed reconstrói)
+  return temConsultores && temUsers;
 }
 
 function seed() {
