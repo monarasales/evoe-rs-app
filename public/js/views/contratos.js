@@ -79,44 +79,160 @@ export async function renderContratos(root) {
 
   async function carregarLista() {
     const el = root.querySelector("#contratos-lista");
-    const contratos = await api.get("/api/contratos");
+    let contratos = await api.get("/api/contratos");
     if (contratos.length === 0) {
       el.innerHTML = '<div class="empty-state">Nenhum contrato gerado ainda. Clique em "+ Novo Contrato" para começar.</div>';
       return;
     }
+
+    // Ordena contratos por data (mais recentes primeiro)
+    contratos = contratos.sort((a, b) => new Date(b.dataContrato) - new Date(a.dataContrato));
+
+    // Função para calcular dias até vencimento
+    function diasAteVencimento(dataVencimento) {
+      if (!dataVencimento) return null;
+      const venc = new Date(dataVencimento + "T00:00:00");
+      const hoje = new Date();
+      hoje.setHours(0, 0, 0, 0);
+      return Math.floor((venc - hoje) / (1000 * 60 * 60 * 24));
+    }
+
+    // Função para renderizar cada parcela com cores e botões
+    function renderizarParcelaCard(parcela, numeroParc, contratoId, contratoData) {
+      if (!parcela || !parcela.valor) return "";
+
+      const dataVenci = parcela.dataVencimento;
+      const dataPago = parcela.dataPagamento;
+      const dias = diasAteVencimento(dataVenci);
+
+      let status = "";
+      let classe = "";
+      let botao = "";
+
+      if (dataPago) {
+        status = `✅ PAGA em ${formatarData(dataPago)}`;
+        classe = "parcela-paga";
+      } else if (dias === null) {
+        status = "Data não definida";
+        classe = "parcela-sem-data";
+      } else if (dias < 0) {
+        status = `🔴 VENCIDA há ${Math.abs(dias)} dias`;
+        classe = "parcela-vencida";
+        botao = `<button class="btn btn-pagamento btn-pago" data-parcela="${numeroParc}" data-contrato="${contratoId}" title="Marcar como pago">✅ Marcar Pago</button>`;
+      } else if (dias <= 30) {
+        status = `⚠️ Vence em ${dias} dias`;
+        classe = "parcela-proxima";
+        botao = `<button class="btn btn-pagamento btn-marcar" data-parcela="${numeroParc}" data-contrato="${contratoId}" title="Marcar como pago">💰 Marcar Pago</button>`;
+      } else {
+        status = `📅 Vence em ${dias} dias`;
+        classe = "parcela-futura";
+        botao = `<button class="btn btn-pagamento btn-marcar" data-parcela="${numeroParc}" data-contrato="${contratoId}" title="Marcar como pago">Marcar Pago</button>`;
+      }
+
+      return `
+        <div class="parcela-card ${classe}">
+          <div class="parcela-header">
+            <span class="parcela-numero">${numeroParc}ª Parcela</span>
+            <span class="parcela-valor">${formatarReal(parcela.valor)}</span>
+          </div>
+          <div class="parcela-status">${status}</div>
+          ${dataVenci ? `<div class="parcela-data">Vence: ${formatarData(dataVenci)}</div>` : ""}
+          ${botao}
+        </div>
+      `;
+    }
+
     el.innerHTML = `
-      <table>
-        <thead>
-          <tr><th>Nº</th><th>Cliente</th><th>Vaga</th><th>Data</th><th>Valor Total</th><th>Vencto. 2ª parcela</th><th>Status</th><th></th></tr>
-        </thead>
-        <tbody>
-          ${contratos
-            .map(
-              (c) => `
-            <tr data-id="${c.id}">
-              <td><strong>${escapeHtml(c.numero)}</strong></td>
-              <td>${escapeHtml(c.empresaNome)}</td>
-              <td>${escapeHtml(c.vagaTitulo)}</td>
-              <td>${formatarData(c.dataContrato)}</td>
-              <td>${c.salarioFaltando ? '<span class="sub" title="Cadastre o salário do cargo na vaga para calcular">sem salário</span>' : formatarReal(c.valorTotalContrato)}</td>
-              <td>${c.dataVencimentoParcela2 ? `<span class="tag ${vencimentoVencido(c.dataVencimentoParcela2) ? "tag-atrasada" : "tag-nprazo"}">${formatarData(c.dataVencimentoParcela2)}</span>` : "—"}</td>
-              <td><span class="tag ${c.status === "Gerado" ? "tag-nprazo" : "tag-standby"}">${escapeHtml(c.status)}</span></td>
-              <td class="acoes-contrato">
-                <button class="btn btn-outline btn-sm btn-pdf" title="Baixar PDF">📄 PDF</button>
-                <button class="btn btn-outline btn-sm btn-docx" title="Baixar em Word">📝 Word</button>
-                <button class="btn btn-outline btn-sm btn-email" title="Enviar por e-mail">✉️ E-mail</button>
-                <button class="btn btn-outline btn-sm btn-whats" title="Enviar por WhatsApp">💬 WhatsApp</button>
-                ${isGestor() ? '<button class="btn btn-outline btn-sm btn-editar-contrato" title="Editar dados do contrato">✏️ Editar</button>' : ""}
-                ${isGestor() && c.status !== "Cancelado" ? '<button class="btn btn-outline btn-sm btn-cancelar-contrato" title="Cancelar (remove do cálculo financeiro)" style="color:#d32f2f;">❌ Cancelar</button>' : ""}
-                ${isGestor() && c.status === "Cancelado" ? '<span class="tag tag-encerrada">Cancelado</span>' : ""}
-                ${isGestor() ? '<button class="btn btn-outline btn-sm btn-excluir-contrato" title="Excluir">🗑️</button>' : ""}
-              </td>
-            </tr>`
-            )
-            .join("")}
-        </tbody>
-      </table>
+      <div class="contratos-grid">
+        ${contratos
+          .map((c) => {
+            const parcela1 = {
+              valor: c.valorParcela1,
+              dataVencimento: c.dataVencimentoParcela1,
+              dataPagamento: c.dataPagamentoParcela1
+            };
+            const parcela2 = {
+              valor: c.valorParcela2,
+              dataVencimento: c.dataVencimentoParcela2,
+              dataPagamento: c.dataPagamentoParcela2
+            };
+
+            return `
+              <div class="contrato-card" data-id="${c.id}">
+                <div class="contrato-header">
+                  <div class="contrato-info">
+                    <h3>${escapeHtml(c.numero)}</h3>
+                    <p class="contrato-cliente">${escapeHtml(c.empresaNome)}</p>
+                    <p class="contrato-vaga">${escapeHtml(c.vagaTitulo)}</p>
+                  </div>
+                  <div class="contrato-badges">
+                    <span class="tag ${c.status === "Gerado" ? "tag-nprazo" : "tag-standby"}">${escapeHtml(c.status)}</span>
+                  </div>
+                </div>
+
+                <div class="contrato-dados">
+                  <div class="dado-item">
+                    <span class="dado-label">Data Contrato</span>
+                    <span class="dado-valor">${formatarData(c.dataContrato)}</span>
+                  </div>
+                  <div class="dado-item">
+                    <span class="dado-label">Valor Total</span>
+                    <span class="dado-valor">${c.salarioFaltando ? '<span class="sub">sem salário</span>' : formatarReal(c.valorTotalContrato)}</span>
+                  </div>
+                </div>
+
+                <div class="contrato-parcelas">
+                  ${renderizarParcelaCard(parcela1, 1, c.id, c.dataContrato)}
+                  ${renderizarParcelaCard(parcela2, 2, c.id, c.dataContrato)}
+                </div>
+
+                <div class="contrato-acoes">
+                  <button class="btn btn-outline btn-sm btn-pdf" title="Baixar PDF">📄 PDF</button>
+                  <button class="btn btn-outline btn-sm btn-docx" title="Baixar em Word">📝 Word</button>
+                  <button class="btn btn-outline btn-sm btn-email" title="Enviar por e-mail">✉️ E-mail</button>
+                  <button class="btn btn-outline btn-sm btn-whats" title="Enviar por WhatsApp">💬 WhatsApp</button>
+                  ${isGestor() ? '<button class="btn btn-outline btn-sm btn-editar-contrato" title="Editar dados do contrato">✏️ Editar</button>' : ""}
+                  ${isGestor() && c.status !== "Cancelado" ? '<button class="btn btn-outline btn-sm btn-cancelar-contrato" title="Cancelar (remove do cálculo financeiro)" style="color:#d32f2f;">❌ Cancelar</button>' : ""}
+                  ${isGestor() ? '<button class="btn btn-outline btn-sm btn-excluir-contrato" title="Excluir">🗑️</button>' : ""}
+                </div>
+              </div>
+            `;
+          })
+          .join("")}
+      </div>
     `;
+
+    // Event listeners para marcação de pagamento
+    el.querySelectorAll(".btn-pagamento").forEach((btn) => {
+      btn.addEventListener("click", async (e) => {
+        const contratoId = btn.dataset.contrato;
+        const numeroParcela = btn.dataset.parcela;
+        const dataPagamento = prompt(`Data do pagamento (DD/MM/YYYY):`);
+        if (!dataPagamento) return;
+
+        // Validar formato e converter
+        const [dia, mes, ano] = dataPagamento.split("/");
+        if (!dia || !mes || !ano || dia.length !== 2 || mes.length !== 2 || ano.length !== 4) {
+          showToast("Formato inválido. Use DD/MM/YYYY", "erro");
+          return;
+        }
+
+        const dataISO = `${ano}-${String(mes).padStart(2, "0")}-${String(dia).padStart(2, "0")}`;
+        const observacoes = prompt("Observações (opcional):", "");
+
+        try {
+          await api.patch(`/api/contratos/${contratoId}/marcar-pagamento`, {
+            numeroParcela: parseInt(numeroParcela),
+            dataPagamento: dataISO,
+            observacoes: observacoes || ""
+          });
+          showToast(`${numeroParcela}ª parcela marcada como paga.`, "sucesso");
+          carregarLista();
+        } catch (err) {
+          showToast(err.message, "erro");
+        }
+      });
+    });
 
     el.querySelectorAll(".btn-pdf").forEach((btn) =>
       btn.addEventListener("click", (e) => {
