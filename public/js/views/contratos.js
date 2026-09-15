@@ -24,6 +24,7 @@ const PADRAO = {
   prazoRescisaoAvisoDias: 30,
   dataVencimentoParcela1: "",
   dataVencimentoParcela2: "",
+  dataVencimentoParcela3: "",
 };
 
 function somarDias(dataStr, dias) {
@@ -438,8 +439,9 @@ export async function renderContratos(root) {
         <div class="form-cols">
           <div class="form-row"><label>Vencimento da 1ª parcela</label><input type="date" id="ct-venc-p1" value="${editando ? (c.dataVencimentoParcela1 || "") : ""}" /></div>
           <div class="form-row"><label>Vencimento da 2ª parcela</label><input type="date" id="ct-venc-p2" value="${editando ? (c.dataVencimentoParcela2 || "") : ""}" /></div>
+          <div class="form-row" id="ct-row-venc-p3" style="display:none;"><label>Vencimento da 3ª parcela</label><input type="date" id="ct-venc-p3" value="${editando ? (c.dataVencimentoParcela3 || "") : ""}" /></div>
         </div>
-        <div class="sub" style="margin-top:-6px;">O vencimento da 2ª parcela é preenchido automaticamente 30 dias após a 1ª — você recebe um lembrete para cobrar o cliente quando essa data se aproximar. Pode ajustar a mão se combinar outro prazo com o cliente.</div>
+        <div class="sub" style="margin-top:-6px;"><span id="ct-sub-vencimentos">O vencimento da 2ª parcela é preenchido automaticamente 30 dias após a 1ª — você recebe um lembrete para cobrar o cliente quando essa data se aproximar. Pode ajustar a mão se combinar outro prazo com o cliente.</span></div>
         <div class="form-row"><label>Aviso prévio para rescisão sem multa (dias)</label><input type="number" id="ct-aviso" min="1" value="${editando ? c.prazoRescisaoAvisoDias : PADRAO.prazoRescisaoAvisoDias}" /></div>
 
         <div class="section-title" style="margin-top:6px;">Testemunhas</div>
@@ -595,18 +597,26 @@ export async function renderContratos(root) {
     const radiosNumParcelas = document.querySelectorAll('input[name="ct-num-parcelas"]');
     const boxParcelas2 = document.getElementById("ct-box-parcelas-2");
     const boxParcelas3 = document.getElementById("ct-box-parcelas-3");
+    const rowVencP3 = document.getElementById("ct-row-venc-p3");
+    const subVencimentos = document.getElementById("ct-sub-vencimentos");
 
     const atualizarVisibilidadeParcelas = () => {
       const numParcelas = document.querySelector('input[name="ct-num-parcelas"]:checked').value;
       if (numParcelas === "3") {
         boxParcelas2.style.display = "none";
         boxParcelas3.style.display = "";
+        rowVencP3.style.display = "";
+        subVencimentos.textContent = "Os vencimentos são preenchidos automaticamente a cada 30 dias após a parcela anterior — você recebe lembretes para cobrar o cliente em cada data. Pode ajustar a mão se combinar outros prazos com o cliente.";
         document.getElementById("ct-parcela1").value = "";
         document.getElementById("ct-parcela2").value = "";
+        atualizarDataVencimento3Parcelas();
       } else {
         boxParcelas2.style.display = "";
         boxParcelas3.style.display = "none";
+        rowVencP3.style.display = "none";
+        subVencimentos.textContent = "O vencimento da 2ª parcela é preenchido automaticamente 30 dias após a 1ª — você recebe um lembrete para cobrar o cliente quando essa data se aproximar. Pode ajustar a mão se combinar outro prazo com o cliente.";
       }
+      atualizarPreviewValor();
     };
     radiosNumParcelas.forEach((r) => r.addEventListener("change", atualizarVisibilidadeParcelas));
     atualizarVisibilidadeParcelas();
@@ -674,16 +684,28 @@ export async function renderContratos(root) {
 
     function atualizarPreviewValor() {
       const { valorTotal, detalhe } = calcularValorTotalAtual();
-      const parcela1Pct = Number(document.getElementById("ct-parcela1").value) || 0;
-      const parcela2Pct = Number(document.getElementById("ct-parcela2").value) || 0;
-      const valorParcela1 = Math.round(((valorTotal * parcela1Pct) / 100) * 100) / 100;
-      const valorParcela2 = Math.round(((valorTotal * parcela2Pct) / 100) * 100) / 100;
+      const numParcelas = document.querySelector('input[name="ct-num-parcelas"]:checked').value;
+
+      let previewParcelas = "";
+
+      if (numParcelas === "3") {
+        // 3 parcelas: 33.33% cada
+        const valorParcela = Math.round(((valorTotal * 33.33) / 100) * 100) / 100;
+        previewParcelas = `<div class="sub" style="margin-top:6px;">1ª parcela: <strong>${formatarReal(valorParcela)}</strong> (33,33%) · 2ª parcela: <strong>${formatarReal(valorParcela)}</strong> (33,33%) · 3ª parcela: <strong>${formatarReal(valorParcela)}</strong> (33,33%)</div>`;
+      } else {
+        // 2 parcelas: valores customizáveis
+        const parcela1Pct = Number(document.getElementById("ct-parcela1").value) || 0;
+        const parcela2Pct = Number(document.getElementById("ct-parcela2").value) || 0;
+        const valorParcela1 = Math.round(((valorTotal * parcela1Pct) / 100) * 100) / 100;
+        const valorParcela2 = Math.round(((valorTotal * parcela2Pct) / 100) * 100) / 100;
+        previewParcelas = `<div class="sub" style="margin-top:6px;">1ª parcela: <strong>${formatarReal(valorParcela1)}</strong> · 2ª parcela: <strong>${formatarReal(valorParcela2)}</strong></div>`;
+      }
 
       previewEl.innerHTML = `
         <div class="kpi-label">Valor total estimado do contrato</div>
         <div class="kpi-value">${formatarReal(valorTotal)}</div>
         <div class="sub" style="margin-top:2px;">${detalhe}</div>
-        ${valorTotal > 0 ? `<div class="sub" style="margin-top:6px;">1ª parcela: <strong>${formatarReal(valorParcela1)}</strong> · 2ª parcela: <strong>${formatarReal(valorParcela2)}</strong></div>` : ""}
+        ${valorTotal > 0 ? previewParcelas : ""}
       `;
     }
 
@@ -731,11 +753,31 @@ export async function renderContratos(root) {
 
     const inputVencP1 = document.getElementById("ct-venc-p1");
     const inputVencP2 = document.getElementById("ct-venc-p2");
+    const inputVencP3 = document.getElementById("ct-venc-p3");
+
     let venc2EditadoManualmente = editando && !!c.dataVencimentoParcela2 && c.dataVencimentoParcela2 !== somarDias(c.dataVencimentoParcela1, 30);
+    let venc3EditadoManualmente = editando && !!c.dataVencimentoParcela3 && c.dataVencimentoParcela3 !== somarDias(c.dataVencimentoParcela2, 30);
+
     inputVencP2.addEventListener("input", () => { venc2EditadoManualmente = true; });
+    inputVencP3.addEventListener("input", () => { venc3EditadoManualmente = true; });
+
+    // Função para atualizar datas quando há 3 parcelas
+    function atualizarDataVencimento3Parcelas() {
+      if (!inputVencP1.value) return;
+      const venc2 = somarDias(inputVencP1.value, 30);
+      const venc3 = somarDias(venc2, 30);
+      if (!venc2EditadoManualmente) inputVencP2.value = venc2;
+      if (!venc3EditadoManualmente) inputVencP3.value = venc3;
+    }
+
     inputVencP1.addEventListener("change", () => {
-      if (venc2EditadoManualmente) return;
-      inputVencP2.value = somarDias(inputVencP1.value, 30);
+      const numParcelas = document.querySelector('input[name="ct-num-parcelas"]:checked').value;
+      if (numParcelas === "3") {
+        atualizarDataVencimento3Parcelas();
+      } else {
+        if (venc2EditadoManualmente) return;
+        inputVencP2.value = somarDias(inputVencP1.value, 30);
+      }
     });
 
     if (selectVaga) {
@@ -785,6 +827,7 @@ export async function renderContratos(root) {
         parcelaFechamentoPct: numParcelas === "3" ? 33.33 : document.getElementById("ct-parcela2").value,
         dataVencimentoParcela1: document.getElementById("ct-venc-p1").value,
         dataVencimentoParcela2: document.getElementById("ct-venc-p2").value,
+        dataVencimentoParcela3: numParcelas === "3" ? document.getElementById("ct-venc-p3").value : null,
         prazoRescisaoAvisoDias: document.getElementById("ct-aviso").value,
         testemunha1: { nome: document.getElementById("ct-t1-nome").value.trim(), cpf: document.getElementById("ct-t1-cpf").value.trim() },
         testemunha2: { nome: document.getElementById("ct-t2-nome").value.trim(), cpf: document.getElementById("ct-t2-cpf").value.trim() },
