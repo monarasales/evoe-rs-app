@@ -41,10 +41,6 @@ function formatarReal(valor) {
   return (Number(valor) || 0).toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
 }
 
-// Espelha server/utils/contratoTexto.js (montarTextoHonorarios) — usado só para
-// pré-preencher a caixa de texto da cláusula no formulário, com o mesmo texto que o
-// sistema geraria automaticamente. Se a usuária editar a caixa, o texto dela é que
-// vale (tanto aqui quanto no PDF/Word gerado pelo backend).
 function textoHonorariosPadrao({ tipoCobranca, percentualHonorarios, comissaoEstimada, valorFixo, valorPermuta, descricaoPermuta, parcelaInicialPct, parcelaFechamentoPct, valorTotal }) {
   const comissao = Number(comissaoEstimada) || 0;
   const total = Number(valorTotal) || 0;
@@ -88,148 +84,132 @@ export async function renderContratos(root) {
     // Ordena contratos por data (mais recentes primeiro)
     contratos = contratos.sort((a, b) => new Date(b.dataContrato) - new Date(a.dataContrato));
 
-    // Função para calcular dias até vencimento
-    function diasAteVencimento(dataVencimento) {
-      if (!dataVencimento) return null;
-      const venc = new Date(dataVencimento + "T00:00:00");
-      const hoje = new Date();
-      hoje.setHours(0, 0, 0, 0);
-      return Math.floor((venc - hoje) / (1000 * 60 * 60 * 24));
-    }
-
-    // Função para renderizar cada parcela com cores e botões
-    function renderizarParcelaCard(parcela, numeroParc, contratoId, contratoData) {
-      if (!parcela || !parcela.valor) return "";
-
-      const dataVenci = parcela.dataVencimento;
-      const dataPago = parcela.dataPagamento;
-      const dias = diasAteVencimento(dataVenci);
-
-      let status = "";
-      let classe = "";
-      let botao = "";
-
-      if (dataPago) {
-        status = `✅ PAGA em ${formatarData(dataPago)}`;
-        classe = "parcela-paga";
-      } else if (dias === null) {
-        status = "Data não definida";
-        classe = "parcela-sem-data";
-      } else if (dias < 0) {
-        status = `🔴 VENCIDA há ${Math.abs(dias)} dias`;
-        classe = "parcela-vencida";
-        botao = `<button class="btn btn-pagamento btn-pago" data-parcela="${numeroParc}" data-contrato="${contratoId}" title="Marcar como pago">✅ Marcar Pago</button>`;
-      } else if (dias <= 30) {
-        status = `⚠️ Vence em ${dias} dias`;
-        classe = "parcela-proxima";
-        botao = `<button class="btn btn-pagamento btn-marcar" data-parcela="${numeroParc}" data-contrato="${contratoId}" title="Marcar como pago">💰 Marcar Pago</button>`;
-      } else {
-        status = `📅 Vence em ${dias} dias`;
-        classe = "parcela-futura";
-        botao = `<button class="btn btn-pagamento btn-marcar" data-parcela="${numeroParc}" data-contrato="${contratoId}" title="Marcar como pago">Marcar Pago</button>`;
-      }
-
-      return `
-        <div class="parcela-card ${classe}">
-          <div class="parcela-header">
-            <span class="parcela-numero">${numeroParc}ª Parcela</span>
-            <span class="parcela-valor">${formatarReal(parcela.valor)}</span>
-          </div>
-          <div class="parcela-status">${status}</div>
-          ${dataVenci ? `<div class="parcela-data">Vence: ${formatarData(dataVenci)}</div>` : ""}
-          ${botao}
-        </div>
-      `;
-    }
-
     el.innerHTML = `
-      <div class="contratos-grid">
-        ${contratos
-          .map((c) => {
-            const parcela1 = {
-              valor: c.valorParcela1,
-              dataVencimento: c.dataVencimentoParcela1,
-              dataPagamento: c.dataPagamentoParcela1
-            };
-            const parcela2 = {
-              valor: c.valorParcela2,
-              dataVencimento: c.dataVencimentoParcela2,
-              dataPagamento: c.dataPagamentoParcela2
-            };
+      <table>
+        <thead>
+          <tr>
+            <th>Nº</th>
+            <th>Cliente</th>
+            <th>Vaga</th>
+            <th>Data</th>
+            <th>Valor Total</th>
+            <th>1ª Parcela</th>
+            <th>2ª Parcela</th>
+            <th>Status</th>
+            <th></th>
+          </tr>
+        </thead>
+        <tbody>
+          ${contratos
+            .map((c) => {
+              // 1ª parcela: sempre verde (paga na assinatura)
+              const parcela1Status = `<span class="tag tag-paga">✅ PAGA</span>`;
 
-            return `
-              <div class="contrato-card" data-id="${c.id}">
-                <div class="contrato-header">
-                  <div class="contrato-info">
-                    <h3>${escapeHtml(c.numero)}</h3>
-                    <p class="contrato-cliente">${escapeHtml(c.empresaNome)}</p>
-                    <p class="contrato-vaga">${escapeHtml(c.vagaTitulo)}</p>
-                  </div>
-                  <div class="contrato-badges">
-                    <span class="tag ${c.status === "Gerado" ? "tag-nprazo" : "tag-standby"}">${escapeHtml(c.status)}</span>
-                  </div>
-                </div>
+              // 2ª parcela: com checkbox para marcar como pago
+              let parcela2Html = "—";
+              if (c.dataVencimentoParcela2) {
+                const vencida = vencimentoVencido(c.dataVencimentoParcela2);
+                const tagClass = vencida ? "tag-atrasada" : "tag-nprazo";
+                const checkboxId = `chk-p2-${c.id}`;
 
-                <div class="contrato-dados">
-                  <div class="dado-item">
-                    <span class="dado-label">Data Contrato</span>
-                    <span class="dado-valor">${formatarData(c.dataContrato)}</span>
+                parcela2Html = `
+                  <div style="display: flex; align-items: center; gap: 10px;">
+                    <span class="tag ${tagClass}">${formatarData(c.dataVencimentoParcela2)}</span>
+                    <input
+                      type="checkbox"
+                      id="${checkboxId}"
+                      class="checkbox-parcela"
+                      data-contrato="${c.id}"
+                      data-parcela="2"
+                      ${c.dataPagamentoParcela2 ? "checked" : ""}
+                      title="✓ Marcar como pago"
+                      style="width: 20px; height: 20px; cursor: pointer; accent-color: #4caf50;"
+                    />
                   </div>
-                  <div class="dado-item">
-                    <span class="dado-label">Valor Total</span>
-                    <span class="dado-valor">${c.salarioFaltando ? '<span class="sub">sem salário</span>' : formatarReal(c.valorTotalContrato)}</span>
-                  </div>
-                </div>
+                `;
+              }
 
-                <div class="contrato-parcelas">
-                  ${renderizarParcelaCard(parcela1, 1, c.id, c.dataContrato)}
-                  ${renderizarParcelaCard(parcela2, 2, c.id, c.dataContrato)}
-                </div>
-
-                <div class="contrato-acoes">
-                  <button class="btn btn-outline btn-sm btn-pdf" title="Baixar PDF">📄 PDF</button>
-                  <button class="btn btn-outline btn-sm btn-docx" title="Baixar em Word">📝 Word</button>
-                  <button class="btn btn-outline btn-sm btn-email" title="Enviar por e-mail">✉️ E-mail</button>
-                  <button class="btn btn-outline btn-sm btn-whats" title="Enviar por WhatsApp">💬 WhatsApp</button>
-                  ${isGestor() ? '<button class="btn btn-outline btn-sm btn-editar-contrato" title="Editar dados do contrato">✏️ Editar</button>' : ""}
-                  ${isGestor() && c.status !== "Cancelado" ? '<button class="btn btn-outline btn-sm btn-cancelar-contrato" title="Cancelar (remove do cálculo financeiro)" style="color:#d32f2f;">❌ Cancelar</button>' : ""}
-                  ${isGestor() ? '<button class="btn btn-outline btn-sm btn-excluir-contrato" title="Excluir">🗑️</button>' : ""}
-                </div>
-              </div>
-            `;
-          })
-          .join("")}
-      </div>
+              return `
+                <tr data-id="${c.id}">
+                  <td><strong>${escapeHtml(c.numero)}</strong></td>
+                  <td>${escapeHtml(c.empresaNome)}</td>
+                  <td>${escapeHtml(c.vagaTitulo)}</td>
+                  <td>${formatarData(c.dataContrato)}</td>
+                  <td>${c.salarioFaltando ? '<span class="sub" title="Cadastre o salário do cargo na vaga para calcular">sem salário</span>' : formatarReal(c.valorTotalContrato)}</td>
+                  <td>${parcela1Status}</td>
+                  <td>${parcela2Html}</td>
+                  <td><span class="tag ${c.status === "Gerado" ? "tag-nprazo" : "tag-standby"}">${escapeHtml(c.status)}</span></td>
+                  <td class="acoes-contrato">
+                    <button class="btn btn-outline btn-sm btn-pdf" title="Baixar PDF">📄 PDF</button>
+                    <button class="btn btn-outline btn-sm btn-docx" title="Baixar em Word">📝 Word</button>
+                    <button class="btn btn-outline btn-sm btn-email" title="Enviar por e-mail">✉️ E-mail</button>
+                    <button class="btn btn-outline btn-sm btn-whats" title="Enviar por WhatsApp">💬 WhatsApp</button>
+                    ${isGestor() ? '<button class="btn btn-outline btn-sm btn-editar-contrato" title="Editar dados do contrato">✏️ Editar</button>' : ""}
+                    ${isGestor() && c.status !== "Cancelado" ? '<button class="btn btn-outline btn-sm btn-cancelar-contrato" title="Cancelar (remove do cálculo financeiro)" style="color:#d32f2f;">❌ Cancelar</button>' : ""}
+                    ${isGestor() ? '<button class="btn btn-outline btn-sm btn-excluir-contrato" title="Excluir">🗑️</button>' : ""}
+                  </td>
+                </tr>
+              `;
+            })
+            .join("")}
+        </tbody>
+      </table>
     `;
 
-    // Event listeners para marcação de pagamento
-    el.querySelectorAll(".btn-pagamento").forEach((btn) => {
-      btn.addEventListener("click", async (e) => {
-        const contratoId = btn.dataset.contrato;
-        const numeroParcela = btn.dataset.parcela;
-        const dataPagamento = prompt(`Data do pagamento (DD/MM/YYYY):`);
-        if (!dataPagamento) return;
+    // Event listeners para checkbox da 2ª parcela
+    el.querySelectorAll(".checkbox-parcela").forEach((checkbox) => {
+      checkbox.addEventListener("change", async (e) => {
+        const contratoId = checkbox.dataset.contrato;
+        const numeroParcela = checkbox.dataset.parcela;
 
-        // Validar formato e converter
-        const [dia, mes, ano] = dataPagamento.split("/");
-        if (!dia || !mes || !ano || dia.length !== 2 || mes.length !== 2 || ano.length !== 4) {
-          showToast("Formato inválido. Use DD/MM/YYYY", "erro");
-          return;
-        }
+        if (e.target.checked) {
+          // Marcar como pago
+          const dataPagamento = prompt(`Data do pagamento da ${numeroParcela}ª parcela (DD/MM/YYYY):`);
+          if (!dataPagamento) {
+            checkbox.checked = false;
+            return;
+          }
 
-        const dataISO = `${ano}-${String(mes).padStart(2, "0")}-${String(dia).padStart(2, "0")}`;
-        const observacoes = prompt("Observações (opcional):", "");
+          // Validar formato
+          const [dia, mes, ano] = dataPagamento.split("/");
+          if (!dia || !mes || !ano || dia.length !== 2 || mes.length !== 2 || ano.length !== 4) {
+            showToast("Formato inválido. Use DD/MM/YYYY", "erro");
+            checkbox.checked = false;
+            return;
+          }
 
-        try {
-          await api.patch(`/api/contratos/${contratoId}/marcar-pagamento`, {
-            numeroParcela: parseInt(numeroParcela),
-            dataPagamento: dataISO,
-            observacoes: observacoes || ""
-          });
-          showToast(`${numeroParcela}ª parcela marcada como paga.`, "sucesso");
-          carregarLista();
-        } catch (err) {
-          showToast(err.message, "erro");
+          const dataISO = `${ano}-${String(mes).padStart(2, "0")}-${String(dia).padStart(2, "0")}`;
+          const observacoes = prompt("Observações (opcional):", "");
+
+          try {
+            await api.patch(`/api/contratos/${contratoId}/marcar-pagamento`, {
+              numeroParcela: parseInt(numeroParcela),
+              dataPagamento: dataISO,
+              observacoes: observacoes || ""
+            });
+            showToast(`${numeroParcela}ª parcela marcada como paga ✅`, "sucesso");
+            carregarLista();
+          } catch (err) {
+            showToast(err.message, "erro");
+            checkbox.checked = false;
+          }
+        } else {
+          // Desmarcar
+          if (!confirm(`Remover marcação de pagamento da ${numeroParcela}ª parcela?`)) {
+            checkbox.checked = true;
+            return;
+          }
+
+          try {
+            await api.patch(`/api/contratos/${contratoId}/desmarcar-pagamento`, {
+              numeroParcela: parseInt(numeroParcela)
+            });
+            showToast(`Marcação removida.`, "sucesso");
+            carregarLista();
+          } catch (err) {
+            showToast(err.message, "erro");
+            checkbox.checked = true;
+          }
         }
       });
     });
@@ -343,8 +323,6 @@ export async function renderContratos(root) {
     const c = contratoExistente || PADRAO;
     const tipoInicial = editando ? (c.tipoCobranca || "Percentual") : "Percentual";
 
-    // Vagas já vinculadas a QUALQUER OUTRO contrato (como principal ou adicional) não
-    // entram como opção de "vaga adicional" — evita cobrar a mesma vaga duas vezes.
     const idsVagasJaContratadas = new Set();
     todosContratos.forEach((ct) => {
       if (editando && ct.id === contratoExistente.id) return;
@@ -487,7 +465,7 @@ export async function renderContratos(root) {
 
     const selectVaga = document.getElementById("ct-vaga");
 
-    // ------- Vagas adicionais (mesmo cliente, mesmo contrato) -------
+    // ------- Vagas adicionais -------
     const listaAdicionaisEl = document.getElementById("ct-vagas-adicionais-lista");
     const btnAddAdicional = document.getElementById("btn-add-vaga-adicional");
     let contadorLinhaAdicional = 0;
@@ -569,17 +547,13 @@ export async function renderContratos(root) {
       criarLinhaAdicional("");
     });
 
-    // Ao editar um contrato que já tinha vagas adicionais, pré-preenche as linhas.
     if (editando && c.vagasDoContrato && c.vagasDoContrato.length > 1) {
       c.vagasDoContrato.slice(1).forEach((v) => criarLinhaAdicional(v.id));
     }
 
-    // Reúne a vaga principal + as adicionais selecionadas no momento, com salário de
-    // cada uma — usado pelo cálculo do valor total do contrato (soma os salários).
     function vagasParaCalculo() {
       if (editando) {
         if (c.vagasDoContrato && c.vagasDoContrato.length) {
-          // A vaga principal nunca muda ao editar; só as adicionais (lidas ao vivo da tela).
           const idsAdicionaisAtuais = Array.from(listaAdicionaisEl.querySelectorAll("select.ct-vaga-adicional"))
             .map((s) => s.value)
             .filter(Boolean);
@@ -618,7 +592,6 @@ export async function renderContratos(root) {
     };
     radiosTipo.forEach((r) => r.addEventListener("change", atualizarVisibilidadeCobranca));
 
-    // Controlar visibilidade de 2 vs 3 parcelas
     const radiosNumParcelas = document.querySelectorAll('input[name="ct-num-parcelas"]');
     const boxParcelas2 = document.getElementById("ct-box-parcelas-2");
     const boxParcelas3 = document.getElementById("ct-box-parcelas-3");
@@ -628,7 +601,6 @@ export async function renderContratos(root) {
       if (numParcelas === "3") {
         boxParcelas2.style.display = "none";
         boxParcelas3.style.display = "";
-        // Limpar os inputs de parcelas 2 quando mudar pra 3
         document.getElementById("ct-parcela1").value = "";
         document.getElementById("ct-parcela2").value = "";
       } else {
@@ -639,9 +611,6 @@ export async function renderContratos(root) {
     radiosNumParcelas.forEach((r) => r.addEventListener("change", atualizarVisibilidadeParcelas));
     atualizarVisibilidadeParcelas();
 
-    // Comissão (área comercial): só existe uma pergunta de sim/não — quando marcada,
-    // revela o campo de valor; quando desmarcada, zera o valor pra garantir que uma
-    // comissão escondida não continue influenciando o cálculo por engano.
     const checkComissao = document.getElementById("ct-tem-comissao");
     const rowComissaoValor = document.getElementById("ct-row-comissao-valor");
     const inputComissao = document.getElementById("ct-comissao");
@@ -653,8 +622,6 @@ export async function renderContratos(root) {
     };
     checkComissao.addEventListener("change", atualizarVisibilidadeComissao);
 
-    // Valor final manual: mesma lógica — some o campo quando desmarcado, pra não deixar
-    // um valor esquecido sobrepondo o cálculo automático sem a usuária perceber.
     const checkValorFinal = document.getElementById("ct-usa-valor-final");
     const rowValorFinalInput = document.getElementById("ct-row-valor-final-input");
     const atualizarVisibilidadeValorFinal = () => {
@@ -664,17 +631,8 @@ export async function renderContratos(root) {
     };
     checkValorFinal.addEventListener("change", atualizarVisibilidadeValorFinal);
 
-    // Calcula e mostra ao vivo o valor total estimado do contrato, puxando o salário
-    // já cadastrado na vaga quando o tipo de cobrança é "Percentual" (somado à comissão
-    // estimada, se preenchida) — assim a usuária vê o resultado do cálculo na hora, sem
-    // precisar salvar para descobrir o valor. Se "Valor final do contrato" estiver
-    // preenchido, ele sobrepõe qualquer cálculo automático.
     const previewEl = document.getElementById("ct-preview-valor");
     const inputValorFinal = document.getElementById("ct-valor-final");
-    // Calcula o valor total do contrato com as regras atuais da tela (mesma lógica do
-    // backend em calcularValorContrato): valor final manual > percentual (soma dos
-    // salários das vagas + comissão) > valor fixo > permuta. Usado tanto no resumo
-    // visual quanto pra deixar o valor já explícito na cláusula de honorários.
     function calcularValorTotalAtual() {
       const tipo = document.querySelector('input[name="ct-tipo-cobranca"]:checked').value;
       const vagasInfo = vagasParaCalculo();
@@ -729,9 +687,6 @@ export async function renderContratos(root) {
       `;
     }
 
-    // Cláusula de honorários: fica preenchida automaticamente (mesmo texto que o PDF/Word
-    // vai gerar) até a usuária começar a editar a caixa à mão — a partir daí, o texto dela
-    // é que vale e para de ser sobrescrito pelas mudanças nos campos acima.
     const textareaClausula = document.getElementById("ct-clausula-honorarios");
     let clausulaEditadaManualmente = editando && !!(c.clausulaHonorariosTexto || "").trim();
     textareaClausula.value = clausulaEditadaManualmente
@@ -771,15 +726,9 @@ export async function renderContratos(root) {
     });
     inputValorFinal.addEventListener("input", atualizarPreviewValor);
     atualizarVisibilidadeCobranca();
-    // Estado inicial dos dois blocos opcionais (comissão / valor final manual) — revela
-    // o campo de valor já preenchido quando a caixinha vem marcada (editando um contrato
-    // que já usava isso), sem mexer no valor guardado.
     if (checkComissao.checked) rowComissaoValor.style.display = "";
     if (checkValorFinal.checked) rowValorFinalInput.style.display = "";
 
-    // Vencimento da 2ª parcela = vencimento da 1ª + 30 dias, recalculado sempre que a
-    // 1ª mudar — a menos que a usuária já tenha editado a 2ª data a mão, aí respeitamos
-    // a escolha dela e paramos de sobrescrever.
     const inputVencP1 = document.getElementById("ct-venc-p1");
     const inputVencP2 = document.getElementById("ct-venc-p2");
     let venc2EditadoManualmente = editando && !!c.dataVencimentoParcela2 && c.dataVencimentoParcela2 !== somarDias(c.dataVencimentoParcela1, 30);
@@ -804,8 +753,6 @@ export async function renderContratos(root) {
         } else {
           avisoEmpresa.classList.add("hidden");
         }
-        // Vagas adicionais só valem para a mesma empresa da vaga principal — se ela
-        // mudou (ou foi limpa), tira da seleção qualquer vaga que não seja mais compatível.
         listaAdicionaisEl.querySelectorAll("select.ct-vaga-adicional").forEach((select) => {
           const selecionada = vagas.find((v) => v.id === select.value);
           if (selecionada && (!vaga || selecionada.empresaId !== vaga.empresaId)) {
