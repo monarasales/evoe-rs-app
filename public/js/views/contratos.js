@@ -825,7 +825,35 @@ export async function renderContratos(root) {
 
     document.getElementById("form-contrato").addEventListener("submit", async (ev) => {
       ev.preventDefault();
+
+      // Validar campos obrigatórios
+      const venc1 = document.getElementById("ct-venc-p1").value;
+      const venc2 = document.getElementById("ct-venc-p2").value;
+      const venc3 = document.getElementById("ct-venc-p3").value;
       const numParcelas = document.querySelector('input[name="ct-num-parcelas"]:checked').value;
+
+      const box = document.getElementById("contrato-form-erro");
+
+      if (!venc1) {
+        box.textContent = "A data da 1ª parcela é obrigatória. Por favor, preencha o campo de vencimento.";
+        box.classList.remove("hidden");
+        return;
+      }
+
+      if (!venc2) {
+        box.textContent = "A data da 2ª parcela é obrigatória. Ela deve ser preenchida automaticamente 30 dias após a 1ª.";
+        box.classList.remove("hidden");
+        return;
+      }
+
+      if (numParcelas === "3" && !venc3) {
+        box.textContent = "A data da 3ª parcela é obrigatória quando selecionadas 3 parcelas.";
+        box.classList.remove("hidden");
+        return;
+      }
+
+      box.classList.add("hidden");
+
       const payload = {
         dataContrato: document.getElementById("ct-data").value,
         vigenciaDias: document.getElementById("ct-vigencia").value,

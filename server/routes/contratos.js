@@ -233,6 +233,14 @@ router.post("/", requireGestor, (req, res) => {
 
   const paramContratos = getParamContratos();
   const campos = extrairCamposEditaveis(req.body);
+
+  // Validar que as datas de vencimento foram preenchidas
+  if (!campos.dataVencimentoParcela1) {
+    return res.status(400).json({ erro: "A data de vencimento da 1ª parcela é obrigatória." });
+  }
+  if (!campos.dataVencimentoParcela2) {
+    return res.status(400).json({ erro: "A data de vencimento da 2ª parcela é obrigatória." });
+  }
   const ano = new Date(campos.dataContrato).getFullYear() || new Date().getFullYear();
   const numero = montarNumero(paramContratos.proximoNumero, ano);
   const cargoObjetoPadrao = formatarListaCargos([vaga, ...vagasAdicionais].map((v) => v.titulo));
