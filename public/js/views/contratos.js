@@ -609,7 +609,6 @@ export async function renderContratos(root) {
         subVencimentos.textContent = "Os vencimentos são preenchidos automaticamente a cada 30 dias após a parcela anterior — você recebe lembretes para cobrar o cliente em cada data. Pode ajustar a mão se combinar outros prazos com o cliente.";
         document.getElementById("ct-parcela1").value = "";
         document.getElementById("ct-parcela2").value = "";
-        atualizarDataVencimento3Parcelas();
       } else {
         boxParcelas2.style.display = "";
         boxParcelas3.style.display = "none";
@@ -761,22 +760,39 @@ export async function renderContratos(root) {
     inputVencP2.addEventListener("input", () => { venc2EditadoManualmente = true; });
     inputVencP3.addEventListener("input", () => { venc3EditadoManualmente = true; });
 
-    // Função para atualizar datas quando há 3 parcelas
-    function atualizarDataVencimento3Parcelas() {
+    // Função para atualizar datas automaticamente
+    function calcularVencimentos() {
+      const numParcelas = document.querySelector('input[name="ct-num-parcelas"]:checked').value;
+
       if (!inputVencP1.value) return;
-      const venc2 = somarDias(inputVencP1.value, 30);
-      const venc3 = somarDias(venc2, 30);
-      if (!venc2EditadoManualmente) inputVencP2.value = venc2;
-      if (!venc3EditadoManualmente) inputVencP3.value = venc3;
+
+      if (numParcelas === "3") {
+        // 3 parcelas: calcula P2 e P3 automaticamente
+        const venc2 = somarDias(inputVencP1.value, 30);
+        const venc3 = somarDias(venc2, 30);
+        if (!venc2EditadoManualmente) inputVencP2.value = venc2;
+        if (!venc3EditadoManualmente) inputVencP3.value = venc3;
+      } else {
+        // 2 parcelas: calcula só P2 automaticamente
+        if (!venc2EditadoManualmente) inputVencP2.value = somarDias(inputVencP1.value, 30);
+      }
     }
 
-    inputVencP1.addEventListener("change", () => {
+    // Calcular quando muda a 1ª parcela
+    inputVencP1.addEventListener("input", calcularVencimentos);
+    inputVencP1.addEventListener("change", calcularVencimentos);
+
+    // Calcular P3 quando muda P2 (para 3 parcelas)
+    inputVencP2.addEventListener("input", () => {
       const numParcelas = document.querySelector('input[name="ct-num-parcelas"]:checked').value;
-      if (numParcelas === "3") {
-        atualizarDataVencimento3Parcelas();
-      } else {
-        if (venc2EditadoManualmente) return;
-        inputVencP2.value = somarDias(inputVencP1.value, 30);
+      if (numParcelas === "3" && inputVencP2.value && !venc3EditadoManualmente) {
+        inputVencP3.value = somarDias(inputVencP2.value, 30);
+      }
+    });
+    inputVencP2.addEventListener("change", () => {
+      const numParcelas = document.querySelector('input[name="ct-num-parcelas"]:checked').value;
+      if (numParcelas === "3" && inputVencP2.value && !venc3EditadoManualmente) {
+        inputVencP3.value = somarDias(inputVencP2.value, 30);
       }
     });
 
