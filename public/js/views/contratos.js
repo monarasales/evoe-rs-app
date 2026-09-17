@@ -618,7 +618,6 @@ export async function renderContratos(root) {
       atualizarPreviewValor();
     };
     radiosNumParcelas.forEach((r) => r.addEventListener("change", atualizarVisibilidadeParcelas));
-    atualizarVisibilidadeParcelas();
 
     const checkComissao = document.getElementById("ct-tem-comissao");
     const rowComissaoValor = document.getElementById("ct-row-comissao-valor");
@@ -748,6 +747,7 @@ export async function renderContratos(root) {
     atualizarVisibilidadeCobranca();
     if (checkComissao.checked) rowComissaoValor.style.display = "";
     if (checkValorFinal.checked) rowValorFinalInput.style.display = "";
+    atualizarVisibilidadeParcelas();
 
     const inputVencP1 = document.getElementById("ct-venc-p1");
     const inputVencP2 = document.getElementById("ct-venc-p2");
