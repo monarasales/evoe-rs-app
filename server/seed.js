@@ -25,9 +25,10 @@ function seed() {
 
   const consultores = [
     { id: "cons-angela", nome: "Angela Monara", email: "consultoriagprhceara@gmail.com", whatsapp: "(85) 99999-0000", perfil: "Gestor", ativo: true, dataAdmissao: "2024-01-01", tipoVinculo: "CLT", valorRemuneracao: 8000, beneficios: "Vale Transporte, Vale Refeição R$800, Plano de Saúde, Acesso ao sistema completo" },
-    { id: "cons-mariana", nome: "Mariana Souza", email: "mariana.souza@evoerh.com.br", whatsapp: "(85) 99900-1111", perfil: "Gestor", ativo: true, dataAdmissao: "2024-01-15", tipoVinculo: "CLT", valorRemuneracao: 6500, beneficios: "Vale Transporte, Vale Refeição R$700, Plano de Saúde" },
-    { id: "cons-rafael", nome: "Rafael Lima", email: "rafael.lima@evoerh.com.br", whatsapp: "(85) 99900-2222", perfil: "Recrutador", ativo: true, dataAdmissao: "2024-06-03", tipoVinculo: "CLT", valorRemuneracao: 2800, beneficios: "Vale Transporte, Vale Refeição R$500" },
-    { id: "cons-camila", nome: "Camila Torres", email: "camila.torres@evoerh.com.br", whatsapp: "(85) 99900-3333", perfil: "Recrutador", ativo: true, dataAdmissao: "2025-02-10", tipoVinculo: "Estágio", valorRemuneracao: 1400, beneficios: "Vale Transporte" },
+    { id: "cons-lidya", nome: "Lídya", email: "lidya@evoe.com", whatsapp: "(85) 99900-1111", perfil: "Supervisora", ativo: true, dataAdmissao: "2024-01-15", tipoVinculo: "CLT", valorRemuneracao: 5500, beneficios: "Vale Transporte, Vale Refeição R$700, Plano de Saúde" },
+    { id: "cons-vitor", nome: "Vitor", email: "vitor@evoe.com", whatsapp: "(85) 99900-2222", perfil: "Consultor", ativo: true, dataAdmissao: "2024-06-03", tipoVinculo: "CLT", valorRemuneracao: 3500, beneficios: "Vale Transporte, Vale Refeição R$500" },
+    { id: "cons-guilherme", nome: "Guilherme", email: "guilherme@evoe.com", whatsapp: "(85) 99900-3333", perfil: "Consultor", ativo: true, dataAdmissao: "2024-06-10", tipoVinculo: "CLT", valorRemuneracao: 3500, beneficios: "Vale Transporte, Vale Refeição R$500" },
+    { id: "cons-fernanda", nome: "Fernanda", email: "fernanda@evoe.com", whatsapp: "(85) 99900-4444", perfil: "Consultor", ativo: true, dataAdmissao: "2025-02-10", tipoVinculo: "CLT", valorRemuneracao: 3500, beneficios: "Vale Transporte, Vale Refeição R$500" },
   ].map((c) => ({
     ...c,
     dataDesligamento: null,
@@ -54,9 +55,10 @@ function seed() {
   const senhaHash = bcrypt.hashSync("evoe123", 10);
   const users = [
     { id: "user-angela", consultorId: "cons-angela", username: "angela", passwordHash: senhaHash },
-    { id: "user-mariana", consultorId: "cons-mariana", username: "mariana", passwordHash: senhaHash },
-    { id: "user-rafael", consultorId: "cons-rafael", username: "rafael", passwordHash: senhaHash },
-    { id: "user-camila", consultorId: "cons-camila", username: "camila", passwordHash: senhaHash },
+    { id: "user-lidya", consultorId: "cons-lidya", username: "lidya", passwordHash: senhaHash },
+    { id: "user-vitor", consultorId: "cons-vitor", username: "vitor", passwordHash: senhaHash },
+    { id: "user-guilherme", consultorId: "cons-guilherme", username: "guilherme", passwordHash: senhaHash },
+    { id: "user-fernanda", consultorId: "cons-fernanda", username: "fernanda", passwordHash: senhaHash },
   ].map((u) => ({ ...u, createdAt: db.nowIso(), updatedAt: db.nowIso() }));
   db.writeCollection("users", users);
 
