@@ -216,16 +216,60 @@ export async function renderContratos(root) {
     });
 
     el.querySelectorAll(".btn-pdf").forEach((btn) =>
-      btn.addEventListener("click", (e) => {
+      btn.addEventListener("click", async (e) => {
         const id = e.target.closest("tr").dataset.id;
-        window.open(`/api/contratos/${id}/pdf`, "_blank");
+        const numero = e.target.closest("tr").cells[0].textContent.trim();
+        try {
+          const token = localStorage.getItem('authToken');
+          const response = await fetch(`/api/contratos/${id}/pdf`, {
+            headers: { 'Authorization': `Bearer ${token}` }
+          });
+          if (!response.ok) {
+            const data = await response.json().catch(() => ({}));
+            throw new Error(data.erro || `Erro ao gerar PDF`);
+          }
+          const blob = await response.blob();
+          const url = window.URL.createObjectURL(blob);
+          const a = document.createElement('a');
+          a.href = url;
+          a.download = `Contrato-${numero.replace('/', '-')}.pdf`;
+          document.body.appendChild(a);
+          a.click();
+          window.URL.revokeObjectURL(url);
+          document.body.removeChild(a);
+          showToast('PDF baixado com sucesso!', 'sucesso');
+        } catch (err) {
+          showToast(err.message, 'erro');
+        }
       })
     );
 
     el.querySelectorAll(".btn-docx").forEach((btn) =>
-      btn.addEventListener("click", (e) => {
+      btn.addEventListener("click", async (e) => {
         const id = e.target.closest("tr").dataset.id;
-        window.open(`/api/contratos/${id}/docx`, "_blank");
+        const numero = e.target.closest("tr").cells[0].textContent.trim();
+        try {
+          const token = localStorage.getItem('authToken');
+          const response = await fetch(`/api/contratos/${id}/docx`, {
+            headers: { 'Authorization': `Bearer ${token}` }
+          });
+          if (!response.ok) {
+            const data = await response.json().catch(() => ({}));
+            throw new Error(data.erro || `Erro ao gerar Word`);
+          }
+          const blob = await response.blob();
+          const url = window.URL.createObjectURL(blob);
+          const a = document.createElement('a');
+          a.href = url;
+          a.download = `Contrato-${numero.replace('/', '-')}.docx`;
+          document.body.appendChild(a);
+          a.click();
+          window.URL.revokeObjectURL(url);
+          document.body.removeChild(a);
+          showToast('Word baixado com sucesso!', 'sucesso');
+        } catch (err) {
+          showToast(err.message, 'erro');
+        }
       })
     );
 
