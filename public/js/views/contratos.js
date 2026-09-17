@@ -633,15 +633,14 @@ export async function renderContratos(root) {
 
     const checkValorFinal = document.getElementById("ct-usa-valor-final");
     const rowValorFinalInput = document.getElementById("ct-row-valor-final-input");
+    const previewEl = document.getElementById("ct-preview-valor");
+    const inputValorFinal = document.getElementById("ct-valor-final");
     const atualizarVisibilidadeValorFinal = () => {
       rowValorFinalInput.style.display = checkValorFinal.checked ? "" : "none";
       if (!checkValorFinal.checked) inputValorFinal.value = "";
       atualizarPreviewValor();
     };
     checkValorFinal.addEventListener("change", atualizarVisibilidadeValorFinal);
-
-    const previewEl = document.getElementById("ct-preview-valor");
-    const inputValorFinal = document.getElementById("ct-valor-final");
     function calcularValorTotalAtual() {
       const tipo = document.querySelector('input[name="ct-tipo-cobranca"]:checked').value;
       const vagasInfo = vagasParaCalculo();
