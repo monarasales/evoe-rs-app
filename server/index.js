@@ -39,6 +39,18 @@ app.use(
 );
 app.use(attachUser);
 
+// Middleware de teste para debugar sessão
+app.use((req, res, next) => {
+  if (req.path.startsWith('/api/auth/')) {
+    console.log(`[${new Date().toISOString()}] ${req.method} ${req.path}`, {
+      sessionID: req.sessionID,
+      sessionUserId: req.session?.userId,
+      sessionExists: !!req.session
+    });
+  }
+  next();
+});
+
 app.use("/api/auth", require("./routes/auth"));
 app.use("/api/admin", require("./routes/admin"));
 app.use("/api/consultores", require("./routes/consultores"));

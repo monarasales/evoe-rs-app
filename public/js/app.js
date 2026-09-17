@@ -276,8 +276,12 @@ loginForm.addEventListener("submit", async (e) => {
   const username = document.getElementById("login-username").value.trim();
   const senha = document.getElementById("login-senha").value;
   try {
-    const usuario = await api.post("/api/auth/login", { username, senha });
-    store.usuario = usuario;
+    const response = await api.post("/api/auth/login", { username, senha });
+    // Salva JWT token no localStorage
+    if (response.token) {
+      localStorage.setItem("authToken", response.token);
+    }
+    store.usuario = response;
     await bootAposLogin();
   } catch (err) {
     loginErro.textContent = err.message;

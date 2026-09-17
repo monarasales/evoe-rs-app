@@ -1,14 +1,26 @@
+const jwt = require("jsonwebtoken");
 const db = require("../db");
 
-/** Carrega o usuário logado (a partir da sessão) e anexa em req.user / req.consultor.
+const JWT_SECRET = process.env.JWT_SECRET || "evoe-rs-jwt-secret-change-in-production";
+
+/** Carrega o usuário logado (a partir do JWT token) e anexa em req.user / req.consultor.
  * Deve rodar em todas as rotas /api (exceto /api/auth/login). */
 function attachUser(req, res, next) {
-  if (!req.session || !req.session.userId) return next();
-  const user = db.findById("users", req.session.userId);
-  if (!user) return next();
-  const consultor = db.findById("consultores", user.consultorId);
-  req.user = { id: user.id, username: user.username, consultorId: user.consultorId };
-  req.consultor = consultor;
+  // Tenta extrair token do header Authorization
+  const authHeader = req.headers.authorization;
+  if (!authHeader || !authHeader.startsWith("Bearer ")) return next();
+
+  const token = authHeader.substring(7); // Remove "Bearer "
+  try {
+    const decoded = jwt.verify(token, JWT_SECRET);
+    const user = db.findById("users", decoded.userId);
+    if (!user) return next();
+    const consultor = db.findById("consultores", user.consultorId);
+    req.user = { id: user.id, username: user.username, consultorId: user.consultorId };
+    req.consultor = consultor;
+  } catch (err) {
+    // Token inválido ou expirado - continua sem autenticação
+  }
   next();
 }
 

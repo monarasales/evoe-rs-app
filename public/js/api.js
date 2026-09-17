@@ -1,8 +1,15 @@
 async function request(method, url, body) {
+  const headers = body ? { "Content-Type": "application/json" } : {};
+
+  // Adiciona JWT token ao header se existir
+  const token = localStorage.getItem("authToken");
+  if (token) {
+    headers["Authorization"] = `Bearer ${token}`;
+  }
+
   const res = await fetch(url, {
     method,
-    credentials: "include",
-    headers: body ? { "Content-Type": "application/json" } : undefined,
+    headers: Object.keys(headers).length > 0 ? headers : undefined,
     body: body ? JSON.stringify(body) : undefined,
   });
 

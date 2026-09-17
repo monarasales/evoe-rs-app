@@ -14,10 +14,12 @@
   "license": "UNLICENSED",
   "dependencies": {
     "bcryptjs": "^2.4.3",
+    "connect-sqlite3": "^0.9.18",
     "docx": "^9.7.1",
     "dotenv": "^16.4.5",
     "express": "^4.19.2",
     "express-session": "^1.18.0",
+    "jsonwebtoken": "^9.0.3",
     "jszip": "^3.10.2",
     "mammoth": "^1.12.3",
     "multer": "^2.2.0",
