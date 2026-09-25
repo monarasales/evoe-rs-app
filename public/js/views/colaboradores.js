@@ -238,9 +238,15 @@ export async function renderColaboradores(root) {
 
         <hr style="margin: 15px 0; border: none; border-top: 1px solid #ddd;" />
 
-        <div class="form-row"><label>CEP Residencial *</label><input type="text" id="col-cep" placeholder="00000-000" maxlength="9" value="${editando ? escapeHtml(colaborador.cepResidencial || "") : ""}" /></div>
-        <div class="form-row"><label>Endereço</label><input type="text" id="col-endereco" readonly value="${editando ? escapeHtml(colaborador.enderecoResidencial || "") : ""}" style="background: #f5f5f5;" /></div>
-        <div class="form-row"><label>Cidade</label><input type="text" id="col-cidade" readonly value="${editando ? escapeHtml(colaborador.cidadeResidencial || "") : ""}" style="background: #f5f5f5;" /></div>
+        <div class="form-row" style="display: flex; gap: 10px;">
+          <div style="flex: 1;">
+            <label>CEP Residencial *</label>
+            <input type="text" id="col-cep" placeholder="00000-000" maxlength="9" value="${editando ? escapeHtml(colaborador.cepResidencial || "") : ""}" />
+          </div>
+          <button type="button" id="btn-buscar-cep" style="align-self: flex-end; margin-bottom: 2px;" class="btn btn-outline btn-sm">🔍 Buscar</button>
+        </div>
+        <div class="form-row"><label>Endereço</label><input type="text" id="col-endereco" value="${editando ? escapeHtml(colaborador.enderecoResidencial || "") : ""}" /></div>
+        <div class="form-row"><label>Cidade</label><input type="text" id="col-cidade" value="${editando ? escapeHtml(colaborador.cidadeResidencial || "") : ""}" /></div>
 
         <hr style="margin: 15px 0; border: none; border-top: 1px solid #ddd;" />
 
@@ -265,18 +271,54 @@ export async function renderColaboradores(root) {
     const inputCEP = document.getElementById("col-cep");
     const inputEndereco = document.getElementById("col-endereco");
     const inputCidade = document.getElementById("col-cidade");
+    const btnBuscarCEP = document.getElementById("btn-buscar-cep");
 
-    // Buscar CEP quando sair do campo
-    inputCEP.addEventListener("blur", async () => {
+    // Função para buscar CEP
+    async function buscarCEP() {
       const cep = inputCEP.value.replace(/\D/g, "");
-      if (cep.length === 8) {
-        try {
-          const resposta = await api.post("/api/configuracao/geocodificar-cep", { cep: cep.replace(/(\d{5})(\d{3})/, "$1-$2") });
+      if (cep.length !== 8) {
+        showToast("CEP deve ter 8 dígitos", "erro");
+        return;
+      }
+
+      btnBuscarCEP.disabled = true;
+      btnBuscarCEP.textContent = "⏳ Buscando...";
+
+      try {
+        const cepFormatado = cep.replace(/(\d{5})(\d{3})/, "$1-$2");
+        const resposta = await api.post("/api/configuracao/geocodificar-cep", { cep: cepFormatado });
+
+        if (!resposta || !resposta.endereco) {
+          showToast("CEP não encontrado. Preencha manualmente.", "aviso");
+          inputEndereco.value = "";
+          inputCidade.value = "";
+        } else {
           inputEndereco.value = resposta.endereco || "";
           inputCidade.value = `${resposta.cidade}, ${resposta.estado}` || "";
-        } catch (err) {
-          showToast("CEP não encontrado", "erro");
+          showToast("CEP encontrado com sucesso!", "sucesso");
         }
+      } catch (err) {
+        console.error("Erro ao buscar CEP:", err);
+        showToast("Erro ao buscar CEP. Preencha manualmente.", "erro");
+        inputEndereco.value = "";
+        inputCidade.value = "";
+      } finally {
+        btnBuscarCEP.disabled = false;
+        btnBuscarCEP.textContent = "🔍 Buscar";
+      }
+    }
+
+    // Buscar CEP quando clicar no botão
+    btnBuscarCEP.addEventListener("click", (e) => {
+      e.preventDefault();
+      buscarCEP();
+    });
+
+    // Buscar CEP quando sair do campo (se completar 8 dígitos)
+    inputCEP.addEventListener("blur", () => {
+      const cep = inputCEP.value.replace(/\D/g, "");
+      if (cep.length === 8 && !inputEndereco.value) {
+        buscarCEP();
       }
     });
 
