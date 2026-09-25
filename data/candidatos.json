@@ -1,0 +1,47 @@
+[
+  {
+    "id": "cand-1",
+    "nome": "João Pedro Alves",
+    "email": "joaopedro.alves@email.com",
+    "telefone": "(85) 99111-2222",
+    "vagaId": "vaga-1",
+    "etapaCandidato": "Triagem OK",
+    "dataEntrevista": null,
+    "jusbrasilOk": false,
+    "obsReferencia": "",
+    "parecerComportamental": "",
+    "dataRetornoCliente": null,
+    "createdAt": "2026-07-28T14:46:26.781Z",
+    "updatedAt": "2026-07-28T14:46:26.781Z"
+  },
+  {
+    "id": "cand-2",
+    "nome": "Fernanda Costa",
+    "email": "fernanda.costa@email.com",
+    "telefone": "(85) 99222-3333",
+    "vagaId": "vaga-1",
+    "etapaCandidato": "Inscrito",
+    "dataEntrevista": null,
+    "jusbrasilOk": false,
+    "obsReferencia": "",
+    "parecerComportamental": "",
+    "dataRetornoCliente": null,
+    "createdAt": "2026-07-28T14:46:26.781Z",
+    "updatedAt": "2026-07-28T14:46:26.781Z"
+  },
+  {
+    "id": "cand-3",
+    "nome": "Lucas Martins",
+    "email": "lucas.martins@email.com",
+    "telefone": "(85) 99333-4444",
+    "vagaId": "vaga-2",
+    "etapaCandidato": "Entrevista Final Agendada (Cliente)",
+    "dataEntrevista": "2026-07-14",
+    "jusbrasilOk": true,
+    "obsReferencia": "Referências confirmadas via telefone. Sem pendências no Jusbrasil.",
+    "parecerComportamental": "",
+    "dataRetornoCliente": null,
+    "createdAt": "2026-07-28T14:46:26.781Z",
+    "updatedAt": "2026-07-28T14:46:26.781Z"
+  }
+]

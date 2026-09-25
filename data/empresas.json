@@ -1,0 +1,30 @@
+[
+  {
+    "id": "emp-construtora",
+    "nome": "Construtora Ceará Sul",
+    "cnpj": "12.345.678/0001-90",
+    "endereco": "Av. Santos Dumont, 1500, Aldeota, Fortaleza/CE, CEP 60150-160",
+    "segmento": "Construção Civil",
+    "contatoResponsavel": "Eduardo Nogueira (RH)",
+    "emailContato": "eduardo@construtoracearasul.com.br",
+    "whatsappContato": "(85) 98800-1234",
+    "representanteLegalNome": "Eduardo Nogueira",
+    "representanteLegalCpf": "123.456.789-00",
+    "createdAt": "2026-07-28T14:46:26.778Z",
+    "updatedAt": "2026-07-28T14:46:26.778Z"
+  },
+  {
+    "id": "emp-farmacia",
+    "nome": "Farmácia Popular Nordeste",
+    "cnpj": "98.765.432/0001-10",
+    "endereco": "Rua Barão de Studart, 800, Meireles, Fortaleza/CE, CEP 60120-000",
+    "segmento": "Varejo Farmacêutico",
+    "contatoResponsavel": "Patrícia Ramos (RH)",
+    "emailContato": "patricia@farmaciapopularne.com.br",
+    "whatsappContato": "(85) 98800-5678",
+    "representanteLegalNome": "Patrícia Ramos",
+    "representanteLegalCpf": "987.654.321-00",
+    "createdAt": "2026-07-28T14:46:26.778Z",
+    "updatedAt": "2026-07-28T14:46:26.778Z"
+  }
+]

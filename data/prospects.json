@@ -1,0 +1,53 @@
+[
+  {
+    "id": "prospect-1",
+    "nome": "Renata Alencar",
+    "empresa": "Grupo Alencar Alimentos",
+    "telefone": "(85) 99777-1234",
+    "servicoDesejado": "Seleção e Recrutamento",
+    "servicoOutro": "",
+    "quemIndicou": "Indicação de cliente atual (Construtora Ceará Sul)",
+    "motivoNaoFechou": "",
+    "etapa": "Em Contato",
+    "dataContato": "2026-07-20",
+    "proximoFollowUp": "2026-07-28",
+    "observacoes": "Quer abrir 3 vagas de operação de loja ainda este semestre.",
+    "criadoPorId": "cons-mariana",
+    "createdAt": "2026-07-28T14:46:26.789Z",
+    "updatedAt": "2026-07-28T14:46:26.789Z"
+  },
+  {
+    "id": "prospect-2",
+    "nome": "Marcos Vieira",
+    "empresa": "Vieira Contabilidade",
+    "telefone": "(85) 99666-5678",
+    "servicoDesejado": "Pesquisa de Clima",
+    "servicoOutro": "",
+    "quemIndicou": "LinkedIn",
+    "motivoNaoFechou": "Achou o valor acima do orçamento previsto para este ano.",
+    "etapa": "Perdido",
+    "dataContato": "2026-06-15",
+    "proximoFollowUp": null,
+    "observacoes": "Disse para retomar contato no início do próximo ano fiscal.",
+    "criadoPorId": "cons-mariana",
+    "createdAt": "2026-07-28T14:46:26.789Z",
+    "updatedAt": "2026-07-28T14:46:26.789Z"
+  },
+  {
+    "id": "53d41b2a-ec03-4d45-906a-99e55c044032",
+    "createdAt": "2026-07-28T14:46:55.763Z",
+    "updatedAt": "2026-07-28T14:46:55.763Z",
+    "nome": "Teste Automatizado",
+    "empresa": "Empresa X",
+    "telefone": "85999998888",
+    "servicoDesejado": "Pesquisa de Clima",
+    "servicoOutro": "",
+    "quemIndicou": "Site",
+    "motivoNaoFechou": "",
+    "etapa": "Novo",
+    "dataContato": "2026-07-28",
+    "proximoFollowUp": "2026-08-05",
+    "observacoes": "",
+    "criadoPorId": "cons-mariana"
+  }
+]

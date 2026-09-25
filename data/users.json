@@ -1,0 +1,26 @@
+[
+  {
+    "id": "user-mariana",
+    "consultorId": "cons-mariana",
+    "username": "mariana",
+    "passwordHash": "$2a$10$97ooLm/Ppec3M3955IjDU.o/s0bKnDrawAyyMvwpaSb5dRg9mHjBq",
+    "createdAt": "2026-07-28T14:46:26.775Z",
+    "updatedAt": "2026-07-28T14:46:26.775Z"
+  },
+  {
+    "id": "user-rafael",
+    "consultorId": "cons-rafael",
+    "username": "rafael",
+    "passwordHash": "$2a$10$97ooLm/Ppec3M3955IjDU.o/s0bKnDrawAyyMvwpaSb5dRg9mHjBq",
+    "createdAt": "2026-07-28T14:46:26.775Z",
+    "updatedAt": "2026-07-28T14:46:26.775Z"
+  },
+  {
+    "id": "user-camila",
+    "consultorId": "cons-camila",
+    "username": "camila",
+    "passwordHash": "$2a$10$97ooLm/Ppec3M3955IjDU.o/s0bKnDrawAyyMvwpaSb5dRg9mHjBq",
+    "createdAt": "2026-07-28T14:46:26.775Z",
+    "updatedAt": "2026-07-28T14:46:26.775Z"
+  }
+]

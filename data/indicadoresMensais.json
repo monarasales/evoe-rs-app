@@ -1,0 +1,26 @@
+[
+  {
+    "id": "ind-1",
+    "periodo": "Julho/2026",
+    "consultorId": "cons-rafael",
+    "vagasRecebidas": 2,
+    "vagasFechadasNoPrazo": 0,
+    "vagasFechadasComAtraso": 0,
+    "vagasEmAberto": 2,
+    "tempoMedioFechamentoDias": 0,
+    "createdAt": "2026-07-28T14:46:26.787Z",
+    "updatedAt": "2026-07-28T14:46:26.787Z"
+  },
+  {
+    "id": "ind-2",
+    "periodo": "Julho/2026",
+    "consultorId": "cons-camila",
+    "vagasRecebidas": 1,
+    "vagasFechadasNoPrazo": 0,
+    "vagasFechadasComAtraso": 0,
+    "vagasEmAberto": 1,
+    "tempoMedioFechamentoDias": 0,
+    "createdAt": "2026-07-28T14:46:26.787Z",
+    "updatedAt": "2026-07-28T14:46:26.787Z"
+  }
+]

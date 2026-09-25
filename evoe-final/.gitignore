@@ -1,0 +1,8 @@
+node_modules/
+npm-debug.log
+.DS_Store
+.env
+
+# Dados reais (clientes, candidatos, contratos) nunca devem ir para o GitHub —
+# em produção eles vivem no disco persistente do Render, não no repositório.
+data/

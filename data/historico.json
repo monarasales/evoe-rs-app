@@ -1,0 +1,62 @@
+[
+  {
+    "id": "hist-1",
+    "vagaId": "vaga-1",
+    "consultorId": "cons-rafael",
+    "etapa": "1. Backlog",
+    "dataEntrada": "2026-07-10",
+    "dataSaida": "2026-07-11",
+    "createdAt": "2026-07-28T14:46:26.783Z",
+    "updatedAt": "2026-07-28T14:46:26.783Z"
+  },
+  {
+    "id": "hist-2",
+    "vagaId": "vaga-1",
+    "consultorId": "cons-rafael",
+    "etapa": "2. Alinhamento de Perfil",
+    "dataEntrada": "2026-07-11",
+    "dataSaida": "2026-07-14",
+    "createdAt": "2026-07-28T14:46:26.783Z",
+    "updatedAt": "2026-07-28T14:46:26.783Z"
+  },
+  {
+    "id": "hist-3",
+    "vagaId": "vaga-1",
+    "consultorId": "cons-rafael",
+    "etapa": "4. Triagem",
+    "dataEntrada": "2026-07-15",
+    "dataSaida": null,
+    "createdAt": "2026-07-28T14:46:26.783Z",
+    "updatedAt": "2026-07-28T14:46:26.783Z"
+  },
+  {
+    "id": "hist-4",
+    "vagaId": "vaga-2",
+    "consultorId": "cons-camila",
+    "etapa": "1. Backlog",
+    "dataEntrada": "2026-07-01",
+    "dataSaida": "2026-07-03",
+    "createdAt": "2026-07-28T14:46:26.783Z",
+    "updatedAt": "2026-07-28T14:46:26.783Z"
+  },
+  {
+    "id": "hist-5",
+    "vagaId": "vaga-2",
+    "consultorId": "cons-camila",
+    "etapa": "9. Agendamento Cliente",
+    "dataEntrada": "2026-07-18",
+    "dataSaida": null,
+    "createdAt": "2026-07-28T14:46:26.783Z",
+    "updatedAt": "2026-07-28T14:46:26.783Z"
+  },
+  {
+    "id": "hist-6",
+    "vagaId": "vaga-3",
+    "consultorId": "cons-rafael",
+    "etapa": "1. Backlog",
+    "dataEntrada": "2026-07-17",
+    "dataSaida": null,
+    "createdAt": "2026-07-28T14:46:26.783Z",
+    "updatedAt": "2026-07-28T14:46:26.783Z"
+  }
+]
