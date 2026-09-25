@@ -53,6 +53,7 @@ app.use("/api/financeiro", require("./routes/financeiro"));
 app.use("/api/prospects", require("./routes/prospects"));
 app.use("/api/colaboradores", require("./routes/colaboradores"));
 app.use("/api/ponto", require("./routes/ponto"));
+app.use("/api/configuracao", require("./routes/configuracao"));
 
 app.use(express.static(path.join(__dirname, "..", "public")));
 

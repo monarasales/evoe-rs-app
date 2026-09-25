@@ -225,19 +225,35 @@ export async function renderColaboradores(root) {
 
   function abrirFormularioColaborador(colaborador) {
     const editando = !!colaborador;
+    const diasHomeOfficeStr = editando && colaborador.diasHomeOffice ? colaborador.diasHomeOffice.join(", ") : "sexta";
+
     abrirModal(`
       <h2>${editando ? "Editar Colaborador" : "Novo Colaborador"}</h2>
       <form id="form-colaborador">
-        <div class="form-row"><label>Nome</label><input type="text" id="col-nome" required value="${editando ? escapeHtml(colaborador.nome) : ""}" /></div>
+        <div class="form-row"><label>Nome *</label><input type="text" id="col-nome" required value="${editando ? escapeHtml(colaborador.nome) : ""}" /></div>
         <div class="form-row"><label>Cargo</label><input type="text" id="col-cargo" value="${editando ? escapeHtml(colaborador.cargo || "") : ""}" /></div>
-        <div class="form-row"><label>CPF</label><input type="text" id="col-cpf" value="${editando ? escapeHtml(colaborador.cpf || "") : ""}" /></div>
+        <div class="form-row"><label>CPF</label><input type="text" id="col-cpf" placeholder="000.000.000-00" value="${editando ? escapeHtml(colaborador.cpf || "") : ""}" /></div>
         <div class="form-row"><label>Email</label><input type="email" id="col-email" value="${editando ? escapeHtml(colaborador.email || "") : ""}" /></div>
-        <div class="form-row"><label>Telefone</label><input type="text" id="col-telefone" value="${editando ? escapeHtml(colaborador.telefone || "") : ""}" /></div>
-        <div class="form-row"><label>Endereço</label><input type="text" id="col-endereco" value="${editando ? escapeHtml(colaborador.endereco || "") : ""}" /></div>
+        <div class="form-row"><label>Telefone</label><input type="text" id="col-telefone" placeholder="(00) 00000-0000" value="${editando ? escapeHtml(colaborador.telefone || "") : ""}" /></div>
+
+        <hr style="margin: 15px 0; border: none; border-top: 1px solid #ddd;" />
+
+        <div class="form-row"><label>CEP Residencial *</label><input type="text" id="col-cep" placeholder="00000-000" maxlength="9" value="${editando ? escapeHtml(colaborador.cepResidencial || "") : ""}" /></div>
+        <div class="form-row"><label>Endereço</label><input type="text" id="col-endereco" readonly value="${editando ? escapeHtml(colaborador.enderecoResidencial || "") : ""}" style="background: #f5f5f5;" /></div>
+        <div class="form-row"><label>Cidade</label><input type="text" id="col-cidade" readonly value="${editando ? escapeHtml(colaborador.cidadeResidencial || "") : ""}" style="background: #f5f5f5;" /></div>
+
+        <hr style="margin: 15px 0; border: none; border-top: 1px solid #ddd;" />
+
+        <div class="form-row"><label>Horário Início</label><input type="time" id="col-inicio" value="${editando ? colaborador.horarioInicio || "08:00" : "08:00"}" /></div>
+        <div class="form-row"><label>Horário Fim</label><input type="time" id="col-fim" value="${editando ? colaborador.horarioFim || "18:00" : "18:00"}" /></div>
+
+        <div class="form-row"><label>Dias Home Office (separados por vírgula)</label><input type="text" id="col-home-office" placeholder="segunda, sexta" value="${diasHomeOfficeStr}" /></div>
+
         <div class="form-row checkbox-row">
           <input type="checkbox" id="col-ativo" ${!editando || colaborador.ativo ? "checked" : ""} />
           <label style="margin:0;">Ativo</label>
         </div>
+
         <div id="colaborador-form-erro" class="form-erro hidden"></div>
         <div class="modal-close-row">
           <button type="button" id="btn-cancelar-col" class="btn btn-outline">Fechar</button>
@@ -246,16 +262,51 @@ export async function renderColaboradores(root) {
       </form>
     `);
 
+    const inputCEP = document.getElementById("col-cep");
+    const inputEndereco = document.getElementById("col-endereco");
+    const inputCidade = document.getElementById("col-cidade");
+
+    // Buscar CEP quando sair do campo
+    inputCEP.addEventListener("blur", async () => {
+      const cep = inputCEP.value.replace(/\D/g, "");
+      if (cep.length === 8) {
+        try {
+          const resposta = await api.post("/api/configuracao/geocodificar-cep", { cep: cep.replace(/(\d{5})(\d{3})/, "$1-$2") });
+          inputEndereco.value = resposta.endereco || "";
+          inputCidade.value = `${resposta.cidade}, ${resposta.estado}` || "";
+        } catch (err) {
+          showToast("CEP não encontrado", "erro");
+        }
+      }
+    });
+
     document.getElementById("btn-cancelar-col").addEventListener("click", fecharModal);
     document.getElementById("form-colaborador").addEventListener("submit", async (ev) => {
       ev.preventDefault();
+
+      const cepValue = document.getElementById("col-cep").value.trim();
+      if (!cepValue) {
+        document.getElementById("colaborador-form-erro").textContent = "CEP residencial é obrigatório.";
+        document.getElementById("colaborador-form-erro").classList.remove("hidden");
+        return;
+      }
+
+      const diasHomeOfficeInput = document.getElementById("col-home-office").value.trim();
+      const diasHomeOffice = diasHomeOfficeInput
+        .split(",")
+        .map((d) => d.trim().toLowerCase())
+        .filter((d) => d);
+
       const payload = {
         nome: document.getElementById("col-nome").value.trim(),
         cargo: document.getElementById("col-cargo").value.trim(),
         cpf: document.getElementById("col-cpf").value.trim(),
         email: document.getElementById("col-email").value.trim(),
         telefone: document.getElementById("col-telefone").value.trim(),
-        endereco: document.getElementById("col-endereco").value.trim(),
+        cepResidencial: cepValue,
+        horarioInicio: document.getElementById("col-inicio").value,
+        horarioFim: document.getElementById("col-fim").value,
+        diasHomeOffice: diasHomeOffice.length > 0 ? diasHomeOffice : ["sexta"],
         ativo: document.getElementById("col-ativo").checked,
       };
 
