@@ -311,6 +311,13 @@ export async function renderKanban(root) {
           <label>Título da vaga</label>
           <input type="text" id="v-titulo" required value="${editando ? escapeHtml(vaga.titulo) : ""}" ${podeEditar ? "" : "disabled"} />
         </div>
+        ${editando ? `
+        <div class="form-row">
+          <label>Etapa do funil</label>
+          <select id="v-etapa" ${podeEditar ? "" : "disabled"}>
+            ${store.etapasVaga.map((et) => `<option value="${escapeHtml(et)}" ${vaga.etapaAtual === et ? "selected" : ""}>${escapeHtml(et)}</option>`).join("")}
+          </select>
+        </div>` : ""}
         <div class="form-cols">
           <div class="form-row">
             <label>Empresa</label>
@@ -431,6 +438,12 @@ export async function renderKanban(root) {
       try {
         if (editando) {
           await api.patch(`/api/vagas/${vaga.id}`, payload);
+          // Mudar a etapa por aqui (em vez de arrastar o card) é o jeito de mover a vaga no celular.
+          const novaEtapa = document.getElementById("v-etapa").value;
+          if (novaEtapa !== vaga.etapaAtual) {
+            await api.patch(`/api/vagas/${vaga.id}/etapa`, { etapa: novaEtapa });
+            window.__evoe.atualizarBadgeNotificacoes();
+          }
           showToast("Vaga atualizada.", "sucesso");
         } else {
           await api.post("/api/vagas", payload);

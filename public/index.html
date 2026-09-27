@@ -26,11 +26,20 @@
         </label>
         <div id="login-erro" class="form-erro hidden"></div>
         <button type="submit" class="btn btn-primary btn-block">Entrar</button>
-        <p class="login-hint">Usuários de teste: mariana / rafael / camila — senha: evoe123</p>
       </form>
     </div>
 
     <div id="main-screen" class="app-shell hidden">
+      <!-- Barra superior: só aparece no celular (o menu lateral vira gaveta) -->
+      <header class="mobile-topbar">
+        <button type="button" id="btn-menu-mobile" class="mobile-topbar-btn" aria-label="Abrir menu">☰</button>
+        <img class="mobile-topbar-logo" src="/img/logo-evoe-topbar.svg" alt="Evoé Gestão e RH" onerror="this.remove();" />
+        <button type="button" id="btn-notif-mobile" class="mobile-topbar-btn" aria-label="Notificações">
+          <span class="sidebar-notif-icon">🔔<span id="notif-badge-mobile" class="badge hidden">0</span></span>
+        </button>
+      </header>
+      <div id="sidebar-overlay" class="sidebar-overlay"></div>
+
       <aside class="sidebar">
         <div class="sidebar-brand">
           <img id="sidebar-logo" class="sidebar-logo-img" src="/img/logo-evoe-topbar.svg" alt="Evoé Gestão e RH"

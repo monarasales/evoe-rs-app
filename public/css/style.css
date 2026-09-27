@@ -397,7 +397,84 @@ table tr:hover td { background: #fafbfc; }
 }
 .link-btn { background: none; border: none; color: var(--teal); font-weight: 600; font-size: 13px; padding: 0; }
 
+/* ---------- Celular e tablet ---------- */
+/* No computador a barra superior e o fundo escuro da gaveta não aparecem. */
+.mobile-topbar, .sidebar-overlay { display: none; }
+
 @media (max-width: 860px) {
-  .sidebar { width: 210px; }
-  .view-root { padding: 18px 16px; }
+  /* Layout: menu lateral vira gaveta que desliza da esquerda; barra superior fixa com ☰ */
+  .app-shell { flex-direction: column; }
+  .mobile-topbar {
+    display: flex; align-items: center; justify-content: space-between; gap: 10px;
+    position: sticky; top: 0; z-index: 30; background: var(--navy-dark);
+    padding: 8px 12px; padding-top: calc(8px + env(safe-area-inset-top, 0px));
+  }
+  .mobile-topbar-logo { max-height: 34px; max-width: 60%; }
+  .mobile-topbar-btn {
+    background: rgba(255,255,255,0.08); border: none; color: white; font-size: 20px;
+    width: 42px; height: 42px; border-radius: 10px; display: flex; align-items: center; justify-content: center;
+  }
+  .sidebar {
+    position: fixed; top: 0; left: 0; bottom: 0; height: 100%; width: 280px; max-width: 85vw;
+    z-index: 45; transform: translateX(-100%); transition: transform .22s ease;
+    padding-top: calc(20px + env(safe-area-inset-top, 0px));
+    padding-bottom: calc(20px + env(safe-area-inset-bottom, 0px));
+  }
+  .menu-aberto .sidebar { transform: translateX(0); box-shadow: 0 0 40px rgba(0,0,0,0.4); }
+  .sidebar-overlay {
+    position: fixed; inset: 0; background: rgba(11, 22, 56, 0.55); z-index: 40;
+  }
+  .menu-aberto .sidebar-overlay { display: block; }
+  .sidebar-brand { padding-bottom: 14px; margin-bottom: 8px; }
+  .sidebar-nav a { padding: 11px 10px; font-size: 15px; }
+
+  .view-root { padding: 16px 14px 28px; }
+  .view-header h2 { font-size: 20px; }
+
+  /* Tabelas: deslizam para o lado dentro do próprio espaço, sem cortar a página */
+  table { display: block; overflow-x: auto; -webkit-overflow-scrolling: touch; white-space: nowrap; }
+  table th, table td { padding: 10px 12px; }
+
+  /* Formulários: um campo por linha; fonte 16px evita o zoom automático do iPhone */
+  .form-cols { grid-template-columns: 1fr; gap: 0; }
+  .form-row input:not([type="radio"]):not([type="checkbox"]), .form-row select, .form-row textarea,
+  .login-card input, .kanban-toolbar select { font-size: 16px; }
+
+  /* Janelas (modais) ocupam quase a tela toda */
+  .modal-backdrop { padding: 12px 8px; }
+  .modal-content { padding: 18px 16px; border-radius: 14px; }
+  .modal-close-row { flex-wrap: wrap; }
+
+  /* Abas e botões: rolam para o lado quando não cabem; alvos de toque maiores */
+  .tabs { width: 100%; overflow-x: auto; }
+  .tab-btn { white-space: nowrap; }
+  .btn { padding: 11px 16px; }
+  .btn-sm { padding: 9px 12px; font-size: 13px; }
+
+  /* Login */
+  .login-screen { padding: 16px; }
+  .login-card { width: 100%; padding: 32px 22px; }
+  .login-logo-img { max-width: 100%; }
+
+  /* Dashboard e cartões */
+  .resumo-row, .kpi-row { grid-template-columns: repeat(2, 1fr); gap: 10px; }
+  .resumo-card { padding: 14px; gap: 10px; }
+  .resumo-card .resumo-value { font-size: 22px; }
+  .kpi-card .kpi-value { font-size: 24px; }
+  .grid-cards { grid-template-columns: 1fr; }
+  .bar-row .bar-label { width: 105px; }
+  .chart-card { padding: 14px; }
+
+  /* Funil de Vagas */
+  .kanban-column { min-width: 78vw; max-width: 78vw; max-height: none; }
+  .kanban-board { scroll-snap-type: x mandatory; }
+  .kanban-column { scroll-snap-align: start; }
+  .kanban-board--compacto .vaga-card { width: 100%; }
+
+  .card { padding: 14px; }
+  .toast { left: 12px; right: 12px; transform: none; bottom: calc(16px + env(safe-area-inset-bottom, 0px)); text-align: center; }
+}
+
+@media (max-width: 420px) {
+  .resumo-row, .kpi-row { grid-template-columns: 1fr; }
 }

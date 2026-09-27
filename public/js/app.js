@@ -22,6 +22,7 @@ const userPerfil = document.getElementById("user-perfil");
 const btnLogout = document.getElementById("btn-logout");
 const btnNotificacoes = document.getElementById("btn-notificacoes");
 const notifBadge = document.getElementById("notif-badge");
+const notifBadgeMobile = document.getElementById("notif-badge-mobile");
 
 // Estrutura de navegação da sidebar. "Recrutamento & Seleção" é o núcleo
 // operacional (funil + candidatos); "Configurações" reúne tudo que é
@@ -90,12 +91,14 @@ async function carregarCachesBasicos() {
 async function atualizarBadgeNotificacoes() {
   try {
     const { total } = await api.get("/api/notificacoes/nao-lidas/contagem");
-    if (total > 0) {
-      notifBadge.textContent = total > 99 ? "99+" : String(total);
-      notifBadge.classList.remove("hidden");
-    } else {
-      notifBadge.classList.add("hidden");
-    }
+    [notifBadge, notifBadgeMobile].forEach((badge) => {
+      if (total > 0) {
+        badge.textContent = total > 99 ? "99+" : String(total);
+        badge.classList.remove("hidden");
+      } else {
+        badge.classList.add("hidden");
+      }
+    });
   } catch (e) {
     /* silencioso: não interrompe o uso do app por falha de contagem */
   }
@@ -156,6 +159,22 @@ btnLogout.addEventListener("click", async () => {
 btnNotificacoes.addEventListener("click", () => {
   navegarPara("#/notificacoes");
 });
+
+// ---------- Celular: menu lateral vira uma "gaveta" aberta pelo botão ☰ ----------
+function abrirMenuMobile() {
+  mainScreen.classList.add("menu-aberto");
+}
+function fecharMenuMobile() {
+  mainScreen.classList.remove("menu-aberto");
+}
+document.getElementById("btn-menu-mobile").addEventListener("click", abrirMenuMobile);
+document.getElementById("sidebar-overlay").addEventListener("click", fecharMenuMobile);
+document.getElementById("btn-notif-mobile").addEventListener("click", () => navegarPara("#/notificacoes"));
+// Ao escolher uma tela (link do menu ou notificações), fecha a gaveta.
+mainNav.addEventListener("click", (e) => {
+  if (e.target.closest("a")) fecharMenuMobile();
+});
+btnNotificacoes.addEventListener("click", fecharMenuMobile);
 
 function registrarRotas() {
   registrarRota("/dashboard", renderDashboard);
