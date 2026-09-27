@@ -14,6 +14,66 @@ function formatarHora(data) {
   return d.toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" });
 }
 
+const DIAS_SEMANA = [
+  { valor: "segunda", label: "Seg" },
+  { valor: "terça", label: "Ter" },
+  { valor: "quarta", label: "Qua" },
+  { valor: "quinta", label: "Qui" },
+  { valor: "sexta", label: "Sex" },
+  { valor: "sábado", label: "Sáb" },
+];
+
+const soDigitos = (s) => String(s || "").replace(/\D/g, "");
+
+function formatarCep(valor) {
+  const d = soDigitos(valor).slice(0, 8);
+  return d.length > 5 ? `${d.slice(0, 5)}-${d.slice(5)}` : d;
+}
+
+function formatarCpf(valor) {
+  const d = soDigitos(valor).slice(0, 11);
+  return d
+    .replace(/(\d{3})(\d)/, "$1.$2")
+    .replace(/(\d{3})(\d)/, "$1.$2")
+    .replace(/(\d{3})(\d{1,2})$/, "$1-$2");
+}
+
+function formatarTelefone(valor) {
+  const d = soDigitos(valor).slice(0, 11);
+  if (d.length <= 2) return d.length ? `(${d}` : "";
+  if (d.length <= 6) return `(${d.slice(0, 2)}) ${d.slice(2)}`;
+  if (d.length <= 10) return `(${d.slice(0, 2)}) ${d.slice(2, 6)}-${d.slice(6)}`;
+  return `(${d.slice(0, 2)}) ${d.slice(2, 7)}-${d.slice(7)}`;
+}
+
+/** Confere os dígitos verificadores do CPF (mesma regra do servidor). */
+function cpfValido(cpf) {
+  const n = soDigitos(cpf);
+  if (n.length !== 11 || /^(\d)\1{10}$/.test(n)) return false;
+  for (const tam of [9, 10]) {
+    let soma = 0;
+    for (let i = 0; i < tam; i++) soma += Number(n[i]) * (tam + 1 - i);
+    if (((soma * 10) % 11) % 10 !== Number(n[tam])) return false;
+  }
+  return true;
+}
+
+function calcularIdade(dataIso) {
+  if (!dataIso) return null;
+  const nasc = new Date(dataIso + "T00:00:00");
+  if (isNaN(nasc)) return null;
+  const hoje = new Date();
+  let idade = hoje.getFullYear() - nasc.getFullYear();
+  if (hoje < new Date(hoje.getFullYear(), nasc.getMonth(), nasc.getDate())) idade--;
+  return idade >= 0 ? idade : null;
+}
+
+function formatarDataBr(dataIso) {
+  if (!dataIso) return "—";
+  const [a, m, d] = dataIso.split("-");
+  return `${d}/${m}/${a}`;
+}
+
 const ABAS = [
   { id: "ponto", label: "Ponto" },
   { id: "colaboradores", label: "Cadastro de Colaboradores" },
@@ -166,6 +226,7 @@ export async function renderColaboradores(root) {
             <tr>
               <th>Nome</th>
               <th>Cargo</th>
+              <th>Nascimento</th>
               <th>CPF</th>
               <th>Telefone</th>
               <th>Email</th>
@@ -178,6 +239,7 @@ export async function renderColaboradores(root) {
               <tr>
                 <td><strong>${escapeHtml(c.nome)}</strong></td>
                 <td>${escapeHtml(c.cargo || "—")}</td>
+                <td>${c.dataNascimento ? `${formatarDataBr(c.dataNascimento)} <span class="sub">(${calcularIdade(c.dataNascimento)} anos)</span>` : "—"}</td>
                 <td>${escapeHtml(c.cpf || "—")}</td>
                 <td>${escapeHtml(c.telefone || "—")}</td>
                 <td>${escapeHtml(c.email || "—")}</td>
@@ -225,39 +287,66 @@ export async function renderColaboradores(root) {
 
   function abrirFormularioColaborador(colaborador) {
     const editando = !!colaborador;
-    const diasHomeOfficeStr = editando && colaborador.diasHomeOffice ? colaborador.diasHomeOffice.join(", ") : "sexta";
+    const c = colaborador || {};
+    const v = (campo) => escapeHtml(c[campo] || "");
+    const diasHomeOffice = editando ? c.diasHomeOffice || [] : ["sexta"];
 
     abrirModal(`
       <h2>${editando ? "Editar Colaborador" : "Novo Colaborador"}</h2>
-      <form id="form-colaborador">
-        <div class="form-row"><label>Nome *</label><input type="text" id="col-nome" required value="${editando ? escapeHtml(colaborador.nome) : ""}" /></div>
-        <div class="form-row"><label>Cargo</label><input type="text" id="col-cargo" value="${editando ? escapeHtml(colaborador.cargo || "") : ""}" /></div>
-        <div class="form-row"><label>CPF</label><input type="text" id="col-cpf" placeholder="000.000.000-00" value="${editando ? escapeHtml(colaborador.cpf || "") : ""}" /></div>
-        <div class="form-row"><label>Email</label><input type="email" id="col-email" value="${editando ? escapeHtml(colaborador.email || "") : ""}" /></div>
-        <div class="form-row"><label>Telefone</label><input type="text" id="col-telefone" placeholder="(00) 00000-0000" value="${editando ? escapeHtml(colaborador.telefone || "") : ""}" /></div>
-
-        <hr style="margin: 15px 0; border: none; border-top: 1px solid #ddd;" />
-
-        <div class="form-row" style="display: flex; gap: 10px;">
-          <div style="flex: 1;">
-            <label>CEP Residencial *</label>
-            <input type="text" id="col-cep" placeholder="00000-000" maxlength="9" value="${editando ? escapeHtml(colaborador.cepResidencial || "") : ""}" />
+      <form id="form-colaborador" novalidate>
+        <div class="section-title" style="margin-top:0;">Dados pessoais</div>
+        <div class="form-row"><label>Nome completo *</label><input type="text" id="col-nome" required value="${v("nome")}" /></div>
+        <div class="form-cols">
+          <div class="form-row">
+            <label>Data de nascimento</label>
+            <input type="date" id="col-nascimento" max="${new Date().toISOString().slice(0, 10)}" value="${v("dataNascimento")}" />
+            <div class="sub" id="col-idade" style="margin-top:4px;"></div>
           </div>
-          <button type="button" id="btn-buscar-cep" style="align-self: flex-end; margin-bottom: 2px;" class="btn btn-outline btn-sm">🔍 Buscar</button>
+          <div class="form-row"><label>CPF</label><input type="text" id="col-cpf" inputmode="numeric" placeholder="000.000.000-00" maxlength="14" value="${v("cpf")}" /></div>
         </div>
-        <div class="form-row"><label>Endereço</label><input type="text" id="col-endereco" value="${editando ? escapeHtml(colaborador.enderecoResidencial || "") : ""}" /></div>
-        <div class="form-row"><label>Cidade</label><input type="text" id="col-cidade" value="${editando ? escapeHtml(colaborador.cidadeResidencial || "") : ""}" /></div>
+        <div class="form-row"><label>Cargo</label><input type="text" id="col-cargo" value="${v("cargo")}" /></div>
+        <div class="form-cols">
+          <div class="form-row"><label>E-mail</label><input type="email" id="col-email" value="${v("email")}" /></div>
+          <div class="form-row"><label>Telefone / WhatsApp</label><input type="tel" id="col-telefone" inputmode="numeric" placeholder="(00) 00000-0000" maxlength="15" value="${v("telefone")}" /></div>
+        </div>
 
-        <hr style="margin: 15px 0; border: none; border-top: 1px solid #ddd;" />
+        <div class="section-title">Endereço residencial</div>
+        <div class="form-row">
+          <label>CEP</label>
+          <div style="display:flex; gap:8px;">
+            <input type="text" id="col-cep" inputmode="numeric" placeholder="00000-000" maxlength="9" value="${escapeHtml(formatarCep(c.cepResidencial || ""))}" style="flex:1;" />
+            <button type="button" id="btn-buscar-cep" class="btn btn-outline btn-sm">🔍 Buscar</button>
+          </div>
+          <div class="sub" id="col-cep-status" style="margin-top:4px;">Digite o CEP para preencher o endereço automaticamente. Se não for encontrado, preencha à mão.</div>
+        </div>
+        <div class="form-row"><label>Rua / Avenida</label><input type="text" id="col-endereco" value="${v("enderecoResidencial")}" /></div>
+        <div class="form-cols">
+          <div class="form-row"><label>Número</label><input type="text" id="col-numero" value="${v("numeroResidencial")}" /></div>
+          <div class="form-row"><label>Complemento</label><input type="text" id="col-complemento" placeholder="apto, bloco..." value="${v("complementoResidencial")}" /></div>
+        </div>
+        <div class="form-row"><label>Bairro</label><input type="text" id="col-bairro" value="${v("bairroResidencial")}" /></div>
+        <div class="form-cols">
+          <div class="form-row"><label>Cidade</label><input type="text" id="col-cidade" value="${v("cidadeResidencial")}" /></div>
+          <div class="form-row"><label>UF</label><input type="text" id="col-uf" maxlength="2" placeholder="CE" style="text-transform:uppercase;" value="${v("estadoResidencial")}" /></div>
+        </div>
 
-        <div class="form-row"><label>Horário Início</label><input type="time" id="col-inicio" value="${editando ? colaborador.horarioInicio || "08:00" : "08:00"}" /></div>
-        <div class="form-row"><label>Horário Fim</label><input type="time" id="col-fim" value="${editando ? colaborador.horarioFim || "18:00" : "18:00"}" /></div>
-
-        <div class="form-row"><label>Dias Home Office (separados por vírgula)</label><input type="text" id="col-home-office" placeholder="segunda, sexta" value="${diasHomeOfficeStr}" /></div>
-
+        <div class="section-title">Jornada</div>
+        <div class="form-cols">
+          <div class="form-row"><label>Horário de início</label><input type="time" id="col-inicio" value="${escapeHtml(c.horarioInicio || "08:00")}" /></div>
+          <div class="form-row"><label>Horário de fim</label><input type="time" id="col-fim" value="${escapeHtml(c.horarioFim || "18:00")}" /></div>
+        </div>
+        <div class="form-row">
+          <label>Dias de home office</label>
+          <div style="display:flex; flex-wrap:wrap; gap:6px 14px;">
+            ${DIAS_SEMANA.map((d) => `
+              <label class="checkbox-row" style="font-weight:400; margin:0;">
+                <input type="checkbox" class="col-dia-ho" value="${d.valor}" ${diasHomeOffice.includes(d.valor) ? "checked" : ""} /> ${d.label}
+              </label>`).join("")}
+          </div>
+        </div>
         <div class="form-row checkbox-row">
-          <input type="checkbox" id="col-ativo" ${!editando || colaborador.ativo ? "checked" : ""} />
-          <label style="margin:0;">Ativo</label>
+          <input type="checkbox" id="col-ativo" ${!editando || c.ativo ? "checked" : ""} />
+          <label for="col-ativo" style="margin:0;">Ativo</label>
         </div>
 
         <div id="colaborador-form-erro" class="form-erro hidden"></div>
@@ -268,90 +357,102 @@ export async function renderColaboradores(root) {
       </form>
     `);
 
-    const inputCEP = document.getElementById("col-cep");
-    const inputEndereco = document.getElementById("col-endereco");
-    const inputCidade = document.getElementById("col-cidade");
-    const btnBuscarCEP = document.getElementById("btn-buscar-cep");
+    const $ = (id) => document.getElementById(id);
+    const inputCEP = $("col-cep");
+    const cepStatus = $("col-cep-status");
+    const btnBuscarCEP = $("btn-buscar-cep");
+    const erroBox = $("colaborador-form-erro");
 
-    // Função para buscar CEP
-    async function buscarCEP() {
+    // Máscaras enquanto digita
+    const aplicarMascara = (input, fn) => input.addEventListener("input", () => (input.value = fn(input.value)));
+    aplicarMascara($("col-cpf"), formatarCpf);
+    aplicarMascara($("col-telefone"), formatarTelefone);
+    aplicarMascara(inputCEP, formatarCep);
+
+    // Idade ao lado da data de nascimento
+    const inputNasc = $("col-nascimento");
+    const mostrarIdade = () => {
+      const idade = calcularIdade(inputNasc.value);
+      $("col-idade").textContent = idade !== null ? `${idade} anos` : "";
+    };
+    inputNasc.addEventListener("change", mostrarIdade);
+    mostrarIdade();
+
+    // Busca do CEP: preenche os campos, mas eles continuam editáveis.
+    // Se não encontrar (ou o serviço estiver fora do ar), só avisa — nunca impede salvar.
+    let ultimoCepBuscado = (c.cepResidencial || "").replace(/\D/g, "");
+    async function buscarCEP(forcar = false) {
       const cep = inputCEP.value.replace(/\D/g, "");
       if (cep.length !== 8) {
-        showToast("CEP deve ter 8 dígitos", "erro");
+        if (forcar) cepStatus.textContent = "O CEP deve ter 8 dígitos.";
         return;
       }
+      if (!forcar && cep === ultimoCepBuscado) return;
+      ultimoCepBuscado = cep;
 
       btnBuscarCEP.disabled = true;
-      btnBuscarCEP.textContent = "⏳ Buscando...";
-
+      cepStatus.textContent = "⏳ Buscando endereço...";
       try {
-        const cepFormatado = cep.replace(/(\d{5})(\d{3})/, "$1-$2");
-        const resposta = await api.post("/api/configuracao/geocodificar-cep", { cep: cepFormatado });
-
-        if (!resposta || !resposta.endereco) {
-          showToast("CEP não encontrado. Preencha manualmente.", "aviso");
-          inputEndereco.value = "";
-          inputCidade.value = "";
-        } else {
-          inputEndereco.value = resposta.endereco || "";
-          inputCidade.value = `${resposta.cidade}, ${resposta.estado}` || "";
-          showToast("CEP encontrado com sucesso!", "sucesso");
-        }
+        const r = await api.post("/api/configuracao/geocodificar-cep", { cep });
+        $("col-endereco").value = r.logradouro || "";
+        $("col-bairro").value = r.bairro || "";
+        $("col-cidade").value = r.cidade || "";
+        $("col-uf").value = r.estado || "";
+        cepStatus.textContent = "✅ Endereço encontrado. Complete o número (e o complemento, se houver).";
+        $(r.logradouro ? "col-numero" : "col-endereco").focus();
       } catch (err) {
-        console.error("Erro ao buscar CEP:", err);
-        showToast("Erro ao buscar CEP. Preencha manualmente.", "erro");
-        inputEndereco.value = "";
-        inputCidade.value = "";
+        cepStatus.textContent = "⚠️ CEP não encontrado automaticamente. Preencha o endereço abaixo — o cadastro será salvo normalmente.";
+        $("col-endereco").focus();
       } finally {
         btnBuscarCEP.disabled = false;
-        btnBuscarCEP.textContent = "🔍 Buscar";
       }
     }
-
-    // Buscar CEP quando clicar no botão
-    btnBuscarCEP.addEventListener("click", (e) => {
-      e.preventDefault();
-      buscarCEP();
+    btnBuscarCEP.addEventListener("click", () => buscarCEP(true));
+    inputCEP.addEventListener("input", () => {
+      if (inputCEP.value.replace(/\D/g, "").length === 8) buscarCEP();
     });
 
-    // Buscar CEP quando sair do campo (se completar 8 dígitos)
-    inputCEP.addEventListener("blur", () => {
-      const cep = inputCEP.value.replace(/\D/g, "");
-      if (cep.length === 8 && !inputEndereco.value) {
-        buscarCEP();
-      }
-    });
-
-    document.getElementById("btn-cancelar-col").addEventListener("click", fecharModal);
-    document.getElementById("form-colaborador").addEventListener("submit", async (ev) => {
+    $("btn-cancelar-col").addEventListener("click", fecharModal);
+    $("form-colaborador").addEventListener("submit", async (ev) => {
       ev.preventDefault();
+      erroBox.classList.add("hidden");
 
-      const cepValue = document.getElementById("col-cep").value.trim();
-      if (!cepValue) {
-        document.getElementById("colaborador-form-erro").textContent = "CEP residencial é obrigatório.";
-        document.getElementById("colaborador-form-erro").classList.remove("hidden");
+      const nome = $("col-nome").value.trim();
+      const cep = inputCEP.value.replace(/\D/g, "");
+      const cpf = $("col-cpf").value.trim();
+      let msg = "";
+      if (!nome) msg = "Informe o nome do colaborador.";
+      else if (cep && cep.length !== 8) msg = "O CEP deve ter 8 dígitos (ou deixe em branco).";
+      else if (cpf && !cpfValido(cpf)) msg = "CPF inválido. Confira os números.";
+      if (msg) {
+        erroBox.textContent = msg;
+        erroBox.classList.remove("hidden");
         return;
       }
 
-      const diasHomeOfficeInput = document.getElementById("col-home-office").value.trim();
-      const diasHomeOffice = diasHomeOfficeInput
-        .split(",")
-        .map((d) => d.trim().toLowerCase())
-        .filter((d) => d);
-
       const payload = {
-        nome: document.getElementById("col-nome").value.trim(),
-        cargo: document.getElementById("col-cargo").value.trim(),
-        cpf: document.getElementById("col-cpf").value.trim(),
-        email: document.getElementById("col-email").value.trim(),
-        telefone: document.getElementById("col-telefone").value.trim(),
-        cepResidencial: cepValue,
-        horarioInicio: document.getElementById("col-inicio").value,
-        horarioFim: document.getElementById("col-fim").value,
-        diasHomeOffice: diasHomeOffice.length > 0 ? diasHomeOffice : ["sexta"],
-        ativo: document.getElementById("col-ativo").checked,
+        nome,
+        dataNascimento: inputNasc.value,
+        cpf,
+        cargo: $("col-cargo").value.trim(),
+        email: $("col-email").value.trim(),
+        telefone: $("col-telefone").value.trim(),
+        cepResidencial: cep,
+        enderecoResidencial: $("col-endereco").value.trim(),
+        numeroResidencial: $("col-numero").value.trim(),
+        complementoResidencial: $("col-complemento").value.trim(),
+        bairroResidencial: $("col-bairro").value.trim(),
+        cidadeResidencial: $("col-cidade").value.trim(),
+        estadoResidencial: $("col-uf").value.trim().toUpperCase(),
+        horarioInicio: $("col-inicio").value,
+        horarioFim: $("col-fim").value,
+        diasHomeOffice: [...document.querySelectorAll(".col-dia-ho:checked")].map((el) => el.value),
+        ativo: $("col-ativo").checked,
       };
 
+      const btnSalvar = ev.submitter || $("form-colaborador").querySelector("button[type=submit]");
+      btnSalvar.disabled = true;
+      btnSalvar.textContent = "Salvando...";
       try {
         if (editando) {
           await api.patch(`/api/colaboradores/${colaborador.id}`, payload);
@@ -362,8 +463,10 @@ export async function renderColaboradores(root) {
         fecharModal();
         carregarColaboradores();
       } catch (err) {
-        document.getElementById("colaborador-form-erro").textContent = err.message;
-        document.getElementById("colaborador-form-erro").classList.remove("hidden");
+        erroBox.textContent = err.message;
+        erroBox.classList.remove("hidden");
+        btnSalvar.disabled = false;
+        btnSalvar.textContent = editando ? "Salvar" : "Criar";
       }
     });
   }

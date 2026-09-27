@@ -1,6 +1,6 @@
 const express = require("express");
 const db = require("../db");
-const { requireAuth } = require("../middleware/auth");
+const { requireAuth, requireGestor } = require("../middleware/auth");
 
 const router = express.Router();
 
@@ -67,7 +67,7 @@ router.post("/bater", requireAuth, (req, res) => {
 
   const ehHomeOffice = colaborador.diasHomeOffice && colaborador.diasHomeOffice.includes(diaSemana);
 
-  if (ehHomeOffice && colaborador.localizacaoResidencial) {
+  if (ehHomeOffice && colaborador.localizacaoResidencial && colaborador.localizacaoResidencial.lat != null) {
     // Validar se está em casa (sexta-feira)
     const distancia = calcularDistancia(
       lat,
@@ -80,7 +80,7 @@ router.post("/bater", requireAuth, (req, res) => {
     validacaoLocalizacao.avisoLocalizacao = validacaoLocalizacao.dentroZona
       ? `✅ Você está em casa (${Math.round(distancia)}m)`
       : `⚠️ Você está ${Math.round(distancia)}m de casa. Limite: ${colaborador.raioTolerancia}m`;
-  } else if (empresa.localizacaoEmpresa) {
+  } else if (empresa.localizacaoEmpresa && empresa.localizacaoEmpresa.lat != null) {
     // Validar se está na empresa (seg-qui)
     const distancia = calcularDistancia(
       lat,
@@ -193,11 +193,7 @@ router.get("/semana", requireAuth, (req, res) => {
 });
 
 // Obter pontos de todos os colaboradores (apenas Gestor)
-router.get("/colaboradores", (req, res) => {
-  const { requireGestor } = require("../middleware/auth");
-  if (req.user && !req.user.perfil || !req.user.perfil.includes("Gestor")) {
-    return res.status(403).json({ erro: "Acesso negado." });
-  }
+router.get("/colaboradores", requireAuth, requireGestor, (req, res) => {
 
   const pontos = db.readCollection("ponto") || [];
 

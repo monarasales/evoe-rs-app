@@ -1,36 +1,23 @@
 const express = require("express");
 const db = require("../db");
 const { requireGestor } = require("../middleware/auth");
+const { buscarCep, geocodificarEndereco, limparCep } = require("../utils/cep");
 
 const router = express.Router();
 
-// Função para geocodificar CEP (mesmo de colaboradores.js)
+// Endereço + coordenadas a partir do CEP (usado para localizar a empresa no ponto).
 async function obterLocalizacaoPorCEP(cep) {
-  try {
-    const cepLimpo = cep.replace(/\D/g, "");
-    if (cepLimpo.length !== 8) {
-      throw new Error("CEP inválido");
-    }
-
-    const response = await fetch(`https://viacep.com.br/ws/${cepLimpo}/json/`);
-    const dados = await response.json();
-
-    if (dados.erro) {
-      throw new Error("CEP não encontrado");
-    }
-
-    return {
-      cep: cepLimpo,
-      endereco: `${dados.logradouro}, ${dados.bairro}`,
-      cidade: dados.localidade,
-      estado: dados.uf,
-      lat: parseFloat(dados.latitude) || null,
-      long: parseFloat(dados.longitude) || null,
-    };
-  } catch (err) {
-    console.error("Erro ao buscar CEP:", err);
-    return null;
-  }
+  const end = await buscarCep(cep);
+  if (!end) return null;
+  const coords = end.lat != null ? { lat: end.lat, long: end.long } : await geocodificarEndereco(end);
+  return {
+    cep: end.cep,
+    endereco: [end.logradouro, end.bairro].filter(Boolean).join(", "),
+    cidade: end.cidade,
+    estado: end.estado,
+    lat: coords ? coords.lat : null,
+    long: coords ? coords.long : null,
+  };
 }
 
 // Obter configurações da empresa
@@ -109,19 +96,18 @@ router.patch("/empresa", requireGestor, async (req, res) => {
   res.json(empresa);
 });
 
-// Geocodificar CEP (pública, para autocomplete)
+// Busca de endereço por CEP, para preencher formulários automaticamente.
+// 404 quando não encontra — o formulário então deixa preencher à mão.
 router.post("/geocodificar-cep", async (req, res) => {
   const { cep } = req.body || {};
-  if (!cep) {
-    return res.status(400).json({ erro: "CEP é obrigatório." });
+  if (limparCep(cep).length !== 8) {
+    return res.status(400).json({ erro: "O CEP deve ter 8 dígitos." });
   }
-
-  const localizacao = await obterLocalizacaoPorCEP(cep);
-  if (!localizacao) {
-    return res.status(404).json({ erro: "CEP não encontrado ou inválido." });
+  const end = await buscarCep(cep);
+  if (!end) {
+    return res.status(404).json({ erro: "CEP não encontrado. Preencha o endereço manualmente." });
   }
-
-  res.json(localizacao);
+  res.json(end);
 });
 
 module.exports = router;

@@ -4,7 +4,7 @@ const session = require("express-session");
 const path = require("path");
 
 const { seed } = require("./seed");
-const { attachUser } = require("./middleware/auth");
+const { attachUser, requireAuth } = require("./middleware/auth");
 const { startDeadlineChecker } = require("./utils/deadlineChecker");
 const { startContratoChecker } = require("./utils/contratoChecker");
 const { startBackupDiario } = require("./utils/backup");
@@ -39,6 +39,14 @@ app.use(
   })
 );
 app.use(attachUser);
+
+// Toda a API exige login, exceto as rotas de autenticação (login/logout/me).
+// Proteção central: vale mesmo para rotas que esquecerem o requireAuth individual —
+// sem isso, dados de candidatos/colaboradores ficavam abertos na internet (LGPD).
+app.use("/api", (req, res, next) => {
+  if (req.path.startsWith("/auth/")) return next();
+  return requireAuth(req, res, next);
+});
 
 app.use("/api/auth", require("./routes/auth"));
 app.use("/api/consultores", require("./routes/consultores"));

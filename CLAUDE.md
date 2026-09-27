@@ -31,6 +31,8 @@ explicar tudo em português simples, sem jargão.
   com a usuária antes de fazer push.
 
 ## Cuidados
+- Toda rota `/api/*` exige login (middleware central em `server/index.js`), exceto `/api/auth/*`.
+- Busca de CEP/coordenadas fica em `server/utils/cep.js` (ViaCEP → BrasilAPI; Nominatim para lat/long) e nunca deve bloquear um cadastro.
 - O repositório é **público**. Nunca commitar `.env`, senhas, ou dados reais de
   clientes/candidatos (LGPD). A pasta `data/` do repo contém só dados de exemplo.
 - `data/*.json` está rastreado no git apesar do `.gitignore`; rodar o app
