@@ -117,81 +117,89 @@ export async function renderPonto(root) {
   const suaLocalizacao = root.querySelector("#sua-localizacao");
   const localPermitido = root.querySelector("#local-permitido");
   const distanciaMetros = root.querySelector("#distancia-metros");
+  const raioPermitido = root.querySelector("#raio-permitido");
 
-  // Carregar localização inicial
+  let meuCadastro = null;
+  let pontoHoje = null;
+
+  // Qual será o próximo registro ao tocar no botão (mesma ordem do servidor).
+  function proximaAcao(p) {
+    if (!p || !p.entrada) return "Registrar ENTRADA";
+    if (p.saida) return null;
+    if (!p.pausaEntrada) return "Iniciar PAUSA";
+    if (!p.pausaSaida) return "VOLTAR da pausa";
+    return "Registrar SAÍDA";
+  }
+
+  function atualizarBotao() {
+    if (!meuCadastro || !meuCadastro.ativo) {
+      btnBaterPonto.disabled = true;
+      btnBaterPonto.textContent = "PONTO INDISPONÍVEL";
+      return;
+    }
+    const acao = proximaAcao(pontoHoje);
+    btnBaterPonto.disabled = !acao;
+    btnBaterPonto.textContent = acao || "JORNADA DE HOJE ENCERRADA";
+  }
+
+  const temCoordenadas = (loc) => loc && loc.lat != null && loc.long != null;
+
+  // Carregar cadastro + localização
   async function carregarLocalizacaoAtual() {
+    erroLocalizacao.textContent = "";
+
     try {
-      erroLocalizacao.textContent = "";
+      meuCadastro = await api.get("/api/ponto/meu-cadastro");
+    } catch (err) {
+      meuCadastro = null;
+      statusTexto.textContent = "Ponto indisponível para o seu usuário";
+      erroLocalizacao.textContent = `⚠️ ${err.message}`;
+      atualizarBotao();
+      return;
+    }
+    if (!meuCadastro.ativo) {
+      statusTexto.textContent = "Seu cadastro de colaborador está inativo. Fale com o Gestor.";
+      atualizarBotao();
+      return;
+    }
+    atualizarBotao();
+
+    try {
       statusTexto.textContent = "📍 Obtendo sua localização...";
       const loc = await obterLocalizacao();
       localizacaoAtual = loc;
+      suaLocalizacao.textContent = `${loc.lat.toFixed(4)}, ${loc.long.toFixed(4)}`;
 
-      // Buscar configuração da empresa e dados do colaborador
-      const empresa = await api.get("/api/configuracao/empresa");
-      const colaboradores = await api.get("/api/colaboradores");
-      const colaborador = colaboradores.find((c) => c.id === usuario.id || c.id === usuario.consultorId);
+      const casa = meuCadastro.ehHomeOffice && temCoordenadas(meuCadastro.localizacaoResidencial);
+      const alvo = casa
+        ? { nome: "casa", endereco: meuCadastro.enderecoResidencial, loc: meuCadastro.localizacaoResidencial, raio: meuCadastro.raioTolerancia }
+        : temCoordenadas(meuCadastro.localizacaoEmpresa)
+        ? { nome: "empresa", endereco: meuCadastro.enderecoEmpresa, loc: meuCadastro.localizacaoEmpresa, raio: meuCadastro.raioEmpresa }
+        : null;
 
-      if (!colaborador) {
-        statusTexto.textContent = "Erro: Dados do colaborador não encontrados.";
+      if (!alvo) {
+        statusTexto.textContent = meuCadastro.ehHomeOffice
+          ? "📍 Hoje é home office — localização registrada"
+          : "📍 Localização registrada";
+        localPermitido.textContent = "Não configurado";
         return;
       }
 
-      // Determinar dia da semana
-      const diasSemana = ["domingo", "segunda", "terça", "quarta", "quinta", "sexta", "sábado"];
-      const diaSemana = diasSemana[new Date().getDay()];
-      const ehHomeOffice = colaborador.diasHomeOffice && colaborador.diasHomeOffice.includes(diaSemana);
-
-      // Exibir localização atual
-      suaLocalizacao.textContent = `${loc.lat.toFixed(4)}, ${loc.long.toFixed(4)}`;
-
-      if (ehHomeOffice && colaborador.localizacaoResidencial) {
-        // Modo home office - validar localização residencial
-        localPermitido.textContent = `${colaborador.enderecoResidencial}`;
-        const dist = calcularDistancia(
-          loc.lat,
-          loc.long,
-          colaborador.localizacaoResidencial.lat,
-          colaborador.localizacaoResidencial.long
-        );
-        const distRound = Math.round(dist);
-        distanciaMetros.textContent = `${distRound} m`;
-
-        if (distRound <= colaborador.raioTolerancia) {
-          statusTexto.textContent = `✅ Você está em casa!`;
-          statusDistancia.textContent = `${distRound}m de distância`;
-          statusDistancia.style.color = "#2ecc71";
-        } else {
-          statusTexto.textContent = `⚠️ Você está longe de casa!`;
-          statusDistancia.textContent = `${distRound}m (limite: ${colaborador.raioTolerancia}m)`;
-          statusDistancia.style.color = "#f39c12";
-        }
-      } else if (empresa.localizacaoEmpresa) {
-        // Modo presencial - validar localização da empresa
-        localPermitido.textContent = `${empresa.enderecoEmpresa}`;
-        const dist = calcularDistancia(
-          loc.lat,
-          loc.long,
-          empresa.localizacaoEmpresa.lat,
-          empresa.localizacaoEmpresa.long
-        );
-        const distRound = Math.round(dist);
-        distanciaMetros.textContent = `${distRound} m`;
-
-        if (distRound <= empresa.raioTolerancia) {
-          statusTexto.textContent = `✅ Você está na empresa!`;
-          statusDistancia.textContent = `${distRound}m de distância`;
-          statusDistancia.style.color = "#2ecc71";
-        } else {
-          statusTexto.textContent = `⚠️ Você está longe da empresa!`;
-          statusDistancia.textContent = `${distRound}m (limite: ${empresa.raioTolerancia}m)`;
-          statusDistancia.style.color = "#f39c12";
-        }
+      localPermitido.textContent = alvo.endereco || (alvo.nome === "casa" ? "Sua casa" : "Empresa");
+      raioPermitido.textContent = `${alvo.raio} m`;
+      const distRound = Math.round(calcularDistancia(loc.lat, loc.long, alvo.loc.lat, alvo.loc.long));
+      distanciaMetros.textContent = `${distRound} m`;
+      if (distRound <= alvo.raio) {
+        statusTexto.textContent = alvo.nome === "casa" ? "✅ Você está em casa (home office)" : "✅ Você está na empresa";
+        statusDistancia.textContent = `${distRound}m de distância`;
+        statusDistancia.style.color = "#2ecc71";
       } else {
-        statusTexto.textContent = "📍 Localização carregada";
-        localPermitido.textContent = "Não configurada";
+        statusTexto.textContent = alvo.nome === "casa" ? "⚠️ Você está longe de casa" : "⚠️ Você está longe da empresa";
+        statusDistancia.textContent = `${distRound}m (limite: ${alvo.raio}m) — o ponto é registrado com aviso`;
+        statusDistancia.style.color = "#f39c12";
       }
     } catch (err) {
-      erroLocalizacao.textContent = `⚠️ ${err.message}`;
+      erroLocalizacao.textContent = `⚠️ ${err.message}. Permita o acesso à localização no navegador para bater o ponto.`;
       statusTexto.textContent = "Erro ao obter localização";
     }
   }
@@ -212,8 +220,10 @@ export async function renderPonto(root) {
 
   async function carregarPontosDeHoje() {
     try {
-      const hoje = new Date().toISOString().split("T")[0];
+      const hoje = new Date().toLocaleDateString("en-CA"); // data local AAAA-MM-DD
       const pontos = await api.get(`/api/ponto/dia/${hoje}`);
+      pontoHoje = pontos && pontos[0] ? pontos[0] : null;
+      atualizarBotao();
 
       if (!pontos || pontos.length === 0) {
         historicoPonto.innerHTML = '<div class="empty-state" style="padding: 20px;">Nenhum ponto registrado ainda</div>';
@@ -260,7 +270,7 @@ export async function renderPonto(root) {
       }
 
       tabelaHistorico.innerHTML = pontos.map((p) => {
-        const data = new Date(p.data).toLocaleDateString("pt-BR");
+        const data = p.data ? p.data.split("-").reverse().join("/") : "—";
         const entrada = formatarHora(p.entrada);
         const saida = formatarHora(p.saida);
 
@@ -313,8 +323,7 @@ export async function renderPonto(root) {
     } catch (err) {
       showToast(err.message || "Erro ao bater ponto", "erro");
     } finally {
-      btnBaterPonto.disabled = false;
-      btnBaterPonto.textContent = "BATER PONTO";
+      atualizarBotao();
     }
   });
 

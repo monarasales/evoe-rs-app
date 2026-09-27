@@ -95,6 +95,7 @@ function lerCampos(body) {
     dados.diasHomeOffice = Array.isArray(body.diasHomeOffice) ? body.diasHomeOffice : [];
   }
   if (body.ativo !== undefined) dados.ativo = body.ativo !== false;
+  if (body.consultorId !== undefined) dados.consultorId = body.consultorId || null;
 
   if (dados.nome !== undefined && !dados.nome) return { erro: "Nome é obrigatório." };
   if (dados.cepResidencial && dados.cepResidencial.length !== 8) {
@@ -105,6 +106,18 @@ function lerCampos(body) {
     return { erro: "Data de nascimento inválida." };
   }
   return { dados };
+}
+
+/** O login (consultor) só pode estar ligado a um colaborador. Retorna mensagem de erro ou null. */
+function erroVinculoLogin(consultorId, colaboradorId) {
+  if (!consultorId) return null;
+  const consultor = db.findById("consultores", consultorId);
+  if (!consultor) return "Login selecionado não existe mais. Atualize a página e tente de novo.";
+  const outro = db
+    .readCollection("colaboradores")
+    .find((c) => c.consultorId === consultorId && c.id !== colaboradorId);
+  if (outro) return `Esse login já está vinculado ao colaborador "${outro.nome}".`;
+  return null;
 }
 
 /** Coordenadas da casa (para validar ponto em home office). Nunca bloqueia o cadastro. */
@@ -120,16 +133,18 @@ async function localizarResidencia(c) {
 }
 
 // ============= ROTAS =============
-// Todas exigem login (proteção central em server/index.js).
+// Todas exigem login (proteção central em server/index.js). Cadastro com CPF,
+// endereço e nascimento é dado pessoal (LGPD): só o Gestor lê e altera. Cada pessoa
+// vê o próprio cadastro pela tela de Ponto (/api/ponto/meu-cadastro).
 
 // Listar todos os colaboradores
-router.get("/", (req, res) => {
+router.get("/", requireGestor, (req, res) => {
   const colaboradores = db.readCollection("colaboradores") || [];
   res.json(colaboradores);
 });
 
 // Obter colaborador por ID
-router.get("/:id", (req, res) => {
+router.get("/:id", requireGestor, (req, res) => {
   const colaborador = db.findById("colaboradores", req.params.id);
   if (!colaborador) return res.status(404).json({ erro: "Colaborador não encontrado." });
   res.json(colaborador);
@@ -147,6 +162,8 @@ router.post("/", requireGestor, async (req, res) => {
   const { dados, erro } = lerCampos(req.body || {});
   if (erro) return res.status(400).json({ erro });
   if (!dados.nome) return res.status(400).json({ erro: "Nome é obrigatório." });
+  const erroLogin = erroVinculoLogin(dados.consultorId, null);
+  if (erroLogin) return res.status(400).json({ erro: erroLogin });
 
   const novo = {
     cargo: "",
@@ -166,6 +183,7 @@ router.post("/", requireGestor, async (req, res) => {
     diasHomeOffice: ["sexta"], // dias em minúsculas: ["segunda", "sexta", ...]
     raioTolerancia: 500, // metros
     ativo: true,
+    consultorId: null, // login do sistema ligado a este colaborador (para bater ponto)
     ...dados,
     criadoEm: new Date().toISOString(),
   };
@@ -181,6 +199,8 @@ router.patch("/:id", requireGestor, async (req, res) => {
 
   const { dados, erro } = lerCampos(req.body || {});
   if (erro) return res.status(400).json({ erro });
+  const erroLogin = erroVinculoLogin(dados.consultorId, colaborador.id);
+  if (erroLogin) return res.status(400).json({ erro: erroLogin });
 
   const atualizado = { ...colaborador, ...dados };
   const enderecoMudou = CAMPOS_ENDERECO.some((c) => (atualizado[c] || "") !== (colaborador[c] || ""));

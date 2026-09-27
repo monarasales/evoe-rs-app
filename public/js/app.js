@@ -49,7 +49,7 @@ const NAV_SECOES = [
   {
     titulo: "RH e Colaboradores",
     itens: [
-      { href: "#/colaboradores", label: "Colaboradores", icone: "👔" },
+      { href: "#/colaboradores", label: "Colaboradores", icone: "👔", somenteGestor: true },
       { href: "#/ponto", label: "Ponto", icone: "⏱️" },
     ],
   },

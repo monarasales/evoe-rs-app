@@ -21,8 +21,55 @@ function calcularDistancia(lat1, lon1, lat2, lon2) {
 
 function obterDiaSemana(data) {
   const diasSemana = ["domingo", "segunda", "terça", "quarta", "quinta", "sexta", "sábado"];
-  return diasSemana[new Date(data).getDay()];
+  return diasSemana[new Date(data + "T12:00:00Z").getUTCDay()];
 }
+
+// Datas do ponto sempre no horário do Ceará — o servidor roda em UTC, e sem isso
+// um ponto batido depois das 21h cairia no dia seguinte.
+const FUSO = "America/Fortaleza";
+function dataLocal(date = new Date()) {
+  return date.toLocaleDateString("en-CA", { timeZone: FUSO }); // AAAA-MM-DD
+}
+
+/** Cadastro de colaborador vinculado ao login (consultor) da pessoa. */
+function encontrarColaborador(consultorId) {
+  const colaboradores = db.readCollection("colaboradores") || [];
+  return (
+    colaboradores.find((c) => c.consultorId && c.consultorId === consultorId) ||
+    colaboradores.find((c) => c.id === consultorId) ||
+    null
+  );
+}
+
+function configEmpresa() {
+  const empresa = (db.readCollection("configuracao") || []).find((c) => c.tipo === "empresa");
+  return empresa || { localizacaoEmpresa: null, raioTolerancia: 500 };
+}
+
+const MSG_SEM_VINCULO =
+  "Seu login ainda não está vinculado a um cadastro de colaborador. Peça ao Gestor para vincular em Colaboradores > Cadastro de Colaboradores (campo \"Login no sistema\").";
+
+// Dados que a tela de Ponto precisa para mostrar onde a pessoa deve estar hoje.
+router.get("/meu-cadastro", requireAuth, (req, res) => {
+  const colaborador = encontrarColaborador(req.user.consultorId);
+  if (!colaborador) return res.status(404).json({ erro: MSG_SEM_VINCULO });
+  const hoje = dataLocal();
+  const diaSemana = obterDiaSemana(hoje);
+  const empresa = configEmpresa();
+  res.json({
+    nome: colaborador.nome,
+    ativo: colaborador.ativo !== false,
+    hoje,
+    diaSemana,
+    ehHomeOffice: (colaborador.diasHomeOffice || []).includes(diaSemana),
+    enderecoResidencial: [colaborador.enderecoResidencial, colaborador.numeroResidencial].filter(Boolean).join(", "),
+    localizacaoResidencial: colaborador.localizacaoResidencial || null,
+    raioTolerancia: colaborador.raioTolerancia || 500,
+    enderecoEmpresa: empresa.enderecoEmpresa || "",
+    localizacaoEmpresa: empresa.localizacaoEmpresa || null,
+    raioEmpresa: empresa.raioTolerancia || 500,
+  });
+});
 
 // ============= BATER PONTO COM VALIDAÇÃO DE LOCALIZAÇÃO =============
 
@@ -30,7 +77,7 @@ function obterDiaSemana(data) {
 router.post("/bater", requireAuth, (req, res) => {
   const usuario = req.user;
   const { lat, long } = req.body || {};
-  const hoje = new Date().toISOString().split("T")[0];
+  const hoje = dataLocal();
   const diaSemana = obterDiaSemana(hoje);
 
   // Validações básicas
@@ -39,24 +86,13 @@ router.post("/bater", requireAuth, (req, res) => {
   }
 
   // Buscar colaborador para validar localização
-  const colaboradores = db.readCollection("colaboradores") || [];
-  const colaborador = colaboradores.find((c) => c.id === usuario.id || c.id === usuario.consultorId);
-
-  if (!colaborador) {
-    return res
-      .status(404)
-      .json({ erro: "Colaborador não encontrado. Cadastre-se primeiro." });
+  const colaborador = encontrarColaborador(usuario.consultorId);
+  if (!colaborador) return res.status(404).json({ erro: MSG_SEM_VINCULO });
+  if (colaborador.ativo === false) {
+    return res.status(403).json({ erro: "Seu cadastro de colaborador está inativo. Fale com o Gestor." });
   }
 
-  // Buscar configuração da empresa
-  let configuracao = db.readCollection("configuracao") || [];
-  let empresa = configuracao.find((c) => c.tipo === "empresa");
-  if (!empresa) {
-    empresa = {
-      localizacaoEmpresa: null,
-      raioTolerancia: 500,
-    };
-  }
+  const empresa = configEmpresa();
 
   // Validar localização
   let validacaoLocalizacao = {
@@ -100,17 +136,18 @@ router.post("/bater", requireAuth, (req, res) => {
 
   // Procurar ponto do usuário de hoje
   const pontos = db.readCollection("ponto") || [];
-  let pontoDia = pontos.find((p) => {
-    const dataPonto = new Date(p.criadoEm).toISOString().split("T")[0];
-    return dataPonto === hoje && p.usuarioId === usuario.id;
-  });
+  let pontoDia = pontos.find((p) => p.data === hoje && p.usuarioId === usuario.id);
+
+  if (pontoDia && pontoDia.saida) {
+    return res.status(400).json({ erro: "Sua jornada de hoje já foi encerrada (saída registrada)." });
+  }
 
   if (!pontoDia) {
     // Criar novo registro de ponto (entrada)
     pontoDia = db.insert("ponto", {
       usuarioId: usuario.id,
-      usuarioNome: usuario.nome,
-      colaboradorId: usuario.consultorId || usuario.id,
+      usuarioNome: colaborador.nome || (req.consultor && req.consultor.nome) || usuario.username,
+      colaboradorId: colaborador.id,
       data: hoje,
       diaSemana,
       entrada: new Date().toISOString(),
@@ -169,10 +206,7 @@ router.get("/dia/:data", requireAuth, (req, res) => {
   const data = req.params.data;
 
   const pontos = db.readCollection("ponto") || [];
-  const pontosDodia = pontos.filter((p) => {
-    const dataPonto = new Date(p.criadoEm).toISOString().split("T")[0];
-    return dataPonto === data && p.usuarioId === usuario.id;
-  });
+  const pontosDodia = pontos.filter((p) => p.data === data && p.usuarioId === usuario.id);
 
   res.json(pontosDodia);
 });
@@ -180,14 +214,12 @@ router.get("/dia/:data", requireAuth, (req, res) => {
 // Obter últimos 7 dias (usuário logado)
 router.get("/semana", requireAuth, (req, res) => {
   const usuario = req.user;
-  const hoje = new Date();
-  const seratras7Dias = new Date(hoje.getTime() - 7 * 24 * 60 * 60 * 1000);
+  const inicio = dataLocal(new Date(Date.now() - 6 * 24 * 60 * 60 * 1000));
 
   const pontos = db.readCollection("ponto") || [];
-  const pontosSemana = pontos.filter((p) => {
-    const dataPonto = new Date(p.criadoEm);
-    return dataPonto >= seratras7Dias && p.usuarioId === usuario.id;
-  });
+  const pontosSemana = pontos
+    .filter((p) => p.data >= inicio && p.usuarioId === usuario.id)
+    .sort((a, b) => b.data.localeCompare(a.data));
 
   res.json(pontosSemana);
 });
@@ -198,10 +230,13 @@ router.get("/colaboradores", requireAuth, requireGestor, (req, res) => {
   const pontos = db.readCollection("ponto") || [];
 
   // Agrupar por colaborador e data
-  const pontosOrganizados = pontos.map((p) => ({
-    ...p,
-    colaboradorNome: p.usuarioNome,
-  }));
+  const colaboradores = db.readCollection("colaboradores") || [];
+  const pontosOrganizados = pontos
+    .map((p) => ({
+      ...p,
+      colaboradorNome: p.usuarioNome || (colaboradores.find((c) => c.id === p.colaboradorId) || {}).nome || "—",
+    }))
+    .sort((a, b) => (b.data || "").localeCompare(a.data || ""));
 
   res.json(pontosOrganizados);
 });

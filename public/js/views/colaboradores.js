@@ -21,6 +21,7 @@ const DIAS_SEMANA = [
   { valor: "quinta", label: "Qui" },
   { valor: "sexta", label: "Sex" },
   { valor: "sábado", label: "Sáb" },
+  { valor: "domingo", label: "Dom" },
 ];
 
 const soDigitos = (s) => String(s || "").replace(/\D/g, "");
@@ -150,7 +151,7 @@ export async function renderColaboradores(root) {
           </thead>
           <tbody>
             ${pontos.map((p) => {
-              const data = new Date(p.data).toLocaleDateString("pt-BR");
+              const data = formatarDataBr(p.data);
               const entrada = formatarHora(p.entrada);
               const saida = formatarHora(p.saida);
 
@@ -210,9 +211,12 @@ export async function renderColaboradores(root) {
     carregarColaboradores();
   }
 
+  let listaColaboradores = [];
+
   async function carregarColaboradores() {
     try {
       const colaboradores = await api.get("/api/colaboradores");
+      listaColaboradores = colaboradores;
       const tabela = conteudo.querySelector("#tabela-colaboradores");
 
       if (!colaboradores || colaboradores.length === 0) {
@@ -226,6 +230,7 @@ export async function renderColaboradores(root) {
             <tr>
               <th>Nome</th>
               <th>Cargo</th>
+              <th>Login (ponto)</th>
               <th>Nascimento</th>
               <th>CPF</th>
               <th>Telefone</th>
@@ -239,6 +244,7 @@ export async function renderColaboradores(root) {
               <tr>
                 <td><strong>${escapeHtml(c.nome)}</strong></td>
                 <td>${escapeHtml(c.cargo || "—")}</td>
+                <td>${loginDoColaborador(c)}</td>
                 <td>${c.dataNascimento ? `${formatarDataBr(c.dataNascimento)} <span class="sub">(${calcularIdade(c.dataNascimento)} anos)</span>` : "—"}</td>
                 <td>${escapeHtml(c.cpf || "—")}</td>
                 <td>${escapeHtml(c.telefone || "—")}</td>
@@ -283,6 +289,12 @@ export async function renderColaboradores(root) {
     } catch (err) {
       conteudo.querySelector("#tabela-colaboradores").innerHTML = '<div class="empty-state">Erro ao carregar dados</div>';
     }
+  }
+
+  function loginDoColaborador(c) {
+    const consultor = c.consultorId && store.consultores.find((x) => x.id === c.consultorId);
+    if (!consultor) return '<span class="tag tag-atrasada">sem login</span>';
+    return escapeHtml(consultor.username || consultor.nome);
   }
 
   function abrirFormularioColaborador(colaborador) {
@@ -330,7 +342,23 @@ export async function renderColaboradores(root) {
           <div class="form-row"><label>UF</label><input type="text" id="col-uf" maxlength="2" placeholder="CE" style="text-transform:uppercase;" value="${v("estadoResidencial")}" /></div>
         </div>
 
-        <div class="section-title">Jornada</div>
+        <div class="section-title">Jornada e ponto</div>
+        <div class="form-row">
+          <label>Login no sistema (usado para bater ponto)</label>
+          <select id="col-login">
+            <option value="">— Sem login (não bate ponto) —</option>
+            ${store.consultores
+              .filter((cons) => cons.ativo !== false || cons.id === c.consultorId)
+              .map((cons) => {
+                const dono = listaColaboradores.find((x) => x.consultorId === cons.id && x.id !== c.id);
+                return `<option value="${cons.id}" ${c.consultorId === cons.id ? "selected" : ""} ${dono ? "disabled" : ""}>
+                  ${escapeHtml(cons.nome)}${cons.username ? ` (${escapeHtml(cons.username)})` : " (sem usuário)"}${dono ? ` — já usado por ${escapeHtml(dono.nome)}` : ""}
+                </option>`;
+              })
+              .join("")}
+          </select>
+          <div class="sub" style="margin-top:4px;">Quem não aparece na lista precisa primeiro ganhar um login em Configurações › Equipe e Usuários.</div>
+        </div>
         <div class="form-cols">
           <div class="form-row"><label>Horário de início</label><input type="time" id="col-inicio" value="${escapeHtml(c.horarioInicio || "08:00")}" /></div>
           <div class="form-row"><label>Horário de fim</label><input type="time" id="col-fim" value="${escapeHtml(c.horarioFim || "18:00")}" /></div>
@@ -412,6 +440,15 @@ export async function renderColaboradores(root) {
       if (inputCEP.value.replace(/\D/g, "").length === 8) buscarCEP();
     });
 
+    // Cadastro novo: ao escolher o login, aproveita nome/e-mail/WhatsApp da equipe.
+    $("col-login").addEventListener("change", () => {
+      const cons = store.consultores.find((x) => x.id === $("col-login").value);
+      if (!cons) return;
+      if (!$("col-nome").value.trim()) $("col-nome").value = cons.nome || "";
+      if (!$("col-email").value.trim()) $("col-email").value = cons.email || "";
+      if (!$("col-telefone").value.trim()) $("col-telefone").value = formatarTelefone(cons.whatsapp || "");
+    });
+
     $("btn-cancelar-col").addEventListener("click", fecharModal);
     $("form-colaborador").addEventListener("submit", async (ev) => {
       ev.preventDefault();
@@ -448,6 +485,7 @@ export async function renderColaboradores(root) {
         horarioFim: $("col-fim").value,
         diasHomeOffice: [...document.querySelectorAll(".col-dia-ho:checked")].map((el) => el.value),
         ativo: $("col-ativo").checked,
+        consultorId: $("col-login").value || null,
       };
 
       const btnSalvar = ev.submitter || $("form-colaborador").querySelector("button[type=submit]");
