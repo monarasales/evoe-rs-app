@@ -256,6 +256,20 @@ export async function renderConfiguracoes(root) {
           <div class="form-row"><button type="submit" class="btn btn-primary btn-sm">Salvar</button></div>
         </form>
         <div id="pn-erro" class="form-erro hidden"></div>
+      </div>
+
+      <div class="section-title" style="margin-top:22px;">Backup dos Dados</div>
+      <div class="card" style="max-width:560px;">
+        <div class="sub" style="margin-bottom:10px;">
+          Cópia de segurança de todos os dados do sistema (clientes, vagas, candidatos, contratos,
+          colaboradores e ponto). O sistema envia uma cópia automática por e-mail uma vez por dia.
+        </div>
+        <div id="backup-status" class="sub" style="margin-bottom:12px;">Carregando situação do backup...</div>
+        <div style="display:flex; gap:8px; flex-wrap:wrap;">
+          <a href="/api/config/backup/download" class="btn btn-primary btn-sm">Baixar backup agora</a>
+          <button type="button" id="btn-backup-email" class="btn btn-secondary btn-sm">Enviar backup por e-mail agora</button>
+        </div>
+        <div id="backup-erro" class="form-erro hidden"></div>
       </div>`
           : ""
       }
@@ -273,6 +287,43 @@ export async function renderConfiguracoes(root) {
           const box = conteudo.querySelector("#pn-erro");
           box.textContent = err.message;
           box.classList.remove("hidden");
+        }
+      });
+
+      const statusEl = conteudo.querySelector("#backup-status");
+      const erroBackup = conteudo.querySelector("#backup-erro");
+      const mostrarStatusBackup = (st) => {
+        const ultimo = st.ultimoEnvio
+          ? new Date(st.ultimoEnvio).toLocaleString("pt-BR")
+          : "nenhum envio ainda";
+        let texto = `<strong>Último backup enviado por e-mail:</strong> ${escapeHtml(ultimo)}`;
+        if (st.destinatario) texto += `<br><strong>Enviado para:</strong> ${escapeHtml(st.destinatario)}`;
+        if (!st.emailConfigurado) {
+          texto += `<br>⚠️ O envio de e-mail não está configurado — o backup automático diário não está funcionando. Use "Baixar backup agora" enquanto isso.`;
+        } else if (!st.automaticoAtivo) {
+          texto += `<br>O envio automático diário só funciona no sistema online (aqui é a versão de teste).`;
+        }
+        if (st.ultimoErro) texto += `<br>⚠️ <strong>Última falha:</strong> ${escapeHtml(st.ultimoErro)}`;
+        statusEl.innerHTML = texto;
+      };
+      api.get("/api/config/backup/status").then(mostrarStatusBackup).catch((err) => {
+        statusEl.textContent = err.message;
+      });
+
+      const btnEmail = conteudo.querySelector("#btn-backup-email");
+      btnEmail.addEventListener("click", async () => {
+        erroBackup.classList.add("hidden");
+        btnEmail.disabled = true;
+        btnEmail.textContent = "Enviando...";
+        try {
+          mostrarStatusBackup(await api.post("/api/config/backup/enviar"));
+          showToast("Backup enviado por e-mail.", "sucesso");
+        } catch (err) {
+          erroBackup.textContent = err.message;
+          erroBackup.classList.remove("hidden");
+        } finally {
+          btnEmail.disabled = false;
+          btnEmail.textContent = "Enviar backup por e-mail agora";
         }
       });
     }

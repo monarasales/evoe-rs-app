@@ -119,6 +119,19 @@ próximo depois do seu último contrato manual). Se precisar ajustar, vá em
 Configurações > Parâmetros do Sistema > "Próximo número de contrato" (só o
 Gestor pode alterar).
 
+## Backup dos dados
+
+- **Automático:** em produção, uma vez por dia o sistema envia um arquivo
+  `backup-evoe-AAAA-MM-DD.json` com todos os dados para `BACKUP_EMAIL` (ou, se não
+  definido, para o próprio `EMAIL_USER`). Também guarda as últimas 30 cópias em
+  `backups/` dentro do disco de dados. Se o envio falhar, tenta de novo a cada hora.
+- **Manual:** o Gestor pode baixar ou enviar um backup a qualquer momento em
+  Configurações > Parâmetros do Sistema > Backup dos Dados, que também mostra a data
+  do último envio e eventuais falhas.
+- O Render mantém, além disso, uma foto diária do disco por 7 dias.
+- Gravação segura: `server/db.js` grava cada arquivo em um `.tmp` e só então o troca
+  pelo original, para uma queda do servidor não deixar arquivos corrompidos.
+
 ## Sobre as notificações por e-mail e WhatsApp
 
 Nesta fase local, todas as notificações ficam **dentro do próprio sistema** (central

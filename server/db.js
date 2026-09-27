@@ -41,9 +41,15 @@ function readCollection(collection) {
   }
 }
 
+// Gravação "segura": escreve primeiro num arquivo temporário e só depois troca pelo
+// original (rename é atômico no mesmo disco). Se o servidor cair no meio da gravação,
+// o arquivo original continua intacto em vez de ficar pela metade/corrompido.
 function writeCollection(collection, records) {
   ensureFile(collection);
-  fs.writeFileSync(filePathFor(collection), JSON.stringify(records, null, 2) + "\n", "utf-8");
+  const file = filePathFor(collection);
+  const tmp = `${file}.tmp`;
+  fs.writeFileSync(tmp, JSON.stringify(records, null, 2) + "\n", "utf-8");
+  fs.renameSync(tmp, file);
 }
 
 function newId() {
@@ -98,6 +104,7 @@ function remove(collection, id) {
 }
 
 module.exports = {
+  DATA_DIR,
   readCollection,
   writeCollection,
   findAll,

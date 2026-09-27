@@ -8,6 +8,7 @@ const {
   DIAS_ALERTA_PRAZO,
   META_VAGAS_FECHADAS_MES,
 } = require("../utils/constants");
+const { gerarBackup, enviarBackupPorEmail, statusBackup } = require("../utils/backup");
 
 const router = express.Router();
 
@@ -43,6 +44,27 @@ router.patch("/proximo-numero-contrato", requireAuth, requireGestor, (req, res) 
   const paramContratos = getParamContratos();
   const atualizado = db.update("parametros", paramContratos.id, { proximoNumero: valor });
   res.json({ proximoNumeroContrato: atualizado.proximoNumero });
+});
+
+// ---------- Backup dos dados (só Gestor) ----------
+router.get("/backup/status", requireAuth, requireGestor, (req, res) => {
+  res.json(statusBackup());
+});
+
+router.get("/backup/download", requireAuth, requireGestor, (req, res) => {
+  const backup = gerarBackup();
+  res.setHeader("Content-Type", "application/json; charset=utf-8");
+  res.setHeader("Content-Disposition", `attachment; filename="${backup.nomeArquivo}"`);
+  res.send(backup.buffer);
+});
+
+router.post("/backup/enviar", requireAuth, requireGestor, async (req, res) => {
+  try {
+    await enviarBackupPorEmail();
+    res.json(statusBackup());
+  } catch (err) {
+    res.status(err.naoConfigurado ? 400 : 500).json({ erro: err.message });
+  }
 });
 
 module.exports = router;
