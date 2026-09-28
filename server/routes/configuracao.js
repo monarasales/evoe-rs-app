@@ -5,21 +5,6 @@ const { buscarCep, geocodificarEndereco, limparCep } = require("../utils/cep");
 
 const router = express.Router();
 
-// Endereço + coordenadas a partir do CEP (usado para localizar a empresa no ponto).
-async function obterLocalizacaoPorCEP(cep) {
-  const end = await buscarCep(cep);
-  if (!end) return null;
-  const coords = end.lat != null ? { lat: end.lat, long: end.long } : await geocodificarEndereco(end);
-  return {
-    cep: end.cep,
-    endereco: [end.logradouro, end.bairro].filter(Boolean).join(", "),
-    cidade: end.cidade,
-    estado: end.estado,
-    lat: coords ? coords.lat : null,
-    long: coords ? coords.long : null,
-  };
-}
-
 // Obter configurações da empresa
 router.get("/empresa", (req, res) => {
   let config = db.readCollection("configuracao") || [];
@@ -43,57 +28,69 @@ router.get("/empresa", (req, res) => {
   res.json(empresa);
 });
 
-// Atualizar configurações da empresa (apenas Gestor)
+// Atualizar endereço do escritório (apenas Gestor) — usado para validar o ponto
+// nos dias presenciais. As coordenadas vêm do endereço completo (com número) ou,
+// se o Gestor estiver no escritório, direto do GPS do aparelho (mais preciso).
 router.patch("/empresa", requireGestor, async (req, res) => {
-  const { nome, cepEmpresa, raioTolerancia } = req.body || {};
-
-  // Geocodificar CEP da empresa
-  let localizacaoEmpresa = null;
-  let enderecoEmpresa = "";
-  let cidadeEmpresa = "";
-  let estadoEmpresa = "";
-
-  if (cepEmpresa) {
-    const localizacao = await obterLocalizacaoPorCEP(cepEmpresa);
-    if (!localizacao) {
-      return res.status(400).json({ erro: "CEP da empresa inválido ou não encontrado." });
-    }
-    localizacaoEmpresa = { lat: localizacao.lat, long: localizacao.long };
-    enderecoEmpresa = localizacao.endereco;
-    cidadeEmpresa = localizacao.cidade;
-    estadoEmpresa = localizacao.estado;
+  const b = req.body || {};
+  const texto = (v) => String(v || "").trim();
+  const dados = {
+    cepEmpresa: limparCep(b.cepEmpresa),
+    logradouroEmpresa: texto(b.logradouroEmpresa),
+    numeroEmpresa: texto(b.numeroEmpresa),
+    bairroEmpresa: texto(b.bairroEmpresa),
+    cidadeEmpresa: texto(b.cidadeEmpresa),
+    estadoEmpresa: texto(b.estadoEmpresa).toUpperCase().slice(0, 2),
+  };
+  if (dados.cepEmpresa && dados.cepEmpresa.length !== 8) {
+    return res.status(400).json({ erro: "O CEP deve ter 8 dígitos." });
+  }
+  if (!dados.logradouroEmpresa || !dados.cidadeEmpresa) {
+    return res.status(400).json({ erro: "Informe pelo menos a rua e a cidade do escritório." });
+  }
+  const raio = Number(b.raioTolerancia);
+  if (b.raioTolerancia !== undefined && (!Number.isFinite(raio) || raio < 50 || raio > 5000)) {
+    return res.status(400).json({ erro: "O raio deve ficar entre 50 e 5000 metros." });
   }
 
-  let config = db.readCollection("configuracao") || [];
-  let empresa = config.find((c) => c.tipo === "empresa");
+  dados.enderecoEmpresa =
+    [dados.logradouroEmpresa, dados.numeroEmpresa].filter(Boolean).join(", ") +
+    (dados.bairroEmpresa ? ` - ${dados.bairroEmpresa}` : "");
 
-  if (!empresa) {
-    // Criar nova configuração
-    empresa = db.insert("configuracao", {
-      tipo: "empresa",
-      nome: nome || "Evoé Gestão e RH",
-      cepEmpresa: cepEmpresa || "",
-      enderecoEmpresa,
-      cidadeEmpresa,
-      estadoEmpresa,
-      localizacaoEmpresa,
-      raioTolerancia: raioTolerancia || 500,
-      criadoEm: new Date().toISOString(),
-    });
+  const lat = Number(b.lat);
+  const long = Number(b.long);
+  if (b.lat != null && b.long != null && Number.isFinite(lat) && Number.isFinite(long)) {
+    dados.localizacaoEmpresa = { lat, long, origem: "gps" };
   } else {
-    // Atualizar existente
-    empresa = db.update("configuracao", empresa.id, {
-      nome: nome || empresa.nome,
-      cepEmpresa: cepEmpresa || empresa.cepEmpresa,
-      enderecoEmpresa: cepEmpresa ? enderecoEmpresa : empresa.enderecoEmpresa,
-      cidadeEmpresa: cepEmpresa ? cidadeEmpresa : empresa.cidadeEmpresa,
-      estadoEmpresa: cepEmpresa ? estadoEmpresa : empresa.estadoEmpresa,
-      localizacaoEmpresa: cepEmpresa ? localizacaoEmpresa : empresa.localizacaoEmpresa,
-      raioTolerancia: raioTolerancia || empresa.raioTolerancia,
+    const coords = await geocodificarEndereco({
+      logradouro: dados.logradouroEmpresa,
+      numero: dados.numeroEmpresa,
+      cidade: dados.cidadeEmpresa,
+      estado: dados.estadoEmpresa,
+      cep: dados.cepEmpresa,
     });
+    dados.localizacaoEmpresa = coords ? { ...coords, origem: "endereco" } : null;
   }
 
-  res.json(empresa);
+  const existente = (db.readCollection("configuracao") || []).find((c) => c.tipo === "empresa");
+  const empresa = existente
+    ? db.update("configuracao", existente.id, {
+        ...dados,
+        raioTolerancia: b.raioTolerancia !== undefined ? raio : existente.raioTolerancia || 500,
+      })
+    : db.insert("configuracao", {
+        tipo: "empresa",
+        nome: "Evoé Gestão e RH",
+        ...dados,
+        raioTolerancia: b.raioTolerancia !== undefined ? raio : 500,
+      });
+
+  res.json({
+    ...empresa,
+    aviso: empresa.localizacaoEmpresa
+      ? null
+      : "Endereço salvo, mas não foi possível localizá-lo no mapa. Use o botão \"Usar minha localização atual\" estando no escritório.",
+  });
 });
 
 // Busca de endereço por CEP, para preencher formulários automaticamente.

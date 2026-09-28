@@ -258,6 +258,40 @@ export async function renderConfiguracoes(root) {
         <div id="pn-erro" class="form-erro hidden"></div>
       </div>
 
+      <div class="section-title" style="margin-top:22px;">Endereço do Escritório</div>
+      <div class="card" style="max-width:560px;">
+        <div class="sub" style="margin-bottom:10px;">
+          Usado para conferir o ponto nos dias presenciais: quem bater o ponto a mais que o raio
+          abaixo do escritório tem o registro salvo com um aviso.
+        </div>
+        <form id="form-escritorio">
+          <div class="form-row">
+            <label>CEP</label>
+            <div style="display:flex; gap:8px;">
+              <input type="text" id="esc-cep" inputmode="numeric" maxlength="9" placeholder="00000-000" style="flex:1;" />
+              <button type="button" id="esc-buscar" class="btn btn-outline btn-sm">🔍 Buscar</button>
+            </div>
+          </div>
+          <div class="form-row"><label>Rua / Avenida</label><input type="text" id="esc-rua" /></div>
+          <div class="form-cols">
+            <div class="form-row"><label>Número</label><input type="text" id="esc-numero" /></div>
+            <div class="form-row"><label>Bairro</label><input type="text" id="esc-bairro" /></div>
+          </div>
+          <div class="form-cols">
+            <div class="form-row"><label>Cidade</label><input type="text" id="esc-cidade" /></div>
+            <div class="form-row"><label>UF</label><input type="text" id="esc-uf" maxlength="2" style="text-transform:uppercase;" /></div>
+          </div>
+          <div class="form-row"><label>Raio permitido (metros)</label><input type="number" id="esc-raio" min="50" max="5000" step="50" /></div>
+          <div id="esc-status" class="sub" style="margin-bottom:12px;"></div>
+          <div style="display:flex; gap:8px; flex-wrap:wrap;">
+            <button type="submit" class="btn btn-primary btn-sm">Salvar endereço</button>
+            <button type="button" id="esc-gps" class="btn btn-secondary btn-sm">📍 Usar minha localização atual</button>
+          </div>
+          <div class="sub" style="margin-top:6px;">Use o botão de localização só quando estiver <strong>dentro do escritório</strong> — é o jeito mais preciso.</div>
+          <div id="esc-erro" class="form-erro hidden" style="margin-top:10px;"></div>
+        </form>
+      </div>
+
       <div class="section-title" style="margin-top:22px;">Backup dos Dados</div>
       <div class="card" style="max-width:560px;">
         <div class="sub" style="margin-bottom:10px;">
@@ -289,6 +323,8 @@ export async function renderConfiguracoes(root) {
           box.classList.remove("hidden");
         }
       });
+
+      configurarEscritorio(conteudo);
 
       const statusEl = conteudo.querySelector("#backup-status");
       const erroBackup = conteudo.querySelector("#backup-erro");
@@ -330,4 +366,100 @@ export async function renderConfiguracoes(root) {
   }
 
   renderizarAba();
+}
+
+// ---------- Endereço do escritório (validação do ponto presencial) ----------
+function configurarEscritorio(conteudo) {
+  const $ = (id) => conteudo.querySelector(`#${id}`);
+  const form = $("form-escritorio");
+  const statusEl = $("esc-status");
+  const erroEl = $("esc-erro");
+  const formatarCep = (v) => {
+    const d = String(v || "").replace(/\D/g, "").slice(0, 8);
+    return d.length > 5 ? `${d.slice(0, 5)}-${d.slice(5)}` : d;
+  };
+
+  function mostrarStatus(emp) {
+    const loc = emp.localizacaoEmpresa;
+    if (loc && loc.lat != null) {
+      const origem = loc.origem === "gps" ? "pelo GPS no escritório" : "pelo endereço";
+      statusEl.innerHTML = `✅ Escritório localizado no mapa (${origem}). ` +
+        `<a href="https://www.openstreetmap.org/?mlat=${loc.lat}&mlon=${loc.long}#map=18/${loc.lat}/${loc.long}" target="_blank" rel="noopener">Conferir no mapa</a>`;
+    } else if (emp.enderecoEmpresa) {
+      statusEl.textContent = "⚠️ Endereço salvo, mas ainda não localizado no mapa — o ponto presencial não está sendo conferido.";
+    } else {
+      statusEl.textContent = "⚠️ Escritório ainda não cadastrado — o ponto presencial não está sendo conferido.";
+    }
+  }
+
+  function preencher(emp) {
+    $("esc-cep").value = formatarCep(emp.cepEmpresa);
+    $("esc-rua").value = emp.logradouroEmpresa || "";
+    $("esc-numero").value = emp.numeroEmpresa || "";
+    $("esc-bairro").value = emp.bairroEmpresa || "";
+    $("esc-cidade").value = emp.cidadeEmpresa || "";
+    $("esc-uf").value = emp.estadoEmpresa || "";
+    $("esc-raio").value = emp.raioTolerancia || 500;
+    mostrarStatus(emp);
+  }
+
+  api.get("/api/configuracao/empresa").then(preencher).catch((err) => (statusEl.textContent = err.message));
+
+  $("esc-cep").addEventListener("input", (e) => {
+    e.target.value = formatarCep(e.target.value);
+    if (e.target.value.replace(/\D/g, "").length === 8) buscarCep();
+  });
+  $("esc-buscar").addEventListener("click", buscarCep);
+  async function buscarCep() {
+    try {
+      const r = await api.post("/api/configuracao/geocodificar-cep", { cep: $("esc-cep").value });
+      $("esc-rua").value = r.logradouro || "";
+      $("esc-bairro").value = r.bairro || "";
+      $("esc-cidade").value = r.cidade || "";
+      $("esc-uf").value = r.estado || "";
+      $("esc-numero").focus();
+    } catch (err) {
+      showToast(err.message, "erro");
+    }
+  }
+
+  async function salvar(extra = {}) {
+    erroEl.classList.add("hidden");
+    try {
+      const emp = await api.patch("/api/configuracao/empresa", {
+        cepEmpresa: $("esc-cep").value,
+        logradouroEmpresa: $("esc-rua").value,
+        numeroEmpresa: $("esc-numero").value,
+        bairroEmpresa: $("esc-bairro").value,
+        cidadeEmpresa: $("esc-cidade").value,
+        estadoEmpresa: $("esc-uf").value,
+        raioTolerancia: Number($("esc-raio").value) || 500,
+        ...extra,
+      });
+      preencher(emp);
+      showToast(emp.aviso || "Endereço do escritório salvo.", emp.aviso ? "erro" : "sucesso");
+    } catch (err) {
+      erroEl.textContent = err.message;
+      erroEl.classList.remove("hidden");
+    }
+  }
+
+  form.addEventListener("submit", (ev) => {
+    ev.preventDefault();
+    salvar();
+  });
+
+  $("esc-gps").addEventListener("click", () => {
+    if (!navigator.geolocation) return showToast("Este navegador não informa a localização.", "erro");
+    statusEl.textContent = "📍 Obtendo sua localização...";
+    navigator.geolocation.getCurrentPosition(
+      (pos) => salvar({ lat: pos.coords.latitude, long: pos.coords.longitude }),
+      (err) => {
+        statusEl.textContent = "";
+        erroEl.textContent = `Não foi possível obter a localização: ${err.message}. Permita o acesso à localização no navegador.`;
+        erroEl.classList.remove("hidden");
+      },
+      { enableHighAccuracy: true, timeout: 15000, maximumAge: 0 }
+    );
+  });
 }
