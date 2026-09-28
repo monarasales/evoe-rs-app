@@ -56,6 +56,8 @@ export function situacaoDia(d) {
       return '<span class="tag tag-prospect-proposta">incompleto — falta marcação</span>';
     case "falta":
       return '<span class="tag tag-atrasada">sem marcação</span>';
+    case "abonado":
+      return `<span class="tag tag-nprazo">abonado${d.ocorrencia ? ` · ${escapeHtml(d.ocorrencia)}` : ""}</span>${d.saldo ? ` <strong class="saldo-neg">${saldo(d.saldo)}</strong>` : ""}`;
     case "feriado":
       return `<span class="tag tag-encerrada">feriado${d.feriado ? ` · ${escapeHtml(d.feriado)}` : ""}</span>`;
     case "sem_escala":
@@ -64,7 +66,7 @@ export function situacaoDia(d) {
       return "";
     default: {
       const cls = d.saldo < 0 ? "saldo-neg" : d.saldo > 0 ? "saldo-pos" : "";
-      return `<strong class="${cls}">${saldo(d.saldo)}</strong>${d.confirmado ? ' <span class="sub">(saída confirmada)</span>' : ""}`;
+      return `<strong class="${cls}">${saldo(d.saldo)}</strong>${d.confirmado ? ' <span class="sub">(saída confirmada)</span>' : ""}${d.ocorrencia ? ` <span class="sub">· ${escapeHtml(d.ocorrencia)}</span>` : ""}`;
     }
   }
 }
@@ -84,7 +86,33 @@ export function horariosDia(d) {
 export function ocorrenciasDia(d) {
   const itens = [];
   if (d.atrasoMin > 0) itens.push(`atraso ${duracao(d.atrasoMin)}`);
+  if (d.atrasoAbonadoMin > 0) itens.push(`atraso abonado ${duracao(d.atrasoAbonadoMin)}`);
   if (d.saidaAntecipadaMin > 0) itens.push(`saída antecipada ${duracao(d.saidaAntecipadaMin)}`);
   if (d.almoco && d.almoco.classificacao !== "adequado") itens.push(`almoço ${d.almoco.classificacao} (${duracao(d.almoco.duracao)})`);
   return itens.length ? `<span class="sub">${itens.join(" · ")}</span>` : "";
+}
+
+/** Máscara de data enquanto digita: "30121999" -> "30/12/1999". */
+export function mascaraData(valor) {
+  const d = String(valor || "").replace(/\D/g, "").slice(0, 8);
+  if (d.length <= 2) return d;
+  if (d.length <= 4) return `${d.slice(0, 2)}/${d.slice(2)}`;
+  return `${d.slice(0, 2)}/${d.slice(2, 4)}/${d.slice(4)}`;
+}
+
+/** "30/12/1999" -> "1999-12-30"; "" -> ""; data inexistente -> null. */
+export function brParaIso(texto) {
+  const t = String(texto || "").trim();
+  if (!t) return "";
+  const m = /^(\d{2})\/(\d{2})\/(\d{4})$/.exec(t);
+  if (!m) return null;
+  const [, dia, mes, ano] = m;
+  const d = new Date(Date.UTC(Number(ano), Number(mes) - 1, Number(dia)));
+  if (d.getUTCFullYear() !== Number(ano) || d.getUTCMonth() !== Number(mes) - 1 || d.getUTCDate() !== Number(dia)) return null;
+  return `${ano}-${mes}-${dia}`;
+}
+
+/** Aplica a máscara de data a um campo de texto. */
+export function campoData(input) {
+  input.addEventListener("input", () => (input.value = mascaraData(input.value)));
 }

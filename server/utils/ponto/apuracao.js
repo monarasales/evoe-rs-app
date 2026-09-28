@@ -7,6 +7,7 @@ const db = require("../../db");
 const { calcularDia, resumirDias, periodoDoMes } = require("./motor");
 const { dataLocal, diaSemana, datasEntre } = require("./tempo");
 const { listarJornadas, jornadaDo, mapaFeriados } = require("./jornada");
+const { mapaOcorrencias, ajustesDeSaldo, listarOcorrencias } = require("./ocorrencias");
 
 const COL_MARCACOES = "pontoMarcacoes";
 
@@ -33,6 +34,7 @@ function apurarColaborador(colaborador, inicio, fim, ctx = {}) {
   if (inicio > fim) return [];
   const jornada = jornadaDo(colaborador.id, ctx.jornadas || listarJornadas());
   const feriados = ctx.feriados || mapaFeriados();
+  const ocorrencias = ctx.mapaOcorrencias || mapaOcorrencias();
   const porData = new Map();
   for (const mk of todasDoColab.filter((x) => x.data >= inicio && x.data <= fim)) {
     if (!porData.has(mk.data)) porData.set(mk.data, []);
@@ -48,6 +50,7 @@ function apurarColaborador(colaborador, inicio, fim, ctx = {}) {
       config: jornada,
       hoje,
       feriado: feriados.get(data) || null,
+      ocorrencia: ocorrencias.get(`${colaborador.id}|${data}`) || null,
     });
     return {
       ...resultado,
@@ -70,8 +73,25 @@ function apurarMes(colaborador, ano, mes, ctx = {}) {
   const periodo = periodoDoMes(ano, mes, hoje);
   const ateHoje = periodo.fim < hoje ? periodo.fim : hoje;
   const dias = periodo.inicio <= ateHoje ? apurarColaborador(colaborador, periodo.inicio, ateHoje, { ...ctx, hoje }) : [];
-  const resumo = resumirDias(dias.filter((d) => d.data <= periodo.fimFechado));
+  const ajustes = ajustesDeSaldo(colaborador.id, periodo.inicio, periodo.fimFechado, ctx.ocorrencias);
+  const resumo = resumirDias(
+    dias.filter((d) => d.data <= periodo.fimFechado),
+    ajustes
+  );
   return { periodo, dias, resumo };
 }
 
-module.exports = { COL_MARCACOES, apurarColaborador, apurarMes, inicioDoPonto };
+/** Contexto carregado UMA vez para apurar vários colaboradores (telas do Gestor). */
+function carregarContexto(hoje = dataLocal()) {
+  const ocorrencias = listarOcorrencias();
+  return {
+    hoje,
+    jornadas: listarJornadas(),
+    feriados: mapaFeriados(),
+    marcacoes: db.readCollection(COL_MARCACOES),
+    ocorrencias,
+    mapaOcorrencias: mapaOcorrencias(ocorrencias),
+  };
+}
+
+module.exports = { COL_MARCACOES, apurarColaborador, apurarMes, inicioDoPonto, carregarContexto };

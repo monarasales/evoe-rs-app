@@ -183,3 +183,87 @@ test("tempo: dia da semana e horário de Fortaleza independem do fuso do servido
   assert.equal(horaMinLocal(utc), 23 * 60 + 30);
   assert.equal(timestampLocal(utc), "2026-09-27T23:30:00-03:00");
 });
+
+// ---------- Ocorrências (Etapa 2) ----------
+const { statusPresenca } = require("../server/utils/ponto/motor");
+const { TIPOS } = require("../server/utils/ponto/ocorrencias");
+const oc = (id) => ({ nome: TIPOS.get(id).nome, ...TIPOS.get(id) });
+
+test("atestado abona a falta: dia sai do denominador, sem saldo negativo", () => {
+  const d = dia([], { ocorrencia: oc("atestado_medico") });
+  assert.equal(d.status, "abonado");
+  assert.equal(d.falta, false);
+  assert.equal(d.saldo, 0);
+  assert.equal(d.cargaEsperada, 0);
+  assert.equal(d.contaNoTotal, true);
+});
+
+test("falta injustificada NÃO abona: continua falta", () => {
+  const d = dia([], { ocorrencia: oc("falta_injustificada") });
+  assert.equal(d.status, "falta");
+  assert.equal(d.saldo, -360);
+});
+
+test("home office credita a jornada sem marcação", () => {
+  const d = dia([], { ocorrencia: oc("home_office") });
+  assert.equal(d.status, "abonado");
+  assert.equal(d.cargaCumprida, 360);
+  assert.equal(d.cargaEsperada, 360);
+  assert.equal(d.saldo, 0);
+});
+
+test("home office com dia completo e hora extra: vale o que foi marcado", () => {
+  const d = dia(["09:00", "12:00", "13:00", "16:30"], { ocorrencia: oc("home_office") });
+  assert.equal(d.status, "normal");
+  assert.equal(d.saldo, 30);
+});
+
+test("folga compensatória: não é falta, mas desconta do banco", () => {
+  const d = dia([], { ocorrencia: oc("folga_compensatoria") });
+  assert.equal(d.status, "abonado");
+  assert.equal(d.falta, false);
+  assert.equal(d.saldo, -360);
+});
+
+test("atestado de meio período resolve o dia incompleto (sai da pendência)", () => {
+  const d = dia(["09:00", "12:00"], { ocorrencia: oc("atestado_medico") });
+  assert.equal(d.status, "abonado");
+  assert.equal(d.contaNoTotal, true);
+  assert.equal(d.saldo, 0);
+});
+
+test("atraso justificado zera o atraso e devolve os minutos ao saldo", () => {
+  const d = dia(["09:40", "12:00", "13:00", "16:00"], { ocorrencia: oc("atraso_justificado") });
+  assert.equal(d.atrasoMin, 0);
+  assert.equal(d.atrasoAbonadoMin, 40);
+  assert.equal(d.saldo, 0);
+});
+
+test("atraso justificado não transforma saída antecipada em saldo positivo", () => {
+  const d = dia(["09:40", "12:00", "13:00", "15:30"], { ocorrencia: oc("atraso_justificado") });
+  assert.equal(d.saldo, -30); // 40 de atraso abonados, 30 de saída antecipada continuam
+});
+
+test("ocorrência não muda feriado nem dia sem escala", () => {
+  assert.equal(dia([], { ocorrencia: oc("atestado_medico"), escalaDia: null }).status, "sem_escala");
+});
+
+test("resumo soma ajustes de saldo, horas extras e abonados", () => {
+  const dias = [dia(["09:00", "12:00", "13:00", "16:30"]), dia([], { ocorrencia: oc("atestado_medico") })];
+  const r = resumirDias(dias, -60);
+  assert.equal(r.horasExtras, 30);
+  assert.equal(r.abonados, 1);
+  assert.equal(r.ajustesSaldo, -60);
+  assert.equal(r.saldo, 30 - 60);
+});
+
+test("presença: atrasado conta como presente, aguardando dentro da tolerância, ausente depois", () => {
+  const base = { escalaDia: ESCALA, config: CONFIG };
+  assert.equal(statusPresenca({ ...base, marcacoes: [m("09:05")], agoraMin: m("10:00") }), "presente");
+  assert.equal(statusPresenca({ ...base, marcacoes: [m("09:30")], agoraMin: m("10:00") }), "atrasado");
+  assert.equal(statusPresenca({ ...base, marcacoes: [], agoraMin: m("09:08") }), "aguardando");
+  assert.equal(statusPresenca({ ...base, marcacoes: [], agoraMin: m("09:30") }), "ausente");
+  assert.equal(statusPresenca({ ...base, marcacoes: [], agoraMin: m("09:30"), ocorrencia: oc("ferias") }), "afastado");
+  assert.equal(statusPresenca({ ...base, marcacoes: [], agoraMin: m("09:30"), ocorrencia: oc("home_office") }), "externo");
+  assert.equal(statusPresenca({ ...base, escalaDia: null, marcacoes: [], agoraMin: m("09:30") }), "sem_expediente");
+});

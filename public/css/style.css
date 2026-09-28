@@ -432,6 +432,24 @@ table tr:hover td { background: #fafbfc; }
 .fer-form .form-row { flex: 1; min-width: 140px; margin-bottom: 0; }
 .input-toolbar { padding: 8px 11px; border-radius: 9px; border: 1px solid var(--border); font-size: 13px; background: white; }
 
+.ponto-resumo.solto .ponto-kpi { background: var(--card-bg); border: 1px solid var(--border); box-shadow: var(--shadow); }
+.hoje-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(240px, 1fr)); gap: 12px; }
+.hoje-card { border-left: 4px solid var(--border); }
+.hoje-presente, .hoje-externo { border-left-color: var(--success); }
+.hoje-atrasado { border-left-color: var(--warning); }
+.hoje-ausente { border-left-color: var(--danger); }
+.hoje-aguardando { border-left-color: var(--purple); }
+.hoje-topo { display: flex; justify-content: space-between; align-items: center; gap: 8px; margin-bottom: 4px; }
+.freq-barra { display: flex; align-items: center; gap: 8px; }
+.freq-barra .bar-track { min-width: 80px; }
+.ficha-legenda { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 10px; font-size: 12px; }
+.ficha-legenda span { padding: 2px 8px; border-radius: 6px; }
+.ficha-infracao, table tr.ficha-infracao td, table tr.ficha-infracao:hover td { background: #fff4e5; }
+.ficha-incompleto, table tr.ficha-incompleto td, table tr.ficha-incompleto:hover td { background: #f1ecff; }
+.ficha-abonado, table tr.ficha-abonado td, table tr.ficha-abonado:hover td { background: #e8f8ee; }
+.ficha-falta, table tr.ficha-falta td, table tr.ficha-falta:hover td { background: #fdecea; }
+.modal-content:has(.ficha-legenda) { width: 760px; }
+
 @media (max-width: 860px) {
   .ponto-layout { grid-template-columns: 1fr; }
   .input-toolbar { font-size: 16px; }

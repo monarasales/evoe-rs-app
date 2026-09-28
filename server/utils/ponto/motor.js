@@ -41,13 +41,16 @@ function normalizarEscala(escalaDia) {
  * @param {string} p.hoje           AAAA-MM-DD (data local de hoje)
  * @param {object|null} p.feriado   { nome } quando o dia é feriado
  * @param {boolean} p.confirmado    colaborador confirmou "saí mais cedo mesmo"
+ * @param {object|null} p.ocorrencia efeitos da ocorrência do dia — o motor lê SÓ os
+ *   sinalizadores, nunca o nome do tipo: { nome, abonaFalta, abonaAtraso, contaTrabalhado, descontaBanco }
  */
-function calcularDia({ data, marcacoes = [], escalaDia, config = {}, hoje, feriado = null, confirmado = false }) {
+function calcularDia({ data, marcacoes = [], escalaDia, config = {}, hoje, feriado = null, confirmado = false, ocorrencia = null }) {
   const tolerancia = config.toleranciaMin ?? 10;
   const almocoMin = config.almocoMin ?? 55;
   const almocoMax = config.almocoMax ?? 70;
   const horarios = [...marcacoes].sort((a, b) => a - b);
   const escala = normalizarEscala(escalaDia);
+  const oc = ocorrencia || {};
 
   const base = {
     data,
@@ -56,14 +59,18 @@ function calcularDia({ data, marcacoes = [], escalaDia, config = {}, hoje, feria
     cargaCumprida: somarTrabalhado(horarios),
     saldo: 0,
     atrasoMin: 0,
+    atrasoAbonadoMin: 0,
     saidaAntecipadaMin: 0,
     almoco: null, // { inicio, fim, duracao, classificacao: "curto" | "adequado" | "longo" }
     falta: false,
     incompleta: false,
     confirmado: false,
+    abonado: false,
     foraDaEscala: false,
     feriado: feriado ? feriado.nome : null,
-    status: "normal", // normal | incompleto | falta | em_andamento | futuro | feriado | sem_escala
+    ocorrencia: ocorrencia ? ocorrencia.nome : null,
+    // normal | incompleto | falta | abonado | em_andamento | futuro | feriado | sem_escala
+    status: "normal",
     contaNoTotal: false,
   };
 
@@ -82,8 +89,37 @@ function calcularDia({ data, marcacoes = [], escalaDia, config = {}, hoje, feria
 
   // Dia corrente: calculado à parte, nunca entra em indicador de fechamento.
   if (data === hoje) {
-    const atrasoMin = calcularAtraso(horarios, escala, tolerancia);
-    return { ...base, atrasoMin, status: "em_andamento" };
+    const atraso = calcularAtraso(horarios, escala, tolerancia);
+    return { ...base, atrasoMin: oc.abonaAtraso ? 0 : atraso, atrasoAbonadoMin: oc.abonaAtraso ? atraso : 0, status: "em_andamento" };
+  }
+
+  // Passo 4 — jornada incompleta? (dia sem marcação é tratado à parte)
+  const marcacoesEsperadas = escala.temAlmoco ? 4 : 2;
+  const incompleta =
+    horarios.length > 0 &&
+    (horarios.length % 2 === 1 ||
+      horarios.length < marcacoesEsperadas ||
+      base.cargaCumprida < PERCENTUAL_MINIMO * escala.cargaEsperada);
+
+  // Ocorrência que CREDITA a jornada (home office, trabalho externo): sem marcação
+  // ou com marcação incompleta, o dia vale a carga esperada inteira.
+  if (oc.contaTrabalhado && (horarios.length === 0 || incompleta)) {
+    return { ...base, cargaCumprida: escala.cargaEsperada, saldo: 0, abonado: true, status: "abonado", contaNoTotal: true };
+  }
+
+  // Ocorrência que ABONA a falta (atestado, férias, folga...): a ausência não conta
+  // como falta. Sem "desconta do banco", o dia sai do denominador (esperado = 0);
+  // com ele (folga compensatória), as horas saem do banco.
+  if (oc.abonaFalta && (horarios.length === 0 || incompleta)) {
+    const saldo = oc.descontaBanco ? base.cargaCumprida - escala.cargaEsperada : 0;
+    return {
+      ...base,
+      cargaEsperada: oc.descontaBanco ? escala.cargaEsperada : 0,
+      saldo,
+      abonado: true,
+      status: "abonado",
+      contaNoTotal: true,
+    };
   }
 
   // Passo 2 — nenhuma marcação: falta (fato consumado, conta no total).
@@ -91,15 +127,11 @@ function calcularDia({ data, marcacoes = [], escalaDia, config = {}, hoje, feria
     return { ...base, falta: true, saldo: -escala.cargaEsperada, status: "falta", contaNoTotal: true };
   }
 
-  // Passo 4 — jornada incompleta?
-  const marcacoesEsperadas = escala.temAlmoco ? 4 : 2;
-  const incompleta =
-    horarios.length % 2 === 1 ||
-    horarios.length < marcacoesEsperadas ||
-    base.cargaCumprida < PERCENTUAL_MINIMO * escala.cargaEsperada;
-
-  // Passo 5 — atraso (avaliado mesmo em dia incompleto).
-  const atrasoMin = calcularAtraso(horarios, escala, tolerancia);
+  // Passo 5 — atraso (avaliado mesmo em dia incompleto). "Abona atraso" zera o
+  // atraso e devolve ao saldo os minutos atrasados.
+  const atrasoBruto = calcularAtraso(horarios, escala, tolerancia);
+  const atrasoMin = oc.abonaAtraso ? 0 : atrasoBruto;
+  const atrasoAbonadoMin = oc.abonaAtraso ? atrasoBruto : 0;
 
   if (incompleta) {
     // Pendência: só entra no total se o colaborador confirmou que saiu mais cedo.
@@ -107,9 +139,10 @@ function calcularDia({ data, marcacoes = [], escalaDia, config = {}, hoje, feria
     return {
       ...base,
       atrasoMin,
+      atrasoAbonadoMin,
       incompleta: true,
       confirmado: !!confirmado,
-      saldo: confirmado ? saldo : 0,
+      saldo: confirmado ? Math.min(0, saldo + atrasoAbonadoMin) : 0,
       status: confirmado ? "normal" : "incompleto",
       contaNoTotal: !!confirmado,
     };
@@ -122,15 +155,36 @@ function calcularDia({ data, marcacoes = [], escalaDia, config = {}, hoje, feria
   // Passo 7 — almoço (só em dia completo e se a escala prevê almoço).
   const almoco = escala.temAlmoco ? avaliarAlmoco(horarios, almocoMin, almocoMax) : null;
 
+  const saldoBruto = base.cargaCumprida - escala.cargaEsperada;
   return {
     ...base,
     atrasoMin,
+    atrasoAbonadoMin,
     saidaAntecipadaMin,
     almoco,
-    saldo: base.cargaCumprida - escala.cargaEsperada,
+    saldo: saldoBruto < 0 ? Math.min(0, saldoBruto + atrasoAbonadoMin) : saldoBruto,
     status: "normal",
     contaNoTotal: true,
   };
+}
+
+/**
+ * Situação de presença AGORA (tela "Hoje"). Atrasado conta como presente; quem
+ * ainda está dentro da tolerância está "aguardando" (não é falta).
+ * Retorna: sem_expediente | afastado | externo | presente | atrasado | aguardando | ausente
+ */
+function statusPresenca({ escalaDia, marcacoes = [], ocorrencia = null, feriado = null, agoraMin, config = {} }) {
+  const escala = normalizarEscala(escalaDia);
+  const oc = ocorrencia || {};
+  if (!escala || feriado) return "sem_expediente";
+  if (oc.contaTrabalhado) return "externo";
+  if (oc.abonaFalta && !marcacoes.length) return "afastado";
+  const tolerancia = config.toleranciaMin ?? 10;
+  if (marcacoes.length) {
+    const primeira = Math.min(...marcacoes);
+    return primeira > escala.entrada + tolerancia && !oc.abonaAtraso ? "atrasado" : "presente";
+  }
+  return agoraMin <= escala.entrada + tolerancia ? "aguardando" : "ausente";
 }
 
 /** Soma apenas os intervalos de índice PAR -> ÍMPAR (trabalho); ímpar -> par são pausas. */
@@ -162,13 +216,17 @@ function avaliarAlmoco(horarios, almocoMin, almocoMax) {
 /**
  * Totais de um conjunto de dias já calculados. ÚNICA função que soma saldo —
  * aplica o filtro de dias pendentes (contaNoTotal) para todas as telas.
+ * `ajustesMin`: lançamentos de "ajuste de saldo de banco" do período (não afetam dia nenhum).
  */
-function resumirDias(dias) {
+function resumirDias(dias, ajustesMin = 0) {
   const r = {
     cargaEsperada: 0,
     cargaCumprida: 0,
     saldo: 0,
+    horasExtras: 0,
+    ajustesSaldo: ajustesMin,
     faltas: 0,
+    abonados: 0,
     atrasos: 0,
     atrasoMin: 0,
     saidasAntecipadas: 0,
@@ -183,7 +241,9 @@ function resumirDias(dias) {
     r.cargaEsperada += d.cargaEsperada;
     r.cargaCumprida += d.cargaCumprida;
     r.saldo += d.saldo;
+    if (d.saldo > 0) r.horasExtras += d.saldo;
     if (d.falta) r.faltas++;
+    if (d.abonado) r.abonados++;
     if (d.atrasoMin > 0) {
       r.atrasos++;
       r.atrasoMin += d.atrasoMin;
@@ -193,6 +253,7 @@ function resumirDias(dias) {
       r.saidaAntecipadaMin += d.saidaAntecipadaMin;
     }
   }
+  r.saldo += ajustesMin;
   return r;
 }
 
@@ -212,4 +273,4 @@ function somarDiasSimples(data, n) {
   return d.toISOString().slice(0, 10);
 }
 
-module.exports = { calcularDia, resumirDias, periodoDoMes, normalizarEscala, somarTrabalhado };
+module.exports = { calcularDia, statusPresenca, resumirDias, periodoDoMes, normalizarEscala, somarTrabalhado };
