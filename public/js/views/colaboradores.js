@@ -63,6 +63,26 @@ function calcularIdade(dataIso) {
   return idade >= 0 ? idade : null;
 }
 
+/** Máscara de data enquanto digita: "30121999" -> "30/12/1999". */
+function mascaraData(valor) {
+  const d = soDigitos(valor).slice(0, 8);
+  if (d.length <= 2) return d;
+  if (d.length <= 4) return `${d.slice(0, 2)}/${d.slice(2)}`;
+  return `${d.slice(0, 2)}/${d.slice(2, 4)}/${d.slice(4)}`;
+}
+
+/** "30/12/1999" -> "1999-12-30"; "" -> ""; data inexistente -> null. */
+function brParaIso(texto) {
+  const t = String(texto || "").trim();
+  if (!t) return "";
+  const m = /^(\d{2})\/(\d{2})\/(\d{4})$/.exec(t);
+  if (!m) return null;
+  const [, dia, mes, ano] = m;
+  const d = new Date(Date.UTC(Number(ano), Number(mes) - 1, Number(dia)));
+  if (d.getUTCFullYear() !== Number(ano) || d.getUTCMonth() !== Number(mes) - 1 || d.getUTCDate() !== Number(dia)) return null;
+  return `${ano}-${mes}-${dia}`;
+}
+
 function formatarDataBr(dataIso) {
   if (!dataIso) return "—";
   const [a, m, d] = dataIso.split("-");
@@ -226,7 +246,7 @@ export async function renderColaboradores(root) {
         <div class="form-cols">
           <div class="form-row">
             <label>Data de nascimento</label>
-            <input type="date" id="col-nascimento" max="${new Date().toISOString().slice(0, 10)}" value="${v("dataNascimento")}" />
+            <input type="text" id="col-nascimento" inputmode="numeric" maxlength="10" placeholder="dd/mm/aaaa" value="${c.dataNascimento ? formatarDataBr(c.dataNascimento) : ""}" />
             <div class="sub" id="col-idade" style="margin-top:4px;"></div>
           </div>
           <div class="form-row"><label>CPF</label><input type="text" id="col-cpf" inputmode="numeric" placeholder="000.000.000-00" maxlength="14" value="${v("cpf")}" /></div>
@@ -276,7 +296,7 @@ export async function renderColaboradores(root) {
         </div>
         <div class="form-row">
           <label>Início do controle de ponto</label>
-          <input type="date" id="col-inicio-ponto" value="${v("dataInicioPonto") || (editando ? "" : new Date().toLocaleDateString("en-CA"))}" />
+          <input type="text" id="col-inicio-ponto" inputmode="numeric" maxlength="10" placeholder="dd/mm/aaaa" value="${c.dataInicioPonto ? formatarDataBr(c.dataInicioPonto) : editando ? "" : new Date().toLocaleDateString("pt-BR")}" />
           <div class="sub" style="margin-top:4px;">Dias antes desta data não são cobrados (nem contam como falta). Em branco = a partir da primeira marcação.</div>
         </div>
         <div class="sub" style="margin-bottom:12px;">Os horários de trabalho (escala) ficam em Gestão do Ponto › Escalas.</div>
@@ -316,11 +336,14 @@ export async function renderColaboradores(root) {
 
     // Idade ao lado da data de nascimento
     const inputNasc = $("col-nascimento");
+    aplicarMascara(inputNasc, mascaraData);
+    aplicarMascara($("col-inicio-ponto"), mascaraData);
     const mostrarIdade = () => {
-      const idade = calcularIdade(inputNasc.value);
+      const iso = brParaIso(inputNasc.value);
+      const idade = iso ? calcularIdade(iso) : null;
       $("col-idade").textContent = idade !== null ? `${idade} anos` : "";
     };
-    inputNasc.addEventListener("change", mostrarIdade);
+    inputNasc.addEventListener("input", mostrarIdade);
     mostrarIdade();
 
     // Busca do CEP: preenche os campos, mas eles continuam editáveis.
@@ -378,6 +401,8 @@ export async function renderColaboradores(root) {
       if (!nome) msg = "Informe o nome do colaborador.";
       else if (cep && cep.length !== 8) msg = "O CEP deve ter 8 dígitos (ou deixe em branco).";
       else if (cpf && !cpfValido(cpf)) msg = "CPF inválido. Confira os números.";
+      else if (brParaIso(inputNasc.value) === null) msg = "Data de nascimento inválida. Use o formato dd/mm/aaaa (ex.: 30/12/1999).";
+      else if (brParaIso($("col-inicio-ponto").value) === null) msg = "Data de início do controle de ponto inválida. Use dd/mm/aaaa.";
       if (msg) {
         erroBox.textContent = msg;
         erroBox.classList.remove("hidden");
@@ -386,7 +411,7 @@ export async function renderColaboradores(root) {
 
       const payload = {
         nome,
-        dataNascimento: inputNasc.value,
+        dataNascimento: brParaIso(inputNasc.value),
         cpf,
         cargo: $("col-cargo").value.trim(),
         email: $("col-email").value.trim(),
@@ -401,7 +426,7 @@ export async function renderColaboradores(root) {
         diasHomeOffice: [...document.querySelectorAll(".col-dia-ho:checked")].map((el) => el.value),
         ativo: $("col-ativo").checked,
         consultorId: $("col-login").value || null,
-        dataInicioPonto: $("col-inicio-ponto").value,
+        dataInicioPonto: brParaIso($("col-inicio-ponto").value),
       };
 
       const btnSalvar = ev.submitter || $("form-colaborador").querySelector("button[type=submit]");
