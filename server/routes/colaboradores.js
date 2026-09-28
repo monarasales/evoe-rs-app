@@ -62,6 +62,7 @@ const CAMPOS_TEXTO = [
   "cargo",
   "cpf",
   "dataNascimento",
+  "dataInicioPonto",
   "email",
   "telefone",
   "cepResidencial",
@@ -104,6 +105,9 @@ function lerCampos(body) {
   if (dados.cpf && !cpfValido(dados.cpf)) return { erro: "CPF inválido. Confira os números." };
   if (dados.dataNascimento && !dataNascimentoValida(dados.dataNascimento)) {
     return { erro: "Data de nascimento inválida." };
+  }
+  if (dados.dataInicioPonto && !/^\d{4}-\d{2}-\d{2}$/.test(dados.dataInicioPonto)) {
+    return { erro: "Data de início do controle de ponto inválida." };
   }
   return { dados };
 }

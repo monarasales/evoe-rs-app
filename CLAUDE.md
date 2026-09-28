@@ -24,6 +24,19 @@ explicar tudo em português simples, sem jargão.
 - `server/middleware/auth.js` — sessão e perfis (Gestor vê tudo; Recrutador só as próprias vagas)
 - `public/js/views/` — uma tela por arquivo; `public/js/api.js` faz as chamadas à API
 
+## Módulo de Ponto
+Baseado no documento "Controle de Ponto Próprio" (Resolut). Construído por etapas:
+1 (feita) escalas, feriados, marcações, motor do dia, Meu Ponto, Registros;
+2 Hoje/Folha/Frequência/Inconsistências + ocorrências; 3 ajustes, pedidos, fechamento.
+- `server/utils/ponto/motor.js` — cálculo PURO do dia e `resumirDias` (única função que soma saldo;
+  exclui dias pendentes). Testes em `test/pontoMotor.test.js` (`npm test`). Mexeu no motor → rode os testes.
+- `server/utils/ponto/apuracao.js` — caminho único que junta marcações + escala + feriados; toda tela usa ele.
+- `server/utils/ponto/tempo.js` — datas/horas sempre em America/Fortaleza; hora exibida sai de `horaMin`, nunca do timestamp.
+- Coleções: `pontoMarcacoes` (PERMANENTE, nunca expurgar), `pontoJornadas` (padrão = sem colaboradorId), `pontoFeriados`.
+  A coleção antiga `ponto` é migrada na subida (`migracao.js`) e mantida intacta.
+- Colaborador é identificado pela sessão (login → colaborador.consultorId), nunca por parâmetro.
+- Período de apuração = mês civil. Escala padrão Evoé: seg–sex 09–12/13–16 (30h/semana, estagiários).
+
 ## Produção (Render)
 - Deploy via `render.yaml`; os dados reais ficam no disco persistente do Render
   (`DATA_DIR=/data`), **não** no repositório.

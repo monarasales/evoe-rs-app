@@ -1,39 +1,35 @@
+// Ponto — lado do COLABORADOR (bater ponto e "Meu Ponto").
+// Regra de segurança: o colaborador é identificado SEMPRE pela sessão (login),
+// nunca por parâmetro vindo da tela — assim ninguém lê o ponto de um colega.
+// As telas do Gestor ficam em routes/pontoGestao.js.
+
 const express = require("express");
 const db = require("../db");
-const { requireAuth, requireGestor } = require("../middleware/auth");
+const { requireAuth } = require("../middleware/auth");
+const { dataLocal, horaMinLocal, timestampLocal, diaSemana, minParaHhmm } = require("../utils/ponto/tempo");
+const { normalizarEscala } = require("../utils/ponto/motor");
+const { jornadaDo, mapaFeriados } = require("../utils/ponto/jornada");
+const { COL_MARCACOES, apurarColaborador, apurarMes } = require("../utils/ponto/apuracao");
 
 const router = express.Router();
+router.use(requireAuth);
 
-// ============= UTILITÁRIOS PARA GEOLOCALIZAÇÃO =============
+const INTERVALO_MINIMO_SEG = 60; // evita batida dupla por toque repetido
+
 function calcularDistancia(lat1, lon1, lat2, lon2) {
-  const R = 6371; // Raio da Terra em km
+  const R = 6371;
   const dLat = ((lat2 - lat1) * Math.PI) / 180;
   const dLon = ((lon2 - lon1) * Math.PI) / 180;
   const a =
-    Math.sin(dLat / 2) * Math.sin(dLat / 2) +
-    Math.cos((lat1 * Math.PI) / 180) *
-      Math.cos((lat2 * Math.PI) / 180) *
-      Math.sin(dLon / 2) *
-      Math.sin(dLon / 2);
-  const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
-  return R * c * 1000; // Retorna em metros
+    Math.sin(dLat / 2) ** 2 +
+    Math.cos((lat1 * Math.PI) / 180) * Math.cos((lat2 * Math.PI) / 180) * Math.sin(dLon / 2) ** 2;
+  return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a)) * 1000;
 }
 
-function obterDiaSemana(data) {
-  const diasSemana = ["domingo", "segunda", "terça", "quarta", "quinta", "sexta", "sábado"];
-  return diasSemana[new Date(data + "T12:00:00Z").getUTCDay()];
-}
-
-// Datas do ponto sempre no horário do Ceará — o servidor roda em UTC, e sem isso
-// um ponto batido depois das 21h cairia no dia seguinte.
-const FUSO = "America/Fortaleza";
-function dataLocal(date = new Date()) {
-  return date.toLocaleDateString("en-CA", { timeZone: FUSO }); // AAAA-MM-DD
-}
-
-/** Cadastro de colaborador vinculado ao login (consultor) da pessoa. */
-function encontrarColaborador(consultorId) {
-  const colaboradores = db.readCollection("colaboradores") || [];
+/** Cadastro de colaborador vinculado ao login da sessão. */
+function colaboradorDaSessao(req) {
+  const colaboradores = db.readCollection("colaboradores");
+  const consultorId = req.user.consultorId;
   return (
     colaboradores.find((c) => c.consultorId && c.consultorId === consultorId) ||
     colaboradores.find((c) => c.id === consultorId) ||
@@ -42,203 +38,142 @@ function encontrarColaborador(consultorId) {
 }
 
 function configEmpresa() {
-  const empresa = (db.readCollection("configuracao") || []).find((c) => c.tipo === "empresa");
+  const empresa = db.readCollection("configuracao").find((c) => c.tipo === "empresa");
   return empresa || { localizacaoEmpresa: null, raioTolerancia: 500 };
 }
 
 const MSG_SEM_VINCULO =
-  "Seu login ainda não está vinculado a um cadastro de colaborador. Peça ao Gestor para vincular em Colaboradores > Cadastro de Colaboradores (campo \"Login no sistema\").";
+  'Seu login ainda não está vinculado a um cadastro de colaborador. Peça ao Gestor para vincular em Colaboradores > Cadastro de Colaboradores (campo "Login no sistema").';
 
-// Dados que a tela de Ponto precisa para mostrar onde a pessoa deve estar hoje.
-router.get("/meu-cadastro", requireAuth, (req, res) => {
-  const colaborador = encontrarColaborador(req.user.consultorId);
+function exigirColaborador(req, res, next) {
+  const colaborador = colaboradorDaSessao(req);
   if (!colaborador) return res.status(404).json({ erro: MSG_SEM_VINCULO });
-  const hoje = dataLocal();
-  const diaSemana = obterDiaSemana(hoje);
+  req.colaborador = colaborador;
+  next();
+}
+
+/** Rótulo do próximo registro, pela quantidade de marcações já feitas hoje. */
+function proximaAcao(qtd, temAlmoco) {
+  if (qtd === 0) return "Registrar ENTRADA";
+  if (temAlmoco && qtd === 1) return "Saída para ALMOÇO";
+  if (temAlmoco && qtd === 2) return "VOLTA do almoço";
+  if (temAlmoco && qtd === 3) return "Registrar SAÍDA";
+  return qtd % 2 === 1 ? "Registrar SAÍDA / pausa" : "Registrar VOLTA";
+}
+
+/** Onde a pessoa deveria estar hoje (casa em dia de home office, senão escritório). */
+function localEsperado(colaborador, dia) {
+  const ehHomeOffice = (colaborador.diasHomeOffice || []).includes(dia);
+  const casa = colaborador.localizacaoResidencial;
+  if (ehHomeOffice && casa && casa.lat != null) {
+    return {
+      nome: "casa",
+      endereco: [colaborador.enderecoResidencial, colaborador.numeroResidencial].filter(Boolean).join(", "),
+      loc: casa,
+      raio: colaborador.raioTolerancia || 500,
+    };
+  }
   const empresa = configEmpresa();
+  if (empresa.localizacaoEmpresa && empresa.localizacaoEmpresa.lat != null) {
+    return { nome: "empresa", endereco: empresa.enderecoEmpresa || "", loc: empresa.localizacaoEmpresa, raio: empresa.raioTolerancia || 500 };
+  }
+  return null;
+}
+
+// Nomes dos dias no formato usado em colaborador.diasHomeOffice.
+const DIA_EXTENSO = { dom: "domingo", seg: "segunda", ter: "terça", qua: "quarta", qui: "quinta", sex: "sexta", sab: "sábado" };
+
+// ---------- Situação de hoje (tela Meu Ponto) ----------
+router.get("/meu/hoje", exigirColaborador, (req, res) => {
+  const c = req.colaborador;
+  const hoje = dataLocal();
+  const jornada = jornadaDo(c.id);
+  const escalaDia = jornada.dias[diaSemana(hoje)];
+  const escala = normalizarEscala(escalaDia);
+  const [diaHoje] = apurarColaborador(c, hoje, hoje, { hoje });
+  const feriado = mapaFeriados().get(hoje) || null;
+  const local = localEsperado(c, DIA_EXTENSO[diaSemana(hoje)]);
+
   res.json({
-    nome: colaborador.nome,
-    ativo: colaborador.ativo !== false,
+    nome: c.nome,
+    ativo: c.ativo !== false,
     hoje,
-    diaSemana,
-    ehHomeOffice: (colaborador.diasHomeOffice || []).includes(diaSemana),
-    enderecoResidencial: [colaborador.enderecoResidencial, colaborador.numeroResidencial].filter(Boolean).join(", "),
-    localizacaoResidencial: colaborador.localizacaoResidencial || null,
-    raioTolerancia: colaborador.raioTolerancia || 500,
-    enderecoEmpresa: empresa.enderecoEmpresa || "",
-    localizacaoEmpresa: empresa.localizacaoEmpresa || null,
-    raioEmpresa: empresa.raioTolerancia || 500,
+    diaSemana: diaSemana(hoje),
+    feriado: feriado ? feriado.nome : null,
+    escalaHoje: escalaDia || null,
+    cargaEsperadaHoje: escala ? escala.cargaEsperada : 0,
+    marcacoes: diaHoje.marcacoesDetalhe.map((mk) => ({ ...mk, hora: minParaHhmm(mk.horaMin) })),
+    cargaCumpridaAteAgora: diaHoje.cargaCumprida,
+    atrasoMin: diaHoje.atrasoMin,
+    proximaAcao: proximaAcao(diaHoje.horarios.length, !!(escala && escala.temAlmoco)),
+    localEsperado: local ? { nome: local.nome, endereco: local.endereco, loc: local.loc, raio: local.raio } : null,
   });
 });
 
-// ============= BATER PONTO COM VALIDAÇÃO DE LOCALIZAÇÃO =============
-
-// Bater ponto (criar registro com GPS)
-router.post("/bater", requireAuth, (req, res) => {
-  const usuario = req.user;
-  const { lat, long } = req.body || {};
-  const hoje = dataLocal();
-  const diaSemana = obterDiaSemana(hoje);
-
-  // Validações básicas
-  if (!lat || !long) {
-    return res.status(400).json({ erro: "Latitude e longitude são obrigatórias." });
-  }
-
-  // Buscar colaborador para validar localização
-  const colaborador = encontrarColaborador(usuario.consultorId);
-  if (!colaborador) return res.status(404).json({ erro: MSG_SEM_VINCULO });
-  if (colaborador.ativo === false) {
+// ---------- Bater ponto ----------
+router.post("/bater", exigirColaborador, (req, res) => {
+  const c = req.colaborador;
+  if (c.ativo === false) {
     return res.status(403).json({ erro: "Seu cadastro de colaborador está inativo. Fale com o Gestor." });
   }
-
-  const empresa = configEmpresa();
-
-  // Validar localização
-  let validacaoLocalizacao = {
-    dentroZona: false,
-    distanciaMetros: 0,
-    avisoLocalizacao: "",
-  };
-
-  const ehHomeOffice = colaborador.diasHomeOffice && colaborador.diasHomeOffice.includes(diaSemana);
-
-  if (ehHomeOffice && colaborador.localizacaoResidencial && colaborador.localizacaoResidencial.lat != null) {
-    // Validar se está em casa (sexta-feira)
-    const distancia = calcularDistancia(
-      lat,
-      long,
-      colaborador.localizacaoResidencial.lat,
-      colaborador.localizacaoResidencial.long
-    );
-    validacaoLocalizacao.distanciaMetros = Math.round(distancia);
-    validacaoLocalizacao.dentroZona = distancia <= colaborador.raioTolerancia;
-    validacaoLocalizacao.avisoLocalizacao = validacaoLocalizacao.dentroZona
-      ? `✅ Você está em casa (${Math.round(distancia)}m)`
-      : `⚠️ Você está ${Math.round(distancia)}m de casa. Limite: ${colaborador.raioTolerancia}m`;
-  } else if (empresa.localizacaoEmpresa && empresa.localizacaoEmpresa.lat != null) {
-    // Validar se está na empresa (seg-qui)
-    const distancia = calcularDistancia(
-      lat,
-      long,
-      empresa.localizacaoEmpresa.lat,
-      empresa.localizacaoEmpresa.long
-    );
-    validacaoLocalizacao.distanciaMetros = Math.round(distancia);
-    validacaoLocalizacao.dentroZona = distancia <= empresa.raioTolerancia;
-    validacaoLocalizacao.avisoLocalizacao = validacaoLocalizacao.dentroZona
-      ? `✅ Você está na empresa (${Math.round(distancia)}m)`
-      : `⚠️ Você está ${Math.round(distancia)}m da empresa. Limite: ${empresa.raioTolerancia}m`;
+  const lat = Number((req.body || {}).lat);
+  const long = Number((req.body || {}).long);
+  if (!Number.isFinite(lat) || !Number.isFinite(long)) {
+    return res.status(400).json({ erro: "Localização obrigatória. Permita o acesso à localização no navegador." });
   }
 
-  // IMPORTANTE: Permitir bater ponto mesmo fora da zona (registra aviso)
-  // Em produção, você pode mudar isso para res.status(400) se quiser bloquear
-
-  // Procurar ponto do usuário de hoje
-  const pontos = db.readCollection("ponto") || [];
-  let pontoDia = pontos.find((p) => p.data === hoje && p.usuarioId === usuario.id);
-
-  if (pontoDia && pontoDia.saida) {
-    return res.status(400).json({ erro: "Sua jornada de hoje já foi encerrada (saída registrada)." });
+  const agora = new Date();
+  const hoje = dataLocal(agora);
+  const marcacoes = db.readCollection(COL_MARCACOES);
+  const ultimaHoje = marcacoes
+    .filter((mk) => mk.colaboradorId === c.id && mk.data === hoje)
+    .sort((a, b) => b.criadoEm.localeCompare(a.criadoEm))[0];
+  if (ultimaHoje && agora - new Date(ultimaHoje.criadoEm) < INTERVALO_MINIMO_SEG * 1000) {
+    return res.status(409).json({ erro: "Você acabou de registrar um ponto. Aguarde 1 minuto para registrar o próximo." });
   }
 
-  if (!pontoDia) {
-    // Criar novo registro de ponto (entrada)
-    pontoDia = db.insert("ponto", {
-      usuarioId: usuario.id,
-      usuarioNome: colaborador.nome || (req.consultor && req.consultor.nome) || usuario.username,
-      colaboradorId: colaborador.id,
-      data: hoje,
-      diaSemana,
-      entrada: new Date().toISOString(),
-      entradaLocalizacao: { lat, long },
-      entradaDistancia: validacaoLocalizacao.distanciaMetros,
-      entradaDentroZona: validacaoLocalizacao.dentroZona,
-      saida: null,
-      saidaLocalizacao: null,
-      saidaDistancia: 0,
-      saidaDentroZona: false,
-      pausaEntrada: null,
-      pausaEntradaLocalizacao: null,
-      pausaEntradaDistancia: 0,
-      pausaSaida: null,
-      pausaSaidaLocalizacao: null,
-      pausaSaidaDistancia: 0,
-      criadoEm: new Date().toISOString(),
-    });
-  } else if (!pontoDia.saida && pontoDia.pausaSaida) {
-    // Retornando de pausa - registrar saída
-    pontoDia.saida = new Date().toISOString();
-    pontoDia.saidaLocalizacao = { lat, long };
-    pontoDia.saidaDistancia = validacaoLocalizacao.distanciaMetros;
-    pontoDia.saidaDentroZona = validacaoLocalizacao.dentroZona;
-    db.update("ponto", pontoDia.id, pontoDia);
-  } else if (!pontoDia.pausaEntrada && pontoDia.entrada && !pontoDia.pausaSaida) {
-    // Iniciando pausa - registrar entrada de pausa
-    pontoDia.pausaEntrada = new Date().toISOString();
-    pontoDia.pausaEntradaLocalizacao = { lat, long };
-    pontoDia.pausaEntradaDistancia = validacaoLocalizacao.distanciaMetros;
-    db.update("ponto", pontoDia.id, pontoDia);
-  } else if (pontoDia.pausaEntrada && !pontoDia.pausaSaida) {
-    // Finalizando pausa - registrar saída de pausa
-    pontoDia.pausaSaida = new Date().toISOString();
-    pontoDia.pausaSaidaLocalizacao = { lat, long };
-    pontoDia.pausaSaidaDistancia = validacaoLocalizacao.distanciaMetros;
-    db.update("ponto", pontoDia.id, pontoDia);
-  } else if (!pontoDia.saida) {
-    // Registrar saída
-    pontoDia.saida = new Date().toISOString();
-    pontoDia.saidaLocalizacao = { lat, long };
-    pontoDia.saidaDistancia = validacaoLocalizacao.distanciaMetros;
-    pontoDia.saidaDentroZona = validacaoLocalizacao.dentroZona;
-    db.update("ponto", pontoDia.id, pontoDia);
+  let dentroZona = null;
+  let distanciaMetros = null;
+  let aviso = "";
+  const local = localEsperado(c, DIA_EXTENSO[diaSemana(hoje)]);
+  if (local) {
+    distanciaMetros = Math.round(calcularDistancia(lat, long, local.loc.lat, local.loc.long));
+    dentroZona = distanciaMetros <= local.raio;
+    const onde = local.nome === "casa" ? "de casa" : "da empresa";
+    aviso = dentroZona
+      ? `✅ Você está ${local.nome === "casa" ? "em casa" : "na empresa"} (${distanciaMetros}m)`
+      : `⚠️ Você está a ${distanciaMetros}m ${onde}. Limite: ${local.raio}m — ponto registrado com aviso.`;
   }
 
-  res.json({
-    ...pontoDia,
-    validacaoLocalizacao,
+  const marcacao = db.insert(COL_MARCACOES, {
+    colaboradorId: c.id,
+    consultorId: c.consultorId || null,
+    data: hoje,
+    horaMin: horaMinLocal(agora),
+    timestamp: timestampLocal(agora),
+    origem: "web",
+    ajuste: false,
+    motivoAjuste: "",
+    registradoPor: req.user.consultorId,
+    localizacao: { lat, long },
+    localEsperado: local ? local.nome : null,
+    distanciaMetros,
+    dentroZona,
+    criadoEm: agora.toISOString(),
   });
+
+  res.status(201).json({ ...marcacao, hora: minParaHhmm(marcacao.horaMin), aviso });
 });
 
-// Obter pontos do dia (usuário logado)
-router.get("/dia/:data", requireAuth, (req, res) => {
-  const usuario = req.user;
-  const data = req.params.data;
-
-  const pontos = db.readCollection("ponto") || [];
-  const pontosDodia = pontos.filter((p) => p.data === data && p.usuarioId === usuario.id);
-
-  res.json(pontosDodia);
-});
-
-// Obter últimos 7 dias (usuário logado)
-router.get("/semana", requireAuth, (req, res) => {
-  const usuario = req.user;
-  const inicio = dataLocal(new Date(Date.now() - 6 * 24 * 60 * 60 * 1000));
-
-  const pontos = db.readCollection("ponto") || [];
-  const pontosSemana = pontos
-    .filter((p) => p.data >= inicio && p.usuarioId === usuario.id)
-    .sort((a, b) => b.data.localeCompare(a.data));
-
-  res.json(pontosSemana);
-});
-
-// Obter pontos de todos os colaboradores (apenas Gestor)
-router.get("/colaboradores", requireAuth, requireGestor, (req, res) => {
-
-  const pontos = db.readCollection("ponto") || [];
-
-  // Agrupar por colaborador e data
-  const colaboradores = db.readCollection("colaboradores") || [];
-  const pontosOrganizados = pontos
-    .map((p) => ({
-      ...p,
-      colaboradorNome: p.usuarioNome || (colaboradores.find((c) => c.id === p.colaboradorId) || {}).nome || "—",
-    }))
-    .sort((a, b) => (b.data || "").localeCompare(a.data || ""));
-
-  res.json(pontosOrganizados);
+// ---------- Meu mês (só os próprios dados) ----------
+router.get("/meu/periodo", exigirColaborador, (req, res) => {
+  const hoje = dataLocal();
+  const ano = Number(req.query.ano) || Number(hoje.slice(0, 4));
+  const mes = Number(req.query.mes) || Number(hoje.slice(5, 7));
+  if (mes < 1 || mes > 12) return res.status(400).json({ erro: "Mês inválido." });
+  const { periodo, dias, resumo } = apurarMes(req.colaborador, ano, mes, { hoje });
+  res.json({ periodo, resumo, dias: dias.slice().reverse() });
 });
 
 module.exports = router;
+module.exports.colaboradorDaSessao = colaboradorDaSessao;

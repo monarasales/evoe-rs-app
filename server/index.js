@@ -13,6 +13,10 @@ const { startBackupDiario } = require("./utils/backup");
 // (mesmos dados usados na versão Airtable) para o sistema já nascer navegável.
 seed();
 
+// Ponto: garante a escala padrão e converte registros do ponto antigo em marcações.
+require("./utils/ponto/jornada").garantirJornadaPadrao();
+require("./utils/ponto/migracao").migrarPontoLegado();
+
 const app = express();
 const PORT = process.env.PORT || 3000;
 const EM_PRODUCAO = process.env.NODE_ENV === "production";
@@ -62,6 +66,7 @@ app.use("/api/financeiro", require("./routes/financeiro"));
 app.use("/api/prospects", require("./routes/prospects"));
 app.use("/api/colaboradores", require("./routes/colaboradores"));
 app.use("/api/ponto", require("./routes/ponto"));
+app.use("/api/ponto-gestao", require("./routes/pontoGestao"));
 app.use("/api/configuracao", require("./routes/configuracao"));
 
 app.use(express.static(path.join(__dirname, "..", "public")));

@@ -397,6 +397,47 @@ table tr:hover td { background: #fafbfc; }
 }
 .link-btn { background: none; border: none; color: var(--teal); font-weight: 600; font-size: 13px; padding: 0; }
 
+/* ---------- Ponto (Meu Ponto e Gestão do Ponto) ---------- */
+.ponto-layout { display: grid; grid-template-columns: minmax(280px, 380px) 1fr; gap: 16px; align-items: start; }
+.ponto-layout > * { min-width: 0; }
+.modal-content:has(.escala-editor) { width: 780px; }
+.ponto-card { text-align: center; }
+.ponto-data { font-size: 20px; font-weight: 700; color: var(--navy); }
+.ponto-local { margin: 14px 0; font-size: 14px; line-height: 1.5; }
+.ponto-botao { font-size: 17px; padding: 18px; letter-spacing: .3px; }
+.ponto-aviso { background: var(--warning-bg); color: var(--warning); border-radius: 8px; padding: 10px 12px; font-size: 13px; margin: 10px 0; text-align: left; }
+.ponto-hoje-titulo { margin: 18px 0 8px; font-size: 12px; font-weight: 700; text-transform: uppercase; letter-spacing: .4px; color: var(--text-muted); }
+.ponto-marcacoes { display: flex; flex-wrap: wrap; gap: 8px; justify-content: center; margin-bottom: 8px; }
+.ponto-marcacao { background: var(--teal-light); border-radius: 8px; padding: 6px 10px; font-size: 15px; }
+.ponto-mes-nav { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin-bottom: 12px; }
+.ponto-resumo { display: grid; grid-template-columns: repeat(auto-fit, minmax(130px, 1fr)); gap: 10px; }
+.ponto-kpi { background: var(--bg); border-radius: 10px; padding: 10px 12px; }
+.ponto-kpi .kpi-label { font-size: 11px; color: var(--text-muted); text-transform: uppercase; letter-spacing: .3px; font-weight: 600; }
+.ponto-kpi .kpi-value { font-size: 20px; font-weight: 700; color: var(--navy); margin-top: 2px; }
+.ponto-tabela td { vertical-align: top; }
+.marcacao-chip { display: inline-block; background: #eef1f5; border-radius: 6px; padding: 2px 7px; margin: 1px 0; font-variant-numeric: tabular-nums; }
+.saldo-neg { color: var(--danger) !important; }
+.saldo-pos { color: var(--success) !important; }
+.ponto-colab-card { margin-bottom: 14px; }
+.ponto-colab-topo { display: flex; justify-content: space-between; align-items: baseline; gap: 10px; flex-wrap: wrap; margin-bottom: 10px; font-size: 15px; }
+.ponto-colab-totais { display: flex; gap: 6px 16px; flex-wrap: wrap; font-size: 13px; color: var(--text-muted); }
+.ponto-colab-totais strong { color: var(--text); }
+.tabela-rolavel { overflow-x: auto; }
+.escala-resumo { font-size: 13.5px; line-height: 1.8; margin-bottom: 12px; }
+.escala-editor input[type="time"] { padding: 6px; border: 1px solid var(--border); border-radius: 6px; font-size: 13px; }
+.escala-editor td, .escala-editor th { padding: 6px 8px; }
+.escala-editor tr.esc-folga td { opacity: .55; }
+.escala-total { margin: 10px 0 14px; font-size: 14px; }
+.fer-form { display: flex; gap: 10px; flex-wrap: wrap; align-items: flex-start; }
+.fer-form .form-row { flex: 1; min-width: 140px; margin-bottom: 0; }
+.input-toolbar { padding: 8px 11px; border-radius: 9px; border: 1px solid var(--border); font-size: 13px; background: white; }
+
+@media (max-width: 860px) {
+  .ponto-layout { grid-template-columns: 1fr; }
+  .input-toolbar { font-size: 16px; }
+  .escala-editor input[type="time"] { font-size: 16px; }
+}
+
 /* ---------- Celular e tablet ---------- */
 /* No computador a barra superior e o fundo escuro da gaveta não aparecem. */
 .mobile-topbar, .sidebar-overlay { display: none; }

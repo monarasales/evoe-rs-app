@@ -8,12 +8,6 @@ function escapeHtml(str) {
   return div.innerHTML;
 }
 
-function formatarHora(data) {
-  if (!data) return "—";
-  const d = new Date(data);
-  return d.toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" });
-}
-
 const DIAS_SEMANA = [
   { valor: "segunda", label: "Seg" },
   { valor: "terça", label: "Ter" },
@@ -76,18 +70,17 @@ function formatarDataBr(dataIso) {
 }
 
 const ABAS = [
-  { id: "ponto", label: "Ponto" },
   { id: "colaboradores", label: "Cadastro de Colaboradores" },
 ];
 
 export async function renderColaboradores(root) {
-  let abaAtiva = "ponto";
+  let abaAtiva = "colaboradores";
 
   root.innerHTML = `
     <div class="view-header">
       <div>
         <h2>Colaboradores</h2>
-        <div class="sub">Gerenciar pontos de entrada/saída e cadastro de funcionários.</div>
+        <div class="sub">Cadastro de funcionários. Marcações, saldos e escalas ficam em Gestão do Ponto.</div>
       </div>
     </div>
     <div class="tabs" id="colaboradores-tabs">
@@ -112,85 +105,7 @@ export async function renderColaboradores(root) {
 
   function renderizarAba() {
     marcarAbaAtiva();
-    if (abaAtiva === "ponto") renderAbaPonto();
-    else renderAbaCadastro();
-  }
-
-  // ========== Aba: Ponto ==========
-  function renderAbaPonto() {
-    conteudo.innerHTML = `
-      <div class="view-header" style="margin-bottom:10px;">
-        <div class="sub">Histórico de entrada e saída dos colaboradores.</div>
-      </div>
-      <div id="tabela-ponto"></div>
-    `;
-    carregarPontosColaboradores();
-  }
-
-  async function carregarPontosColaboradores() {
-    try {
-      const pontos = await api.get("/api/ponto/colaboradores");
-      const tabela = conteudo.querySelector("#tabela-ponto");
-
-      if (!pontos || pontos.length === 0) {
-        tabela.innerHTML = '<div class="empty-state">Nenhum ponto registrado</div>';
-        return;
-      }
-
-      tabela.innerHTML = `
-        <table>
-          <thead>
-            <tr>
-              <th>Colaborador</th>
-              <th>Data</th>
-              <th>Entrada</th>
-              <th>Saída</th>
-              <th>Pausa</th>
-              <th>Total</th>
-            </tr>
-          </thead>
-          <tbody>
-            ${pontos.map((p) => {
-              const data = formatarDataBr(p.data);
-              const entrada = formatarHora(p.entrada);
-              const saida = formatarHora(p.saida);
-
-              let pausaTempo = "—";
-              if (p.pausaEntrada && p.pausaSaida) {
-                const diff = new Date(p.pausaSaida) - new Date(p.pausaEntrada);
-                const minutos = Math.floor(diff / 60000);
-                pausaTempo = `${minutos}m`;
-              }
-
-              let total = "—";
-              if (p.entrada && p.saida) {
-                // Descontar pausa do total
-                let diff = new Date(p.saida) - new Date(p.entrada);
-                if (p.pausaEntrada && p.pausaSaida) {
-                  diff -= (new Date(p.pausaSaida) - new Date(p.pausaEntrada));
-                }
-                const horas = Math.floor(diff / 3600000);
-                const minutos = Math.floor((diff % 3600000) / 60000);
-                total = `${horas}h ${minutos}m`;
-              }
-
-              return `
-                <tr>
-                  <td><strong>${escapeHtml(p.colaboradorNome)}</strong></td>
-                  <td>${data}</td>
-                  <td>${entrada}</td>
-                  <td>${saida}</td>
-                  <td>${pausaTempo}</td>
-                  <td>${total}</td>
-                </tr>
-              `;
-            }).join("")}
-          </tbody>
-        </table>
-      `;
-    } catch (err) {
-      conteudo.querySelector("#tabela-ponto").innerHTML = `<div class="empty-state">Erro ao carregar dados</div>`;
-    }
+    renderAbaCadastro();
   }
 
   // ========== Aba: Cadastro de Colaboradores ==========
@@ -359,10 +274,12 @@ export async function renderColaboradores(root) {
           </select>
           <div class="sub" style="margin-top:4px;">Quem não aparece na lista precisa primeiro ganhar um login em Configurações › Equipe e Usuários.</div>
         </div>
-        <div class="form-cols">
-          <div class="form-row"><label>Horário de início</label><input type="time" id="col-inicio" value="${escapeHtml(c.horarioInicio || "08:00")}" /></div>
-          <div class="form-row"><label>Horário de fim</label><input type="time" id="col-fim" value="${escapeHtml(c.horarioFim || "18:00")}" /></div>
+        <div class="form-row">
+          <label>Início do controle de ponto</label>
+          <input type="date" id="col-inicio-ponto" value="${v("dataInicioPonto") || (editando ? "" : new Date().toLocaleDateString("en-CA"))}" />
+          <div class="sub" style="margin-top:4px;">Dias antes desta data não são cobrados (nem contam como falta). Em branco = a partir da primeira marcação.</div>
         </div>
+        <div class="sub" style="margin-bottom:12px;">Os horários de trabalho (escala) ficam em Gestão do Ponto › Escalas.</div>
         <div class="form-row">
           <label>Dias de home office</label>
           <div style="display:flex; flex-wrap:wrap; gap:6px 14px;">
@@ -481,11 +398,10 @@ export async function renderColaboradores(root) {
         bairroResidencial: $("col-bairro").value.trim(),
         cidadeResidencial: $("col-cidade").value.trim(),
         estadoResidencial: $("col-uf").value.trim().toUpperCase(),
-        horarioInicio: $("col-inicio").value,
-        horarioFim: $("col-fim").value,
         diasHomeOffice: [...document.querySelectorAll(".col-dia-ho:checked")].map((el) => el.value),
         ativo: $("col-ativo").checked,
         consultorId: $("col-login").value || null,
+        dataInicioPonto: $("col-inicio-ponto").value,
       };
 
       const btnSalvar = ev.submitter || $("form-colaborador").querySelector("button[type=submit]");

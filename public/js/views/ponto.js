@@ -1,334 +1,206 @@
+// Meu Ponto — tela do colaborador. Mostra SÓ os próprios dados (o servidor
+// identifica a pessoa pela sessão). Sem rótulos de julgamento: os números
+// aparecem, a conclusão da gestão sobre eles não.
+
 import { api } from "../api.js";
-import { store, showToast } from "../state.js";
+import { showToast } from "../state.js";
+import {
+  escapeHtml,
+  NOME_DIA,
+  NOME_DIA_EXTENSO,
+  NOME_MES,
+  duracao,
+  saldo,
+  dataCurta,
+  dataBr,
+  situacaoDia,
+  horariosDia,
+  ocorrenciasDia,
+} from "../pontoUtil.js";
 
-function formatarHora(data) {
-  if (!data) return "—";
-  const d = new Date(data);
-  return d.toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" });
-}
-
-// Solicitar localização GPS
-async function obterLocalizacao() {
+function obterLocalizacao() {
   return new Promise((resolve, reject) => {
-    if (!navigator.geolocation) {
-      reject(new Error("Geolocalização não suportada por este navegador."));
-      return;
-    }
-
+    if (!navigator.geolocation) return reject(new Error("Este navegador não informa a localização"));
     navigator.geolocation.getCurrentPosition(
-      (position) => {
-        resolve({
-          lat: position.coords.latitude,
-          long: position.coords.longitude,
-        });
-      },
-      (error) => {
-        reject(new Error(`Erro ao obter localização: ${error.message}`));
-      },
-      {
-        enableHighAccuracy: true,
-        timeout: 10000,
-        maximumAge: 0,
-      }
+      (pos) => resolve({ lat: pos.coords.latitude, long: pos.coords.longitude }),
+      (err) => reject(new Error(err.code === 1 ? "Acesso à localização negado" : "Não foi possível obter a localização")),
+      { enableHighAccuracy: true, timeout: 15000, maximumAge: 0 }
     );
   });
 }
 
-export async function renderPonto(root) {
-  const usuario = store.usuario;
-  let localizacaoAtual = null;
+function distanciaMetros(a, b) {
+  const R = 6371000;
+  const rad = (x) => (x * Math.PI) / 180;
+  const dLat = rad(b.lat - a.lat);
+  const dLon = rad(b.long - a.long);
+  const h = Math.sin(dLat / 2) ** 2 + Math.cos(rad(a.lat)) * Math.cos(rad(b.lat)) * Math.sin(dLon / 2) ** 2;
+  return Math.round(R * 2 * Math.atan2(Math.sqrt(h), Math.sqrt(1 - h)));
+}
 
+export async function renderPonto(root) {
   root.innerHTML = `
     <div class="view-header">
       <div>
-        <h2>Ponto</h2>
-        <div class="sub">Registre sua entrada, saída e pausas. Sistema valida sua localização.</div>
+        <h2>Meu Ponto</h2>
+        <div class="sub">Registre suas marcações e acompanhe sua jornada.</div>
       </div>
     </div>
+    <div id="mp-conteudo"><div class="empty-state">Carregando...</div></div>
+  `;
+  const conteudo = root.querySelector("#mp-conteudo");
 
-    <div id="ponto-container" style="padding: 20px;">
-      <div style="max-width: 700px; margin: 0 auto;">
-        <!-- Card com informações do usuário -->
-        <div class="card" style="text-align: center; padding: 30px; margin-bottom: 20px;">
-          <h3>${usuario.nome}</h3>
-          <p class="sub" style="margin-bottom: 20px;">${usuario.perfil}</p>
+  let situacao;
+  try {
+    situacao = await api.get("/api/ponto/meu/hoje");
+  } catch (err) {
+    conteudo.innerHTML = `<div class="card ponto-card"><div class="ponto-aviso">⚠️ ${escapeHtml(err.message)}</div></div>`;
+    return;
+  }
 
-          <div id="status-ponto" style="margin-bottom: 30px;">
-            <div style="font-size: 48px; margin-bottom: 10px;">📍</div>
-            <div id="status-texto" class="sub" style="font-size: 14px;">Aguardando localização...</div>
-            <div id="status-localizacao" style="font-size: 12px; color: #666; margin-top: 10px;"></div>
-            <div id="status-distancia" style="font-size: 14px; font-weight: bold; margin-top: 10px; color: #2ecc71;"></div>
-          </div>
+  let localizacao = null;
+  const agora = new Date();
+  let mesSel = { ano: agora.getFullYear(), mes: agora.getMonth() + 1 };
 
-          <button id="btn-bater-ponto" class="btn btn-primary btn-block" style="padding: 20px; font-size: 18px; margin-bottom: 10px;">
-            BATER PONTO
-          </button>
-          <div id="erro-localizacao" class="sub" style="color: #c0392b; margin-top: 10px;"></div>
+  conteudo.innerHTML = `
+    <div class="ponto-layout">
+      <div class="card ponto-card">
+        <div class="ponto-data" id="mp-data"></div>
+        <div class="sub" id="mp-escala"></div>
+        <div class="ponto-local" id="mp-local">📍 Obtendo sua localização...</div>
+        <button id="mp-bater" class="btn btn-primary btn-block ponto-botao" disabled>...</button>
+        <div id="mp-erro" class="ponto-aviso hidden"></div>
+        <div class="ponto-hoje-titulo">Marcações de hoje</div>
+        <div id="mp-marcacoes" class="ponto-marcacoes"></div>
+        <div class="sub" id="mp-cumprido"></div>
+      </div>
+
+      <div class="card">
+        <div class="ponto-mes-nav">
+          <button type="button" class="btn btn-outline btn-sm" id="mp-mes-ant" aria-label="Mês anterior">‹</button>
+          <strong id="mp-mes-titulo"></strong>
+          <button type="button" class="btn btn-outline btn-sm" id="mp-mes-prox" aria-label="Próximo mês">›</button>
         </div>
-
-        <!-- Zona de Segurança -->
-        <div class="card" style="margin-bottom: 20px;">
-          <h3 style="margin-bottom: 15px;">🗺️ Validação de Local</h3>
-          <div id="info-zona" style="padding: 15px; background: #f9f9f9; border-radius: 6px; font-size: 13px;">
-            <p style="margin: 8px 0;"><strong>Sua localização:</strong> <span id="sua-localizacao">—</span></p>
-            <p style="margin: 8px 0;"><strong>Local permitido:</strong> <span id="local-permitido">—</span></p>
-            <p style="margin: 8px 0;"><strong>Distância:</strong> <span id="distancia-metros">—</span></p>
-            <p style="margin: 8px 0;"><strong>Raio permitido:</strong> <span id="raio-permitido">500 m</span></p>
-          </div>
-        </div>
-
-        <!-- Histórico do dia -->
-        <div class="card" style="margin-bottom: 20px;">
-          <h3 style="margin-bottom: 20px;">Histórico de Hoje</h3>
-          <div id="historico-ponto">
-            <div class="empty-state" style="padding: 20px;">Nenhum ponto registrado ainda</div>
-          </div>
-        </div>
-
-        <!-- Histórico da semana -->
-        <div class="card">
-          <h3 style="margin-bottom: 20px;">Últimos 7 Dias</h3>
-          <div id="historico-semana">
-            <table style="width: 100%; font-size: 12px;">
-              <thead>
-                <tr style="border-bottom: 2px solid #e0e0e0;">
-                  <th style="text-align: left; padding: 10px;">Data</th>
-                  <th style="text-align: center; padding: 10px;">Entrada</th>
-                  <th style="text-align: center; padding: 10px;">Saída</th>
-                  <th style="text-align: center; padding: 10px;">Total</th>
-                </tr>
-              </thead>
-              <tbody id="tabela-historico">
-              </tbody>
-            </table>
-          </div>
-        </div>
+        <div id="mp-resumo" class="ponto-resumo"></div>
+        <div id="mp-dias"></div>
       </div>
     </div>
   `;
 
-  const btnBaterPonto = root.querySelector("#btn-bater-ponto");
-  const statusTexto = root.querySelector("#status-texto");
-  const statusLocalizacao = root.querySelector("#status-localizacao");
-  const statusDistancia = root.querySelector("#status-distancia");
-  const erroLocalizacao = root.querySelector("#erro-localizacao");
-  const historicoPonto = root.querySelector("#historico-ponto");
-  const tabelaHistorico = root.querySelector("#tabela-historico");
-  const suaLocalizacao = root.querySelector("#sua-localizacao");
-  const localPermitido = root.querySelector("#local-permitido");
-  const distanciaMetros = root.querySelector("#distancia-metros");
-  const raioPermitido = root.querySelector("#raio-permitido");
+  const $ = (id) => conteudo.querySelector(`#${id}`);
+  const btn = $("mp-bater");
 
-  let meuCadastro = null;
-  let pontoHoje = null;
+  function desenharHoje() {
+    const s = situacao;
+    const [, m, d] = s.hoje.split("-");
+    $("mp-data").textContent = `${NOME_DIA_EXTENSO[s.diaSemana]}, ${d}/${m}`;
+    const e = s.escalaHoje;
+    $("mp-escala").textContent = s.feriado
+      ? `Feriado: ${s.feriado}`
+      : e
+      ? `Sua escala hoje: ${e.entrada}${e.saidaAlmoco ? `–${e.saidaAlmoco} / ${e.voltaAlmoco}` : ""}–${e.saida} (${duracao(s.cargaEsperadaHoje)})`
+      : "Hoje você não tem expediente na escala.";
 
-  // Qual será o próximo registro ao tocar no botão (mesma ordem do servidor).
-  function proximaAcao(p) {
-    if (!p || !p.entrada) return "Registrar ENTRADA";
-    if (p.saida) return null;
-    if (!p.pausaEntrada) return "Iniciar PAUSA";
-    if (!p.pausaSaida) return "VOLTAR da pausa";
-    return "Registrar SAÍDA";
+    $("mp-marcacoes").innerHTML = s.marcacoes.length
+      ? s.marcacoes
+          .map((mk, i) => `<div class="ponto-marcacao"><span class="sub">${i + 1}ª</span> <strong>${mk.hora}</strong>${mk.dentroZona === false ? ' <span title="Fora do local esperado">⚠️</span>' : ""}</div>`)
+          .join("")
+      : '<div class="sub">Nenhuma marcação ainda.</div>';
+    $("mp-cumprido").textContent = s.marcacoes.length
+      ? `Trabalhado até agora: ${duracao(s.cargaCumpridaAteAgora)}${s.atrasoMin > 0 ? ` · entrada ${duracao(s.atrasoMin)} após o horário` : ""}`
+      : "";
+
+    btn.textContent = s.ativo ? s.proximaAcao : "Cadastro inativo";
+    btn.disabled = !s.ativo || !localizacao;
   }
 
-  function atualizarBotao() {
-    if (!meuCadastro || !meuCadastro.ativo) {
-      btnBaterPonto.disabled = true;
-      btnBaterPonto.textContent = "PONTO INDISPONÍVEL";
-      return;
-    }
-    const acao = proximaAcao(pontoHoje);
-    btnBaterPonto.disabled = !acao;
-    btnBaterPonto.textContent = acao || "JORNADA DE HOJE ENCERRADA";
-  }
-
-  const temCoordenadas = (loc) => loc && loc.lat != null && loc.long != null;
-
-  // Carregar cadastro + localização
-  async function carregarLocalizacaoAtual() {
-    erroLocalizacao.textContent = "";
-
+  async function carregarLocalizacao() {
+    const localEl = $("mp-local");
     try {
-      meuCadastro = await api.get("/api/ponto/meu-cadastro");
-    } catch (err) {
-      meuCadastro = null;
-      statusTexto.textContent = "Ponto indisponível para o seu usuário";
-      erroLocalizacao.textContent = `⚠️ ${err.message}`;
-      atualizarBotao();
-      return;
-    }
-    if (!meuCadastro.ativo) {
-      statusTexto.textContent = "Seu cadastro de colaborador está inativo. Fale com o Gestor.";
-      atualizarBotao();
-      return;
-    }
-    atualizarBotao();
-
-    try {
-      statusTexto.textContent = "📍 Obtendo sua localização...";
-      const loc = await obterLocalizacao();
-      localizacaoAtual = loc;
-      suaLocalizacao.textContent = `${loc.lat.toFixed(4)}, ${loc.long.toFixed(4)}`;
-
-      const casa = meuCadastro.ehHomeOffice && temCoordenadas(meuCadastro.localizacaoResidencial);
-      const alvo = casa
-        ? { nome: "casa", endereco: meuCadastro.enderecoResidencial, loc: meuCadastro.localizacaoResidencial, raio: meuCadastro.raioTolerancia }
-        : temCoordenadas(meuCadastro.localizacaoEmpresa)
-        ? { nome: "empresa", endereco: meuCadastro.enderecoEmpresa, loc: meuCadastro.localizacaoEmpresa, raio: meuCadastro.raioEmpresa }
-        : null;
-
+      localizacao = await obterLocalizacao();
+      const alvo = situacao.localEsperado;
       if (!alvo) {
-        statusTexto.textContent = meuCadastro.ehHomeOffice
-          ? "📍 Hoje é home office — localização registrada"
-          : "📍 Localização registrada";
-        localPermitido.textContent = "Não configurado";
-        return;
-      }
-
-      localPermitido.textContent = alvo.endereco || (alvo.nome === "casa" ? "Sua casa" : "Empresa");
-      raioPermitido.textContent = `${alvo.raio} m`;
-      const distRound = Math.round(calcularDistancia(loc.lat, loc.long, alvo.loc.lat, alvo.loc.long));
-      distanciaMetros.textContent = `${distRound} m`;
-      if (distRound <= alvo.raio) {
-        statusTexto.textContent = alvo.nome === "casa" ? "✅ Você está em casa (home office)" : "✅ Você está na empresa";
-        statusDistancia.textContent = `${distRound}m de distância`;
-        statusDistancia.style.color = "#2ecc71";
+        localEl.innerHTML = "📍 Localização obtida.";
       } else {
-        statusTexto.textContent = alvo.nome === "casa" ? "⚠️ Você está longe de casa" : "⚠️ Você está longe da empresa";
-        statusDistancia.textContent = `${distRound}m (limite: ${alvo.raio}m) — o ponto é registrado com aviso`;
-        statusDistancia.style.color = "#f39c12";
+        const dist = distanciaMetros(localizacao, alvo.loc);
+        const onde = alvo.nome === "casa" ? "casa (home office)" : "escritório";
+        localEl.innerHTML =
+          dist <= alvo.raio
+            ? `✅ Você está no ${onde === "escritório" ? "escritório" : "local do home office"} <span class="sub">(${dist} m)</span>`
+            : `⚠️ Você está a <strong>${dist} m</strong> do ${onde}. <span class="sub">O ponto será registrado com aviso.</span>`;
       }
     } catch (err) {
-      erroLocalizacao.textContent = `⚠️ ${err.message}. Permita o acesso à localização no navegador para bater o ponto.`;
-      statusTexto.textContent = "Erro ao obter localização";
+      localizacao = null;
+      localEl.innerHTML = `⚠️ ${escapeHtml(err.message)}. <button type="button" class="link-btn" id="mp-tentar">Tentar de novo</button>
+        <div class="sub">Para bater o ponto, permita o acesso à localização nas configurações do navegador.</div>`;
+      $("mp-tentar").addEventListener("click", carregarLocalizacao);
     }
+    desenharHoje();
   }
 
-  function calcularDistancia(lat1, lon1, lat2, lon2) {
-    const R = 6371;
-    const dLat = ((lat2 - lat1) * Math.PI) / 180;
-    const dLon = ((lon2 - lon1) * Math.PI) / 180;
-    const a =
-      Math.sin(dLat / 2) * Math.sin(dLat / 2) +
-      Math.cos((lat1 * Math.PI) / 180) *
-        Math.cos((lat2 * Math.PI) / 180) *
-        Math.sin(dLon / 2) *
-        Math.sin(dLon / 2);
-    const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
-    return R * c * 1000;
-  }
-
-  async function carregarPontosDeHoje() {
+  btn.addEventListener("click", async () => {
+    if (!localizacao) return;
+    btn.disabled = true;
+    btn.textContent = "Registrando...";
+    $("mp-erro").classList.add("hidden");
     try {
-      const hoje = new Date().toLocaleDateString("en-CA"); // data local AAAA-MM-DD
-      const pontos = await api.get(`/api/ponto/dia/${hoje}`);
-      pontoHoje = pontos && pontos[0] ? pontos[0] : null;
-      atualizarBotao();
-
-      if (!pontos || pontos.length === 0) {
-        historicoPonto.innerHTML = '<div class="empty-state" style="padding: 20px;">Nenhum ponto registrado ainda</div>';
-        return;
-      }
-
-      historicoPonto.innerHTML = `
-        <table style="width: 100%; font-size: 13px;">
-          <tr>
-            <td style="padding: 12px; border-bottom: 1px solid #e0e0e0;">
-              <div class="sub">Entrada</div>
-              <div style="font-size: 16px; font-weight: bold;">${formatarHora(pontos[0]?.entrada)}</div>
-              ${pontos[0]?.entradaDentroZona ? "✅" : "⚠️"}
-            </td>
-            <td style="padding: 12px; border-bottom: 1px solid #e0e0e0;">
-              <div class="sub">Pausa</div>
-              <div style="font-size: 16px; font-weight: bold;">${formatarHora(pontos[0]?.pausaEntrada)}</div>
-            </td>
-          </tr>
-          <tr>
-            <td style="padding: 12px;">
-              <div class="sub">Volta</div>
-              <div style="font-size: 16px; font-weight: bold;">${formatarHora(pontos[0]?.pausaSaida)}</div>
-            </td>
-            <td style="padding: 12px;">
-              <div class="sub">Saída</div>
-              <div style="font-size: 16px; font-weight: bold;">${formatarHora(pontos[0]?.saida)}</div>
-              ${pontos[0]?.saidaDentroZona !== undefined ? (pontos[0]?.saidaDentroZona ? "✅" : "⚠️") : ""}
-            </td>
-          </tr>
-        </table>
-      `;
+      const r = await api.post("/api/ponto/bater", localizacao);
+      showToast(`Ponto registrado às ${r.hora}`, "sucesso");
+      situacao = await api.get("/api/ponto/meu/hoje");
+      carregarMes();
     } catch (err) {
-      console.error("Erro ao carregar pontos:", err);
+      $("mp-erro").textContent = `⚠️ ${err.message}`;
+      $("mp-erro").classList.remove("hidden");
     }
-  }
-
-  async function carregarHistoricoSemana() {
-    try {
-      const pontos = await api.get("/api/ponto/semana");
-      if (!pontos || pontos.length === 0) {
-        tabelaHistorico.innerHTML = '<tr><td colspan="4" style="text-align: center; padding: 20px;" class="sub">Nenhum registro</td></tr>';
-        return;
-      }
-
-      tabelaHistorico.innerHTML = pontos.map((p) => {
-        const data = p.data ? p.data.split("-").reverse().join("/") : "—";
-        const entrada = formatarHora(p.entrada);
-        const saida = formatarHora(p.saida);
-
-        let total = "—";
-        if (p.entrada && p.saida) {
-          const diff = new Date(p.saida) - new Date(p.entrada);
-          let duracao = diff;
-          if (p.pausaEntrada && p.pausaSaida) {
-            duracao -= new Date(p.pausaSaida) - new Date(p.pausaEntrada);
-          }
-          const horas = Math.floor(duracao / 3600000);
-          const minutos = Math.floor((duracao % 3600000) / 60000);
-          total = `${horas}h ${minutos}m`;
-        }
-
-        const iconeEntrada = p.entradaDentroZona ? "✅" : "⚠️";
-
-        return `
-          <tr style="border-bottom: 1px solid #f0f0f0;">
-            <td style="padding: 10px;">${data}</td>
-            <td style="text-align: center; padding: 10px;">${entrada} ${iconeEntrada}</td>
-            <td style="text-align: center; padding: 10px;">${saida}</td>
-            <td style="text-align: center; padding: 10px;">${total}</td>
-          </tr>
-        `;
-      }).join("");
-    } catch (err) {
-      console.error("Erro ao carregar histórico:", err);
-    }
-  }
-
-  btnBaterPonto.addEventListener("click", async () => {
-    if (!localizacaoAtual) {
-      showToast("Localização não carregada. Tente novamente.", "erro");
-      return;
-    }
-
-    btnBaterPonto.disabled = true;
-    btnBaterPonto.textContent = "Processando...";
-
-    try {
-      await api.post("/api/ponto/bater", {
-        lat: localizacaoAtual.lat,
-        long: localizacaoAtual.long,
-      });
-      showToast("Ponto registrado com sucesso!", "sucesso");
-      await carregarPontosDeHoje();
-      await carregarHistoricoSemana();
-      await carregarLocalizacaoAtual();
-    } catch (err) {
-      showToast(err.message || "Erro ao bater ponto", "erro");
-    } finally {
-      atualizarBotao();
-    }
+    desenharHoje();
   });
 
-  // Carregar dados iniciais
-  await carregarLocalizacaoAtual();
-  await carregarPontosDeHoje();
-  await carregarHistoricoSemana();
+  async function carregarMes() {
+    $("mp-mes-titulo").textContent = `${NOME_MES[mesSel.mes - 1]} ${mesSel.ano}`;
+    $("mp-dias").innerHTML = '<div class="empty-state">Carregando...</div>';
+    try {
+      const r = await api.get(`/api/ponto/meu/periodo?ano=${mesSel.ano}&mes=${mesSel.mes}`);
+      const res = r.resumo;
+      const ate = r.periodo.aberto ? ` até ${dataBr(r.periodo.fimFechado)}` : "";
+      $("mp-resumo").innerHTML = `
+        <div class="ponto-kpi"><div class="kpi-label">Banco de horas do mês${ate}</div><div class="kpi-value ${res.saldo < 0 ? "saldo-neg" : res.saldo > 0 ? "saldo-pos" : ""}">${saldo(res.saldo)}</div></div>
+        <div class="ponto-kpi"><div class="kpi-label">Trabalhado / esperado</div><div class="kpi-value">${duracao(res.cargaCumprida)} <span class="sub">/ ${duracao(res.cargaEsperada)}</span></div></div>
+        <div class="ponto-kpi"><div class="kpi-label">Atrasos</div><div class="kpi-value">${res.atrasos}</div></div>
+        <div class="ponto-kpi"><div class="kpi-label">Faltas</div><div class="kpi-value">${res.faltas}</div></div>
+        <div class="ponto-kpi"><div class="kpi-label">Pendências</div><div class="kpi-value">${res.pendentes}</div></div>
+      `;
+      const dias = r.dias.filter((d) => d.status !== "sem_escala" || d.foraDaEscala);
+      $("mp-dias").innerHTML = dias.length
+        ? `<div class="sub" style="margin:10px 0 6px;">Dias com marcação faltando ficam de fora do banco de horas até serem resolvidos.</div>
+           <div class="tabela-rolavel"><table class="ponto-tabela">
+            <thead><tr><th>Dia</th><th>Marcações</th><th>Trabalhado</th><th>Saldo</th></tr></thead>
+            <tbody>${dias
+              .map(
+                (d) => `<tr>
+                  <td><strong>${dataCurta(d.data)}</strong> <span class="sub">${NOME_DIA[d.diaSemana]}</span></td>
+                  <td>${horariosDia(d)}<div>${ocorrenciasDia(d)}</div></td>
+                  <td>${d.horarios.length ? duracao(d.cargaCumprida) : "—"}</td>
+                  <td>${situacaoDia(d)}</td>
+                </tr>`
+              )
+              .join("")}</tbody>
+          </table></div>`
+        : '<div class="empty-state">Nenhum dia de expediente neste mês até agora.</div>';
+    } catch (err) {
+      $("mp-dias").innerHTML = `<div class="empty-state">${escapeHtml(err.message)}</div>`;
+    }
+  }
+
+  $("mp-mes-ant").addEventListener("click", () => {
+    mesSel = mesSel.mes === 1 ? { ano: mesSel.ano - 1, mes: 12 } : { ano: mesSel.ano, mes: mesSel.mes - 1 };
+    carregarMes();
+  });
+  $("mp-mes-prox").addEventListener("click", () => {
+    mesSel = mesSel.mes === 12 ? { ano: mesSel.ano + 1, mes: 1 } : { ano: mesSel.ano, mes: mesSel.mes + 1 };
+    carregarMes();
+  });
+
+  desenharHoje();
+  carregarLocalizacao();
+  carregarMes();
 }

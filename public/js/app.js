@@ -11,6 +11,7 @@ import { renderCrm } from "./views/crm.js";
 import { renderFinanceiro } from "./views/financeiro.js";
 import { renderPonto } from "./views/ponto.js";
 import { renderColaboradores } from "./views/colaboradores.js";
+import { renderPontoGestao } from "./views/pontoGestao.js";
 
 const loginScreen = document.getElementById("login-screen");
 const mainScreen = document.getElementById("main-screen");
@@ -50,7 +51,8 @@ const NAV_SECOES = [
     titulo: "RH e Colaboradores",
     itens: [
       { href: "#/colaboradores", label: "Colaboradores", icone: "👔", somenteGestor: true },
-      { href: "#/ponto", label: "Ponto", icone: "⏱️" },
+      { href: "#/ponto", label: "Meu Ponto", icone: "⏱️" },
+      { href: "#/ponto-gestao", label: "Gestão do Ponto", icone: "🗓️", somenteGestor: true },
     ],
   },
   {
@@ -187,6 +189,7 @@ function registrarRotas() {
   registrarRota("/crm", renderCrm);
   registrarRota("/financeiro", renderFinanceiro);
   registrarRota("/ponto", renderPonto);
+  registrarRota("/ponto-gestao", renderPontoGestao);
   registrarRota("/colaboradores", renderColaboradores);
 }
 
