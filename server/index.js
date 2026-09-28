@@ -92,6 +92,9 @@ startDeadlineChecker(60);
 startContratoChecker(60);
 startBackupDiario(60);
 
+// Configuração inicial do ponto (escritório, feriados, vínculos) — roda em segundo plano.
+require("./utils/ponto/configInicial").aplicarConfiguracaoInicial();
+
 app.listen(PORT, () => {
   console.log(`\nEvoé Gestão e RH — Sistema de R&S rodando em http://localhost:${PORT}\n`);
 });
