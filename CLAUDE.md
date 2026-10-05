@@ -47,6 +47,7 @@ Baseado no documento "Controle de Ponto Próprio" (Resolut). Construído por eta
   com a usuária antes de fazer push.
 
 ## Cuidados
+- **REGRA DA DONA DO SISTEMA: qualquer melhoria deve preservar TODAS as informações já existentes no banco e no sistema.** Nunca apagar/renomear campos ou coleções; formulários atualizam por merge (campos que a tela não mostra continuam gravados); migrações só acrescentam e são idempotentes; testar com dados no formato antigo antes de publicar.
 - Toda rota `/api/*` exige login (middleware central em `server/index.js`), exceto `/api/auth/*`.
 - Busca de CEP/coordenadas fica em `server/utils/cep.js` (ViaCEP → BrasilAPI; Nominatim para lat/long) e nunca deve bloquear um cadastro.
 - O repositório é **público**. Nunca commitar `.env`, senhas, ou dados reais de

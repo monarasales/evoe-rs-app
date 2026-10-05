@@ -26,7 +26,8 @@ const EM_PRODUCAO = process.env.NODE_ENV === "production";
 // internamente o tráfego chegue em HTTP simples.
 if (EM_PRODUCAO) app.set("trust proxy", 1);
 
-app.use(express.json());
+// Limite maior para permitir o envio de currículos (até 8 MB, em base64).
+app.use(express.json({ limit: "12mb" }));
 app.use(
   session({
     name: "evoe.sid",
