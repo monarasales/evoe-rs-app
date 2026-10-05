@@ -51,6 +51,8 @@ const ETAPAS_PROSPECT = ["Novo", "Em Contato", "Proposta Enviada", "Fechado", "P
 // (visão geral de todos os consultores) — mas sem acesso a Contratos nem a Configurações
 // (equipe/login de consultores, empresas, parâmetros do sistema), que seguem só do Gestor.
 const PERFIS_ACESSO = ["Gestor", "Supervisora", "Recrutador"];
+// Perfis que conduzem vagas (aparecem como "consultor responsável" e nos quadros por consultor).
+const PERFIS_CONDUZEM_VAGAS = ["Recrutador", "Supervisora"];
 
 const DIAS_ALERTA_PRAZO = 3; // dias antes do prazo para disparar "Prazo Próximo do Vencimento"
 
@@ -97,6 +99,7 @@ const CONTRATO_PADRAO = {
 };
 
 module.exports = {
+  PERFIS_CONDUZEM_VAGAS,
   ETAPAS_VAGA,
   ETAPAS_ENCERRADAS,
   ETAPAS_CANDIDATO,

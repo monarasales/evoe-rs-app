@@ -1,5 +1,6 @@
 const express = require("express");
 const db = require("../db");
+const { PERFIS_CONDUZEM_VAGAS } = require("../utils/constants");
 const { requireAuth } = require("../middleware/auth");
 const { computeVagaFields, hojeStr } = require("../utils/vagaCompute");
 const {
@@ -98,10 +99,13 @@ router.get("/dashboard", requireAuth, (req, res) => {
 
   // Consultores considerados nos quadros "por consultor": se a visão já está
   // restrita a um único consultor (recrutador logado, ou filtro do gestor),
-  // usa só ele; senão, todos os recrutadores ativos da equipe.
+  // usa só ele; senão, quem conduz vagas (Recrutador/Supervisora) e qualquer pessoa
+  // que tenha vaga no nome — assim nenhuma vaga fica fora dos quadros.
   const consultoresRelevantes = scopeConsultorId
     ? consultores.filter((c) => c.id === scopeConsultorId)
-    : consultores.filter((c) => c.perfil === "Recrutador");
+    : consultores.filter(
+        (c) => PERFIS_CONDUZEM_VAGAS.includes(c.perfil) || db.readCollection("vagas").some((v) => v.consultorId === c.id)
+      );
 
   // --- SLA de fechamento (10 / 15 dias, com peso 2 / 1 / 0) --------------------------
   const anoMesAtual = hojeStr().slice(0, 7);

@@ -1,5 +1,5 @@
 import { api } from "../api.js";
-import { store, podeGerenciarVagas, showToast, nomeEmpresa, nomeConsultor, formatarData } from "../state.js";
+import { store, podeGerenciarVagas, showToast, nomeEmpresa, nomeConsultor, formatarData, consultoresDeVagas } from "../state.js";
 import { abrirModal, fecharModal } from "../modal.js";
 import { navegarPara } from "../router.js";
 
@@ -129,7 +129,7 @@ export async function renderKanban(root) {
     abertas.forEach((v) => {
       porConsultor[v.consultorId] = (porConsultor[v.consultorId] || 0) + 1;
     });
-    const recrutadores = store.consultores.filter((c) => c.perfil === "Recrutador" && c.ativo !== false);
+    const recrutadores = consultoresDeVagas(abertas);
     if (recrutadores.length === 0) {
       resumoEl.innerHTML = "";
       return;
@@ -328,7 +328,7 @@ export async function renderKanban(root) {
           <div class="form-row">
             <label>Consultor responsável</label>
             <select id="v-consultor" required ${podeEditar && podeGerenciarVagas() ? "" : "disabled"}>
-              ${store.consultores.filter((c) => c.perfil === "Recrutador" || c.id === (vaga && vaga.consultorId)).map((c) => `<option value="${c.id}" ${editando ? (vaga.consultorId === c.id ? "selected" : "") : (c.id === store.usuario.id ? "selected" : "")}>${c.nome}</option>`).join("")}
+              ${consultoresDeVagas([], vaga && vaga.consultorId).map((c) => `<option value="${c.id}" ${editando ? (vaga.consultorId === c.id ? "selected" : "") : (c.id === store.usuario.id ? "selected" : "")}>${c.nome}</option>`).join("")}
             </select>
           </div>
         </div>
