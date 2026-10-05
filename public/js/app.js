@@ -43,7 +43,7 @@ const NAV_SECOES = [
   {
     titulo: "Comercial",
     itens: [
-      { href: "#/crm", label: "CRM", icone: "🤝" },
+      { href: "#/crm", label: "CRM", icone: "🤝", somenteGestor: true },
       { href: "#/financeiro", label: "Financeiro", icone: "💰", somenteGestor: true },
     ],
   },

@@ -1,5 +1,5 @@
 import { api } from "../api.js";
-import { store, showToast, formatarData } from "../state.js";
+import { store, showToast, formatarData, isGestor } from "../state.js";
 import { abrirModal, fecharModal } from "../modal.js";
 
 function escapeHtml(str) {
@@ -22,6 +22,10 @@ const TAG_ETAPA_PROSPECT = {
 };
 
 export async function renderCrm(root) {
+  if (!isGestor()) {
+    root.innerHTML = '<div class="empty-state">A área Comercial é exclusiva do perfil Gestor.</div>';
+    return;
+  }
   let abaAtiva = "clientes";
 
   root.innerHTML = `

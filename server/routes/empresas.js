@@ -1,7 +1,11 @@
 const express = require("express");
 const db = require("../db");
+const { requireGestor } = require("../middleware/auth");
 
 const router = express.Router();
+
+// Consultar empresas: todos com login (o Funil e os Candidatos precisam do nome da
+// empresa de cada vaga). Criar, editar e excluir: só o Gestor (área Comercial/CRM).
 
 router.get("/", (req, res) => {
   res.json(db.readCollection("empresas"));
@@ -13,7 +17,7 @@ router.get("/:id", (req, res) => {
   res.json(empresa);
 });
 
-router.post("/", (req, res) => {
+router.post("/", requireGestor, (req, res) => {
   const {
     nome,
     cnpj,
@@ -40,13 +44,13 @@ router.post("/", (req, res) => {
   res.status(201).json(empresa);
 });
 
-router.patch("/:id", (req, res) => {
+router.patch("/:id", requireGestor, (req, res) => {
   const atualizado = db.update("empresas", req.params.id, req.body || {});
   if (!atualizado) return res.status(404).json({ erro: "Empresa não encontrada." });
   res.json(atualizado);
 });
 
-router.delete("/:id", (req, res) => {
+router.delete("/:id", requireGestor, (req, res) => {
   const emUso = db.readCollection("vagas").some((v) => v.empresaId === req.params.id);
   if (emUso) {
     return res.status(409).json({ erro: "Esta empresa possui vagas vinculadas e não pode ser excluída." });

@@ -5,10 +5,12 @@
 
 const express = require("express");
 const db = require("../db");
-const { requireAuth } = require("../middleware/auth");
+const { requireAuth, requireGestor } = require("../middleware/auth");
 const { SERVICOS_PROSPECT, ETAPAS_PROSPECT } = require("../utils/constants");
 
 const router = express.Router();
+// Área Comercial: exclusiva do perfil Gestor.
+router.use(requireAuth, requireGestor);
 
 router.get("/", requireAuth, (req, res) => {
   const prospects = db.readCollection("prospects").sort((a, b) => (a.createdAt < b.createdAt ? 1 : -1));
