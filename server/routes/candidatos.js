@@ -1,29 +1,11 @@
 const express = require("express");
-const fs = require("fs");
-const path = require("path");
 const db = require("../db");
+const { salvarCurriculo, caminhoCurriculo } = require("../utils/curriculos");
 const { requireAuth } = require("../middleware/auth");
 const { notify } = require("../utils/notify");
 const { ETAPAS_CANDIDATO } = require("../utils/constants");
 
 const router = express.Router();
-
-// Currículos ficam no disco de dados (no Render, o disco persistente /data), numa
-// pasta por candidato. Arquivos NUNCA são apagados: ao substituir um currículo, o
-// anterior continua guardado e listado em `curriculosAnteriores`.
-const PASTA_CURRICULOS = path.join(db.DATA_DIR, "curriculos");
-const TAMANHO_MAX = 8 * 1024 * 1024; // 8 MB
-const TIPOS_CURRICULO = {
-  ".pdf": "application/pdf",
-  ".doc": "application/msword",
-  ".docx": "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
-  ".odt": "application/vnd.oasis.opendocument.text",
-  ".rtf": "application/rtf",
-  ".txt": "text/plain",
-  ".jpg": "image/jpeg",
-  ".jpeg": "image/jpeg",
-  ".png": "image/png",
-};
 
 // Campos que a tela pode gravar. Atualização é sempre por MERGE: campos que não
 // vierem na requisição continuam como estão (nada se perde).
@@ -197,28 +179,13 @@ router.post("/:id/curriculo", requireAuth, (req, res) => {
     return res.status(403).json({ erro: "Você só pode anexar currículo em candidatos de vagas atribuídas a você." });
   }
   const { nomeArquivo, conteudoBase64 } = req.body || {};
-  const ext = path.extname(String(nomeArquivo || "")).toLowerCase();
-  if (!TIPOS_CURRICULO[ext]) return res.status(400).json({ erro: "Formato não aceito. Envie PDF, Word (DOC/DOCX), ODT, RTF, TXT ou imagem (JPG/PNG)." });
-  const buffer = Buffer.from(String(conteudoBase64 || ""), "base64");
-  if (!buffer.length) return res.status(400).json({ erro: "Arquivo vazio." });
-  if (buffer.length > TAMANHO_MAX) return res.status(400).json({ erro: "Arquivo maior que 8 MB." });
-
-  const pasta = path.join(PASTA_CURRICULOS, candidato.id);
-  fs.mkdirSync(pasta, { recursive: true });
-  const seguro = path.basename(String(nomeArquivo)).replace(/[^\w.\- ]+/g, "_").slice(-80);
-  const arquivo = `${Date.now()}-${seguro}`;
-  fs.writeFileSync(path.join(pasta, arquivo), buffer);
-
-  const novo = {
-    arquivo: `${candidato.id}/${arquivo}`,
-    nomeOriginal: path.basename(String(nomeArquivo)),
-    tipo: TIPOS_CURRICULO[ext],
-    tamanho: buffer.length,
-    enviadoEm: new Date().toISOString(),
-    enviadoPor: req.consultor.nome,
-  };
-  const anteriores = [...(candidato.curriculosAnteriores || []), ...(candidato.curriculo ? [candidato.curriculo] : [])];
-  res.json(db.update("candidatos", candidato.id, { curriculo: novo, curriculosAnteriores: anteriores }));
+  let campos;
+  try {
+    campos = salvarCurriculo(candidato, nomeArquivo, conteudoBase64, req.consultor.nome);
+  } catch (err) {
+    return res.status(400).json({ erro: err.message });
+  }
+  res.json(db.update("candidatos", candidato.id, campos));
 });
 
 // Abre/baixa o currículo atual (ou um anterior, com ?arquivo=...). Só com login.
@@ -228,10 +195,8 @@ router.get("/:id/curriculo", requireAuth, (req, res) => {
   const todos = [candidato.curriculo, ...(candidato.curriculosAnteriores || [])];
   const alvo = req.query.arquivo ? todos.find((c) => c.arquivo === req.query.arquivo) : candidato.curriculo;
   if (!alvo) return res.status(404).send("Currículo não encontrado.");
-  const caminho = path.resolve(PASTA_CURRICULOS, alvo.arquivo);
-  if (!caminho.startsWith(path.resolve(PASTA_CURRICULOS) + path.sep) || !fs.existsSync(caminho)) {
-    return res.status(404).send("Arquivo do currículo não encontrado no servidor.");
-  }
+  const caminho = caminhoCurriculo(alvo.arquivo);
+  if (!caminho) return res.status(404).send("Arquivo do currículo não encontrado no servidor.");
   res.setHeader("Content-Type", alvo.tipo || "application/octet-stream");
   res.setHeader("Content-Disposition", `${req.query.baixar ? "attachment" : "inline"}; filename*=UTF-8''${encodeURIComponent(alvo.nomeOriginal)}`);
   res.sendFile(caminho);

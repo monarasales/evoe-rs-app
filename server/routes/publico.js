@@ -1,0 +1,158 @@
+// Rotas PÚBLICAS (sem login) — página de inscrição pelo link da vaga.
+// Expõem só o mínimo: título, texto público escolhido pela Evoé e, se permitido,
+// o nome da empresa. NUNCA o "perfil da vaga" interno, salário cadastrado,
+// consultor, candidatos ou dados do cliente.
+
+const express = require("express");
+const db = require("../db");
+const { notify } = require("../utils/notify");
+const { salvarCurriculo } = require("../utils/curriculos");
+
+const router = express.Router();
+
+const VERSAO_CONSENTIMENTO = "2026-10";
+const TEXTO_CONSENTIMENTO =
+  "Autorizo a Evoé Gestão e RH a armazenar e utilizar meus dados pessoais e meu currículo para fins de recrutamento e seleção, " +
+  "nesta e em outras vagas compatíveis com meu perfil, pelo prazo de até 2 anos. Sei que posso pedir a correção ou a exclusão " +
+  "dos meus dados a qualquer momento entrando em contato com a Evoé.";
+
+const encerrada = (v) => /^1[12]\./.test(v.etapaAtual || "");
+const aceitaInscricao = (v) => !!v.linkToken && v.inscricoesAbertas !== false && !encerrada(v);
+
+function vagaPublica(v) {
+  const empresa = v.mostrarEmpresa ? (db.findById("empresas", v.empresaId) || {}).nome || "" : "";
+  return {
+    token: v.linkToken,
+    titulo: v.titulo,
+    empresa: empresa || null,
+    descricao: v.descricaoPublica || "",
+    publicadaEm: v.linkCriadoEm || v.dataAbertura || null,
+    aberta: aceitaInscricao(v),
+  };
+}
+
+// Limite simples contra robôs/abuso: no máximo 10 envios por conexão (IP) a cada 10 minutos.
+const envios = new Map();
+function limiteExcedido(ip) {
+  const agora = Date.now();
+  const recentes = (envios.get(ip) || []).filter((t) => agora - t < 10 * 60 * 1000);
+  recentes.push(agora);
+  envios.set(ip, recentes);
+  if (envios.size > 5000) envios.clear();
+  return recentes.length > 10;
+}
+
+router.get("/termo", (req, res) => res.json({ versao: VERSAO_CONSENTIMENTO, texto: TEXTO_CONSENTIMENTO }));
+
+// Todas as vagas com inscrições abertas (página "Vagas abertas").
+router.get("/vagas", (req, res) => {
+  const lista = db
+    .readCollection("vagas")
+    .filter(aceitaInscricao)
+    .map(vagaPublica)
+    .sort((a, b) => String(b.publicadaEm || "").localeCompare(String(a.publicadaEm || "")));
+  res.json(lista);
+});
+
+router.get("/vagas/:token", (req, res) => {
+  const vaga = db.readCollection("vagas").find((v) => v.linkToken && v.linkToken === req.params.token);
+  if (!vaga) return res.status(404).json({ erro: "Vaga não encontrada. Confira o link recebido." });
+  res.json(vagaPublica(vaga));
+});
+
+router.post("/vagas/:token/inscricao", (req, res) => {
+  const vaga = db.readCollection("vagas").find((v) => v.linkToken && v.linkToken === req.params.token);
+  if (!vaga) return res.status(404).json({ erro: "Vaga não encontrada. Confira o link recebido." });
+  if (!aceitaInscricao(vaga)) return res.status(400).json({ erro: "As inscrições para esta vaga estão encerradas. Obrigado pelo interesse!" });
+
+  const b = req.body || {};
+  // Campo-armadilha: invisível para pessoas; robôs costumam preenchê-lo.
+  if (b.website) return res.status(201).json({ ok: true });
+  if (limiteExcedido(req.ip)) return res.status(429).json({ erro: "Muitos envios em pouco tempo. Aguarde alguns minutos e tente novamente." });
+
+  const texto = (v, max = 200) => String(v || "").trim().slice(0, max);
+  const nome = texto(b.nome, 120);
+  const email = texto(b.email, 120).toLowerCase();
+  const telefone = texto(b.telefone, 30);
+  if (nome.length < 3) return res.status(400).json({ erro: "Informe seu nome completo." });
+  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) return res.status(400).json({ erro: "Informe um e-mail válido." });
+  if (telefone.replace(/\D/g, "").length < 10) return res.status(400).json({ erro: "Informe um telefone/WhatsApp com DDD." });
+  if (!b.consentimento) return res.status(400).json({ erro: "Para se inscrever, é preciso aceitar o termo de uso dos dados (LGPD)." });
+  if (!b.curriculo || !b.curriculo.conteudoBase64) return res.status(400).json({ erro: "Anexe seu currículo." });
+
+  const consentimento = {
+    aceitoEm: new Date().toISOString(),
+    versao: VERSAO_CONSENTIMENTO,
+    texto: TEXTO_CONSENTIMENTO,
+  };
+  const dados = {
+    nome,
+    email,
+    telefone,
+    cidade: texto(b.cidade, 80),
+    linkedin: texto(b.linkedin, 200),
+    pretensaoSalarial: texto(b.pretensaoSalarial, 60),
+    mensagemCandidato: texto(b.mensagem, 2000),
+  };
+
+  // Mesma pessoa (e-mail) na mesma vaga: não duplica. Nada do cadastro existente é
+  // sobrescrito: só campos vazios são preenchidos, o reenvio fica no histórico
+  // `reinscricoes` e o novo currículo vira nova versão (o anterior continua guardado).
+  const existente = db.readCollection("candidatos").find((c) => c.vagaId === vaga.id && (c.email || "").toLowerCase() === email);
+  let candidato;
+  try {
+    if (existente) {
+      const campos = salvarCurriculo(existente, b.curriculo.nomeArquivo, b.curriculo.conteudoBase64, "Candidato (link da vaga)");
+      const soVazios = Object.fromEntries(Object.entries(dados).filter(([k, v]) => v && !existente[k]));
+      candidato = db.update("candidatos", existente.id, {
+        ...soVazios,
+        ...campos,
+        consentimentoLgpd: consentimento,
+        reinscricoes: [...(existente.reinscricoes || []), { em: new Date().toISOString(), dados }],
+      });
+    } else {
+      candidato = db.insert("candidatos", {
+        ...dados,
+        vagaId: vaga.id,
+        origem: "Link da vaga",
+        etapaCandidato: "Inscrito",
+        dataEntrevista: null,
+        jusbrasilOk: false,
+        obsReferencia: "",
+        parecerComportamental: "",
+        dataRetornoCliente: null,
+        pareceres: [],
+        curriculo: null,
+        consentimentoLgpd: consentimento,
+        inscritoPeloLink: true,
+      });
+      try {
+        candidato = db.update("candidatos", candidato.id, salvarCurriculo(candidato, b.curriculo.nomeArquivo, b.curriculo.conteudoBase64, "Candidato (link da vaga)"));
+      } catch (err) {
+        db.remove("candidatos", candidato.id); // currículo inválido: desfaz a inscrição incompleta
+        throw err;
+      }
+    }
+  } catch (err) {
+    return res.status(400).json({ erro: err.message });
+  }
+
+  // Avisa o consultor responsável e a gestão (sininho).
+  const destinatarios = new Set([vaga.consultorId]);
+  db.readCollection("consultores")
+    .filter((c) => (c.perfil === "Gestor" || c.perfil === "Supervisora") && c.ativo !== false)
+    .forEach((c) => destinatarios.add(c.id));
+  destinatarios.forEach((id) =>
+    notify({
+      tipo: "Nova inscrição pelo link",
+      vagaId: vaga.id,
+      destinatarioId: id,
+      assunto: `${existente ? "Inscrição atualizada" : "Nova inscrição"}: ${candidato.nome}`,
+      mensagem: `${candidato.nome} ${existente ? "reenviou a inscrição" : "se inscreveu"} pelo link da vaga "${vaga.titulo}".`,
+    })
+  );
+
+  res.status(201).json({ ok: true, atualizada: !!existente });
+});
+
+module.exports = router;

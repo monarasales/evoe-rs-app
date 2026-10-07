@@ -364,6 +364,7 @@ export async function renderKanban(root) {
           <textarea id="v-obs" ${podeEditar ? "" : "disabled"}>${editando ? escapeHtml(vaga.observacoes || "") : ""}</textarea>
         </div>
         ${editando ? `<div class="form-row"><button type="button" id="btn-ver-candidatos" class="link-btn">Ver candidatos desta vaga (${vaga.qtdCandidatos}) →</button></div>` : ""}
+        ${editando && podeEditar ? `<div class="form-row link-box" id="link-box">${htmlLinkInscricao(vaga)}</div>` : ""}
         ${editando && podeEditar && !["11. Aprovado", "12. Cancelada/Encerrada"].includes(vaga.etapaAtual) ? `
         <div class="form-row standby-box ${vaga.emStandBy ? "standby-box--ativo" : ""}">
           <label>Stand By ${vaga.emStandBy ? `— pausada desde ${formatarData(vaga.dataInicioStandBy)}${vaga.motivoStandBy ? ` (${escapeHtml(vaga.motivoStandBy)})` : ""}` : ""}</label>
@@ -380,6 +381,8 @@ export async function renderKanban(root) {
     `);
 
     document.getElementById("btn-cancelar").addEventListener("click", fecharModal);
+
+    if (editando && podeEditar) ligarLinkInscricao(vaga);
 
     if (editando) {
       const btnCand = document.getElementById("btn-ver-candidatos");
@@ -464,4 +467,85 @@ function escapeHtml(str) {
   const div = document.createElement("div");
   div.textContent = str;
   return div.innerHTML;
+}
+
+// ---------- Link público de inscrição da vaga ----------
+const urlInscricao = (vaga) => `${location.origin}/vaga/${encodeURIComponent(vaga.linkToken)}`;
+const VAGA_ENCERRADA = (vaga) => /^1[12]\./.test(vaga.etapaAtual || "");
+
+function htmlLinkInscricao(vaga) {
+  if (!vaga.linkToken) {
+    return `<label>Link de inscrição</label>
+      <div class="sub" style="margin-bottom:8px;">Gere um link para enviar aos candidatos: eles se inscrevem com currículo e entram direto nesta vaga.</div>
+      <button type="button" class="btn btn-secondary btn-sm" id="link-gerar">🔗 Gerar link de inscrição</button>`;
+  }
+  const aberta = vaga.inscricoesAbertas !== false && !VAGA_ENCERRADA(vaga);
+  return `<label>Link de inscrição ${aberta ? '<span class="tag tag-nprazo">recebendo inscrições</span>' : '<span class="tag tag-encerrada">inscrições fechadas</span>'}</label>
+    <div class="link-url"><input type="text" readonly id="link-url" value="${escapeHtml(urlInscricao(vaga))}" /></div>
+    <div class="link-acoes">
+      <button type="button" class="btn btn-primary btn-sm" id="link-copiar">Copiar link</button>
+      <button type="button" class="btn btn-outline btn-sm" id="link-whats">Enviar pelo WhatsApp</button>
+      <a class="btn btn-outline btn-sm" href="${escapeHtml(urlInscricao(vaga))}" target="_blank" rel="noopener">Ver página</a>
+    </div>
+    ${VAGA_ENCERRADA(vaga) ? '<div class="sub" style="margin-top:6px;">A vaga está encerrada, então o link não aceita mais inscrições.</div>' : ""}
+    <div class="checkbox-row" style="margin-top:10px;"><input type="checkbox" id="link-abertas" ${vaga.inscricoesAbertas !== false ? "checked" : ""} /><label for="link-abertas" style="margin:0;font-weight:400;">Aceitar inscrições pelo link</label></div>
+    <div class="checkbox-row" style="margin-top:6px;"><input type="checkbox" id="link-empresa" ${vaga.mostrarEmpresa ? "checked" : ""} /><label for="link-empresa" style="margin:0;font-weight:400;">Mostrar o nome da empresa (desmarcado = "Empresa confidencial")</label></div>
+    <label style="margin-top:10px;">Texto que o candidato vê</label>
+    <textarea id="link-descricao" rows="6" placeholder="Atividades, requisitos, benefícios, horário, local... (o perfil interno da vaga NÃO é mostrado ao candidato)">${escapeHtml(vaga.descricaoPublica || "")}</textarea>
+    <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:6px;">
+      ${vaga.perfilVaga && !vaga.descricaoPublica ? '<button type="button" class="link-btn" id="link-usar-perfil">Usar o perfil da vaga como base (revise antes de salvar)</button>' : ""}
+      <button type="button" class="btn btn-secondary btn-sm" id="link-salvar" style="margin-left:auto;">Salvar configurações do link</button>
+    </div>
+    <div class="sub" style="margin-top:8px;">Página com todas as vagas abertas: <a href="${location.origin}/vagas" target="_blank" rel="noopener">${location.origin}/vagas</a></div>`;
+}
+
+function ligarLinkInscricao(vaga) {
+  const caixa = document.getElementById("link-box");
+  const $ = (id) => document.getElementById(id);
+  const redesenhar = (v) => {
+    Object.assign(vaga, v);
+    caixa.innerHTML = htmlLinkInscricao(vaga);
+    ligarLinkInscricao(vaga);
+  };
+  const gerar = $("link-gerar");
+  if (gerar) {
+    gerar.addEventListener("click", async () => {
+      try {
+        redesenhar(await api.patch(`/api/vagas/${vaga.id}/link`, { inscricoesAbertas: true }));
+        showToast("Link criado! Escreva o texto que o candidato vai ver e salve.", "sucesso");
+      } catch (err) {
+        showToast(err.message, "erro");
+      }
+    });
+    return;
+  }
+  $("link-copiar").addEventListener("click", async () => {
+    try {
+      await navigator.clipboard.writeText(urlInscricao(vaga));
+    } catch (e) {
+      $("link-url").select();
+      document.execCommand("copy");
+    }
+    showToast("Link copiado.", "sucesso");
+  });
+  $("link-whats").addEventListener("click", () => {
+    const texto = `Olá! A Evoé Gestão e RH está com uma vaga de *${vaga.titulo}*. Para se candidatar, acesse: ${urlInscricao(vaga)}`;
+    window.open(`https://wa.me/?text=${encodeURIComponent(texto)}`, "_blank", "noopener");
+  });
+  const usarPerfil = $("link-usar-perfil");
+  if (usarPerfil) usarPerfil.addEventListener("click", () => ($("link-descricao").value = vaga.perfilVaga || ""));
+  $("link-salvar").addEventListener("click", async () => {
+    try {
+      redesenhar(
+        await api.patch(`/api/vagas/${vaga.id}/link`, {
+          inscricoesAbertas: $("link-abertas").checked,
+          mostrarEmpresa: $("link-empresa").checked,
+          descricaoPublica: $("link-descricao").value,
+        })
+      );
+      showToast("Configurações do link salvas.", "sucesso");
+    } catch (err) {
+      showToast(err.message, "erro");
+    }
+  });
 }

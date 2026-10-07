@@ -40,6 +40,13 @@ Baseado no documento "Controle de Ponto Próprio" (Resolut). Construído por eta
 - Colaborador é identificado pela sessão (login → colaborador.consultorId), nunca por parâmetro.
 - Período de apuração = mês civil. Escala padrão Evoé: seg–sex 09–12/13–16 (30h/semana, estagiários).
 
+## Inscrição pública pelo link da vaga
+- Únicas rotas SEM login: `/api/publico/*` (routes/publico.js) e as páginas `/vagas` e `/vaga/<linkToken>`
+  (public/inscricao.html + js/inscricao.js). Expõem só título, `descricaoPublica` e (se `mostrarEmpresa`) o nome da empresa —
+  NUNCA `perfilVaga`, salário, consultor ou candidatos.
+- Inscrição cria candidato "Inscrito"/origem "Link da vaga" com `consentimentoLgpd`; mesmo e-mail na mesma vaga não duplica
+  (só preenche campos vazios, guarda `reinscricoes` e nova versão do currículo). Currículos: `server/utils/curriculos.js`.
+
 ## Produção (Render)
 - Deploy via `render.yaml`; os dados reais ficam no disco persistente do Render
   (`DATA_DIR=/data`), **não** no repositório.

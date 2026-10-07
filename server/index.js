@@ -45,11 +45,12 @@ app.use(
 );
 app.use(attachUser);
 
-// Toda a API exige login, exceto as rotas de autenticação (login/logout/me).
+// Toda a API exige login, exceto as rotas de autenticação (login/logout/me) e as
+// rotas públicas de inscrição pelo link da vaga (/api/publico/*).
 // Proteção central: vale mesmo para rotas que esquecerem o requireAuth individual —
 // sem isso, dados de candidatos/colaboradores ficavam abertos na internet (LGPD).
 app.use("/api", (req, res, next) => {
-  if (req.path.startsWith("/auth/")) return next();
+  if (req.path.startsWith("/auth/") || req.path.startsWith("/publico/")) return next();
   return requireAuth(req, res, next);
 });
 
@@ -69,6 +70,12 @@ app.use("/api/colaboradores", require("./routes/colaboradores"));
 app.use("/api/ponto", require("./routes/ponto"));
 app.use("/api/ponto-gestao", require("./routes/pontoGestao"));
 app.use("/api/configuracao", require("./routes/configuracao"));
+app.use("/api/publico", require("./routes/publico"));
+
+// Páginas públicas de inscrição: /vagas (todas as abertas) e /vaga/<código>.
+app.get(["/vagas", "/vaga/:token"], (req, res) => {
+  res.sendFile(path.join(__dirname, "..", "public", "inscricao.html"));
+});
 
 app.use(express.static(path.join(__dirname, "..", "public")));
 

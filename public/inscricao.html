@@ -1,0 +1,64 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+  <title>Vagas — Evoé Gestão e RH</title>
+  <meta name="description" content="Vagas abertas da Evoé Gestão e RH. Inscreva-se enviando seu currículo." />
+  <meta name="robots" content="noindex" />
+  <style>
+    :root {
+      --navy: #122454; --navy-dark: #0b1638; --teal: #22c3b6; --purple: #7c5cfa;
+      --gradiente: linear-gradient(135deg, #22c3b6 0%, #7c5cfa 100%);
+      --bg: #f3f5f9; --borda: #e3e7ec; --texto: #1f2937; --suave: #6b7683;
+      --erro: #c0392b; --erro-bg: #fdecea; --ok: #1e7e45; --ok-bg: #e8f8ee;
+    }
+    * { box-sizing: border-box; }
+    body { margin: 0; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; background: var(--bg); color: var(--texto); -webkit-font-smoothing: antialiased; }
+    header { background: var(--navy-dark); padding: calc(14px + env(safe-area-inset-top, 0px)) 16px 14px; text-align: center; }
+    header img { max-height: 46px; max-width: 70%; }
+    header .marca { color: var(--teal); font-weight: 700; letter-spacing: 1px; }
+    main { max-width: 680px; margin: 0 auto; padding: 20px 16px 48px; }
+    h1 { color: var(--navy); font-size: 24px; margin: 4px 0 6px; letter-spacing: -.3px; }
+    h2 { color: var(--navy); font-size: 17px; margin: 22px 0 10px; }
+    .empresa { color: var(--suave); font-size: 14px; margin-bottom: 14px; }
+    .cartao { background: white; border: 1px solid var(--borda); border-radius: 14px; padding: 20px; box-shadow: 0 4px 14px rgba(16,30,44,.06); margin-bottom: 16px; }
+    .descricao { white-space: pre-wrap; line-height: 1.6; font-size: 15px; }
+    label { display: block; font-size: 14px; font-weight: 600; margin: 14px 0 6px; }
+    label .opc { font-weight: 400; color: var(--suave); }
+    input[type=text], input[type=email], input[type=tel], textarea {
+      width: 100%; padding: 12px 13px; border: 1px solid var(--borda); border-radius: 10px; font-size: 16px; font-family: inherit; background: white;
+    }
+    input:focus, textarea:focus { outline: none; border-color: var(--teal); }
+    textarea { min-height: 90px; resize: vertical; }
+    .linha { display: grid; grid-template-columns: 1fr 1fr; gap: 0 12px; }
+    .arquivo { border: 2px dashed var(--borda); border-radius: 12px; padding: 18px; text-align: center; cursor: pointer; background: #fafbfc; }
+    .arquivo.tem { border-color: var(--teal); background: #e3f8f6; }
+    .arquivo input { display: none; }
+    .dica { font-size: 13px; color: var(--suave); margin-top: 6px; }
+    .termo { display: flex; gap: 10px; align-items: flex-start; font-size: 13.5px; font-weight: 400; line-height: 1.5; margin-top: 18px; }
+    .termo input { width: 20px; height: 20px; margin-top: 2px; flex: none; }
+    .botao { display: block; width: 100%; margin-top: 20px; padding: 16px; border: none; border-radius: 12px; background: var(--gradiente); color: white; font-size: 17px; font-weight: 700; cursor: pointer; text-decoration: none; text-align: center; }
+    .botao:disabled { opacity: .6; }
+    .erro { background: var(--erro-bg); color: var(--erro); padding: 12px; border-radius: 10px; margin-top: 14px; font-size: 14px; }
+    .sucesso { text-align: center; padding: 30px 20px; }
+    .sucesso .icone { font-size: 52px; }
+    .vaga-item { display: block; text-decoration: none; color: inherit; }
+    .vaga-item h3 { margin: 0 0 4px; color: var(--navy); font-size: 17px; }
+    .vaga-item .ver { color: var(--teal); font-weight: 600; font-size: 14px; margin-top: 8px; }
+    .armadilha { position: absolute; left: -10000px; width: 1px; height: 1px; overflow: hidden; }
+    .vazio { text-align: center; color: var(--suave); padding: 30px 10px; }
+    footer { text-align: center; color: var(--suave); font-size: 12.5px; padding: 0 16px 30px; }
+    .hidden { display: none !important; }
+    @media (max-width: 520px) { .linha { grid-template-columns: 1fr; } h1 { font-size: 21px; } }
+  </style>
+</head>
+<body>
+  <header>
+    <img src="/img/logo-evoe-topbar.svg" alt="Evoé Gestão e RH" onerror="this.outerHTML='<span class=marca>EVOÉ GESTÃO E RH</span>'" />
+  </header>
+  <main id="conteudo"><div class="vazio">Carregando...</div></main>
+  <footer>Evoé Gestão e RH · Recrutamento e Seleção</footer>
+  <script src="/js/inscricao.js"></script>
+</body>
+</html>

@@ -1,4 +1,5 @@
 const express = require("express");
+const crypto = require("crypto");
 const db = require("../db");
 const { requireAuth } = require("../middleware/auth");
 const { notifyMudancaVaga } = require("../utils/notify");
@@ -235,6 +236,38 @@ router.patch("/:id/standby", requireAuth, (req, res) => {
   }
 
   res.json(comCampos(atualizado));
+});
+
+// ---------- Link público de inscrição ----------
+// O endereço usa um código aleatório (não o id interno) e pode ser ativado/desativado.
+// "descricaoPublica" é o ÚNICO texto que o candidato vê — o "perfil da vaga" interno
+// nunca vai para a página pública. Empresa fica confidencial por padrão.
+function gerarToken(titulo) {
+  const slug = String(titulo || "vaga")
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "")
+    .slice(0, 40);
+  return `${slug || "vaga"}-${crypto.randomBytes(5).toString("base64url").replace(/[-_]/g, "x")}`;
+}
+
+router.patch("/:id/link", requireAuth, (req, res) => {
+  const vaga = db.findById("vagas", req.params.id);
+  if (!vaga) return res.status(404).json({ erro: "Vaga não encontrada." });
+  if (!podeEditar(req, vaga)) return res.status(403).json({ erro: "Você só pode configurar o link de vagas atribuídas a você." });
+  const b = req.body || {};
+  const dados = {};
+  if (!vaga.linkToken) {
+    dados.linkToken = gerarToken(vaga.titulo);
+    dados.linkCriadoEm = new Date().toISOString();
+    dados.linkCriadoPor = req.consultor.nome;
+  }
+  if (b.inscricoesAbertas !== undefined) dados.inscricoesAbertas = !!b.inscricoesAbertas;
+  if (b.mostrarEmpresa !== undefined) dados.mostrarEmpresa = !!b.mostrarEmpresa;
+  if (b.descricaoPublica !== undefined) dados.descricaoPublica = String(b.descricaoPublica || "").slice(0, 8000);
+  res.json(comCampos(db.update("vagas", vaga.id, dados)));
 });
 
 router.delete("/:id", requireAuth, (req, res) => {

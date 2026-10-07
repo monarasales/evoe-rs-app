@@ -24,7 +24,7 @@ const normalizar = (s) =>
     .toLowerCase();
 
 const ENCERRADA = (v) => /^1[12]\./.test(v.etapaAtual || "");
-const ORIGENS = ["", "LinkedIn", "Indicação", "Banco de talentos", "Site / formulário", "Instagram", "WhatsApp", "Outra"];
+const ORIGENS = ["", "Link da vaga", "LinkedIn", "Indicação", "Banco de talentos", "Site / formulário", "Instagram", "WhatsApp", "Outra"];
 
 function telefoneMascara(valor) {
   const d = String(valor || "").replace(/\D/g, "").slice(0, 11);
@@ -136,7 +136,7 @@ export async function renderCandidatos(root, params) {
               const nPareceres = (c.pareceres || []).length + ((c.parecerComportamental || "").trim() ? 1 : 0);
               return `
             <tr data-id="${c.id}">
-              <td><strong>${escapeHtml(c.nome)}</strong><div class="sub">${escapeHtml([c.telefone, c.email].filter(Boolean).join(" · "))}</div></td>
+              <td><strong>${escapeHtml(c.nome)}</strong>${c.inscritoPeloLink ? ' <span class="tag tag-prospect-contato" title="Inscrito pelo link da vaga">link</span>' : ""}<div class="sub">${escapeHtml([c.telefone, c.email].filter(Boolean).join(" · "))}</div></td>
               <td>${v ? `${escapeHtml(empresaNome(v.empresaId))}<div class="sub">${escapeHtml(v.titulo)}</div>` : "—"}</td>
               <td>${escapeHtml(c.etapaCandidato)}</td>
               <td>${c.curriculo ? `<a href="/api/candidatos/${c.id}/curriculo" target="_blank" rel="noopener" title="${escapeHtml(c.curriculo.nomeOriginal)}">📄 abrir</a>` : '<span class="sub">—</span>'}</td>
@@ -209,6 +209,15 @@ export async function renderCandidatos(root, params) {
           <div class="form-row"><label>Pretensão salarial</label><input type="text" id="c-pretensao" placeholder="ex.: R$ 2.500" value="${v("pretensaoSalarial")}" /></div>
         </div>
 
+        ${
+          c.consentimentoLgpd || c.mensagemCandidato
+            ? `<div class="cand-inscricao">
+                ${c.inscritoPeloLink ? "🔗 Inscrito(a) pelo link da vaga" : "Dados enviados pelo candidato"}${c.consentimentoLgpd ? ` · consentimento LGPD em ${new Date(c.consentimentoLgpd.aceitoEm).toLocaleString("pt-BR", { dateStyle: "short", timeStyle: "short" })}` : ""}
+                ${(c.reinscricoes || []).length ? ` · reenviou ${c.reinscricoes.length}x` : ""}
+                ${c.mensagemCandidato ? `<div class="parecer-texto" style="margin-top:6px;"><strong>Mensagem do candidato:</strong> ${escapeHtml(c.mensagemCandidato)}</div>` : ""}
+              </div>`
+            : ""
+        }
         <div class="section-title">Currículo</div>
         <div id="c-curriculo-atual">${blocoCurriculo(c)}</div>
         <div class="form-row">
