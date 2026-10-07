@@ -29,13 +29,21 @@ function contatosDaVaga(vaga) {
 
 const linkPesquisa = (p) => `${p.base}/avaliacao/${p.token}`;
 
-function mensagemWhatsapp(p) {
-  return (
-    `Olá${p.contatoNome ? `, ${primeiroNome(p.contatoNome)}` : ""}! Aqui é da Evoé Gestão e RH. ` +
-    `Concluímos o processo seletivo da vaga *${p.vagaTitulo}* e queremos muito ouvir você. ` +
-    `São 6 perguntas rápidas (1 minuto): ${linkPesquisa(p)} — Obrigado pela parceria!`
-  );
+// Mensagem padrão definida pela diretora (Monara): os clientes falam com ela, então a
+// pesquisa vai em nome dela. Só o nome do contato e o link mudam por cliente.
+function mensagemPadrao(p) {
+  const saudacao = p.contatoNome ? `Olá, ${primeiroNome(p.contatoNome)}! Tudo bem?` : "Olá! Tudo bem?";
+  return [
+    saudacao,
+    "Aqui é a Monara, diretora da Evoé Gestão & RH.",
+    "Concluímos mais uma etapa do nosso trabalho com vocês e gostaria muito de ouvir a sua percepção sobre a experiência com a nossa consultoria. Esse retorno é muito importante para continuarmos aprimorando nossas entregas e fortalecendo cada vez mais a nossa parceria.",
+    "Preparamos uma pesquisa bem rápida, com apenas 6 perguntas e duração média de 1 minuto:",
+    linkPesquisa(p),
+    "Agradeço pela confiança na Evoé e, principalmente, pela parceria conosco.",
+  ].join("\n\n");
 }
+
+const mensagemWhatsapp = mensagemPadrao;
 
 function linkWhatsapp(p) {
   const tel = p.whatsapp && p.whatsapp.length >= 10 ? (p.whatsapp.startsWith("55") ? p.whatsapp : `55${p.whatsapp}`) : "";
@@ -48,13 +56,8 @@ async function enviarPorEmail(p, lembrete = false) {
   try {
     await enviarEmail({
       para: p.emails.join(", "),
-      assunto: `${lembrete ? "Lembrete: " : ""}Como foi o processo seletivo da vaga ${p.vagaTitulo}? — Evoé Gestão e RH`,
-      texto:
-        `Olá${p.contatoNome ? `, ${primeiroNome(p.contatoNome)}` : ""}!\n\n` +
-        `Concluímos o processo seletivo da vaga "${p.vagaTitulo}"${p.empresaNome ? ` para a ${p.empresaNome}` : ""}. ` +
-        `Sua opinião é muito importante para melhorarmos sempre.\n\n` +
-        `Responda à pesquisa em 1 minuto (6 perguntas):\n${linkPesquisa(p)}\n\n` +
-        `Muito obrigado pela parceria!\nEquipe Evoé Gestão e RH`,
+      assunto: `${lembrete ? "Lembrete: " : ""}Sua opinião sobre a Evoé — vaga ${p.vagaTitulo}`,
+      texto: `${mensagemPadrao(p)}\n\nMonara\nDiretora — Evoé Gestão & RH`,
     });
     return { ok: true };
   } catch (err) {
@@ -94,10 +97,14 @@ async function criarParaVaga(vaga, { por = "Sistema", base, enviarEmail = true, 
   if (enviarEmail) p = registrarEnvio(p, { canal: "email", para: p.emails.join(", "), ...email });
   if (!notificar) return p;
 
-  const destinos = new Set([vaga.consultorId]);
-  db.readCollection("consultores")
-    .filter((c) => c.perfil === "Gestor" && c.ativo !== false)
-    .forEach((c) => destinos.add(c.id));
+  // Só a gestão recebe o pedido de envio: a mensagem é em nome da Monara e deve sair do
+  // WhatsApp dela (quem clica em "Enviar" envia do WhatsApp conectado no próprio aparelho).
+  const destinos = new Set(
+    db
+      .readCollection("consultores")
+      .filter((c) => c.perfil === "Gestor" && c.ativo !== false)
+      .map((c) => c.id)
+  );
   destinos.forEach((id) =>
     notify({
       tipo: "Pesquisa NPS",
@@ -128,4 +135,4 @@ function startLembretesNps(intervaloMin = 60) {
   setInterval(() => checarLembretes().catch((e) => console.error("[nps]", e.message)), intervaloMin * 60 * 1000);
 }
 
-module.exports = { COL, contatosDaVaga, criarParaVaga, enviarPorEmail, registrarEnvio, linkWhatsapp, linkPesquisa, startLembretesNps };
+module.exports = { mensagemPadrao, COL, contatosDaVaga, criarParaVaga, enviarPorEmail, registrarEnvio, linkWhatsapp, linkPesquisa, startLembretesNps };

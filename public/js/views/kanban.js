@@ -1,5 +1,5 @@
 import { api } from "../api.js";
-import { store, podeGerenciarVagas, showToast, nomeEmpresa, nomeConsultor, formatarData, consultoresDeVagas } from "../state.js";
+import { store, podeGerenciarVagas, showToast, nomeEmpresa, nomeConsultor, formatarData, consultoresDeVagas, isGestor } from "../state.js";
 import { abrirModal, fecharModal } from "../modal.js";
 import { navegarPara } from "../router.js";
 import { abrirEditorPagina, progressoPagina } from "./vagaPagina.js";
@@ -611,6 +611,8 @@ async function carregarNpsDaVaga(vaga) {
     ${
       r
         ? ""
+        : !isGestor()
+        ? '<div class="sub" style="margin-top:6px;">💬 A pesquisa é enviada pela Monara, do WhatsApp dela.</div>'
         : `<div class="link-acoes" style="margin-top:8px;">
             <button type="button" class="btn btn-primary btn-sm" data-whats="${p.id}" data-link="${escapeHtml(p.linkWhatsapp)}">Enviar pelo WhatsApp</button>
             <button type="button" class="btn btn-outline btn-sm" data-reenviar="${vaga.id}">Reenviar e-mail</button>
