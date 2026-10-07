@@ -10,11 +10,13 @@ const { salvarCurriculo } = require("../utils/curriculos");
 
 const router = express.Router();
 
-const VERSAO_CONSENTIMENTO = "2026-10";
+// Ao mudar o texto, mude a versão: cada inscrição guarda o texto exato que aceitou.
+const VERSAO_CONSENTIMENTO = "2026-10-b";
+const EMAIL_LGPD = "evoegestaorh@gmail.com";
 const TEXTO_CONSENTIMENTO =
   "Autorizo a Evoé Gestão e RH a armazenar e utilizar meus dados pessoais e meu currículo para fins de recrutamento e seleção, " +
   "nesta e em outras vagas compatíveis com meu perfil, pelo prazo de até 2 anos. Sei que posso pedir a correção ou a exclusão " +
-  "dos meus dados a qualquer momento entrando em contato com a Evoé.";
+  `dos meus dados a qualquer momento pelo e-mail ${EMAIL_LGPD}.`;
 
 const encerrada = (v) => /^1[12]\./.test(v.etapaAtual || "");
 const aceitaInscricao = (v) => !!v.linkToken && v.inscricoesAbertas !== false && !encerrada(v);
