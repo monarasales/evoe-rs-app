@@ -42,6 +42,11 @@
                   (v) => `<a class="cartao vaga-item" href="/vaga/${encodeURIComponent(v.token)}">
                     <h3>${esc(v.titulo)}</h3>
                     <div class="empresa" style="margin:0;">${v.empresa ? esc(v.empresa) : "Empresa confidencial"}</div>
+                    ${(() => {
+                      const pg = v.pagina || {};
+                      const tags = [pg.tipoContratacao, pg.modeloTrabalho, [pg.bairro, pg.cidade].filter(Boolean).join(" · "), pg.salario].filter(Boolean);
+                      return tags.length ? `<div class="vaga-tags">${tags.map((t) => `<span>${esc(t)}</span>`).join("")}</div>` : "";
+                    })()}
                     <div class="ver">Ver vaga e se inscrever →</div>
                   </a>`
                 )
@@ -64,10 +69,89 @@
       return;
     }
     document.title = `${vaga.titulo} — Evoé Gestão e RH`;
-    const cabecalho = `
-      <h1>${esc(vaga.titulo)}</h1>
-      <div class="empresa">${vaga.empresa ? esc(vaga.empresa) : "Empresa confidencial"} · processo conduzido pela Evoé Gestão e RH</div>
-      ${vaga.descricao ? `<div class="cartao descricao">${esc(vaga.descricao)}</div>` : ""}`;
+    const pg = vaga.pagina || {};
+    const local = [pg.bairro, pg.cidade].filter(Boolean).join(" · ");
+    const resumoTopo = pg.missao ? (pg.missao.length > 230 ? `${pg.missao.slice(0, 227).trim()}...` : pg.missao) : "";
+
+    // ----- Topo (hero) + visão rápida -----
+    document.querySelector("header").classList.add("hidden");
+    const rapida = [
+      ["📄", "Contratação", pg.tipoContratacao],
+      ["🏢", "Modelo", pg.modeloTrabalho],
+      ["📍", "Local", local],
+      ["💰", "Salário", pg.salario],
+    ].filter((x) => x[2]);
+    document.body.insertAdjacentHTML(
+      "afterbegin",
+      `<section class="hero">
+        <div class="hero-dentro">
+          <div class="hero-texto">
+            <div class="hero-topo"><img src="/img/logo-evoe-topbar.svg" alt="Evoé Gestão e RH" onerror="this.remove()" />
+              <span class="selo">${vaga.empresa ? `🏢 ${esc(vaga.empresa)}` : "🔒 Empresa confidencial"}</span></div>
+            <h1>${esc(vaga.titulo)}</h1>
+            ${resumoTopo ? `<p class="hero-resumo">${esc(resumoTopo)}</p>` : '<p class="hero-resumo">Processo seletivo conduzido pela Evoé Gestão e RH.</p>'}
+            <div class="hero-botoes">
+              ${vaga.aberta ? '<a class="botao" href="#candidatar">Quero me candidatar →</a>' : ""}
+              <button type="button" class="botao secundario" id="compartilhar">↗ Compartilhar</button>
+            </div>
+          </div>
+          ${
+            rapida.length
+              ? `<div class="rapida"><div class="rapida-titulo">Visão rápida</div>${rapida
+                  .map(([icone, rotulo, valor]) => `<div class="rapida-item"><span class="rapida-icone">${icone}</span><div><div class="rapida-rotulo">${rotulo}</div><div class="rapida-valor">${esc(valor)}</div></div></div>`)
+                  .join("")}</div>`
+              : ""
+          }
+        </div>
+      </section>`
+    );
+    document.getElementById("compartilhar").addEventListener("click", async () => {
+      const dadosShare = { title: `${vaga.titulo} — Evoé Gestão e RH`, text: `Vaga: ${vaga.titulo}`, url: location.href };
+      try {
+        if (navigator.share) return await navigator.share(dadosShare);
+        await navigator.clipboard.writeText(location.href);
+        alert("Link da vaga copiado!");
+      } catch (e) {
+        /* compartilhamento cancelado */
+      }
+    });
+    raiz.classList.add("com-hero");
+
+    // ----- Seções (só aparecem as que foram preenchidas) -----
+    const secao = (titulo, sub, corpo) => `<section class="cartao secao"><h2>${titulo}</h2><div class="secao-sub">${sub}</div>${corpo}</section>`;
+    const partes = [];
+    if (pg.missao) partes.push(secao("Missão do cargo", "O propósito central desta posição", `<p class="texto">${esc(pg.missao)}</p>`));
+    if ((pg.objetivos || []).length)
+      partes.push(secao("Objetivos", "Metas que orientam o dia a dia", `<ol class="objetivos">${pg.objetivos.map((o, i) => `<li><span class="num">${i + 1}</span><span>${esc(o)}</span></li>`).join("")}</ol>`));
+    if ((pg.responsabilidades || []).length)
+      partes.push(
+        secao(
+          "Responsabilidades",
+          "O que você fará",
+          `<ul class="resp">${pg.responsabilidades
+            .map((r) => `<li><span>${esc(r.texto)}</span>${r.frequencia ? `<span class="freq freq-${esc(r.frequencia.toLowerCase())}">${esc(r.frequencia)}</span>` : ""}</li>`)
+            .join("")}</ul>`
+        )
+      );
+    if ((pg.requisitos || []).length || (pg.diferenciais || []).length)
+      partes.push(
+        secao(
+          "Requisitos da vaga",
+          "O que buscamos em candidatos",
+          `${(pg.requisitos || []).length ? `<ul class="check">${pg.requisitos.map((r) => `<li>${esc(r)}</li>`).join("")}</ul>` : ""}
+           ${(pg.diferenciais || []).length ? `<h3>Diferenciais</h3><ul class="check desejavel">${pg.diferenciais.map((r) => `<li>${esc(r)}</li>`).join("")}</ul>` : ""}`
+        )
+      );
+    if (pg.perfilComportamental) partes.push(secao("Perfil comportamental", "Como é a pessoa que procuramos", `<p class="texto">${esc(pg.perfilComportamental)}</p>`));
+    if (pg.ferramentas) partes.push(secao("Ferramentas", "Tecnologias do dia a dia", `<p class="texto">${esc(pg.ferramentas)}</p>`));
+    const linhaInfo = [];
+    if (pg.salario) linhaInfo.push(secao("Salário", "Remuneração", `<div class="destaque">${esc(pg.salario)}</div>`));
+    if (pg.horario) linhaInfo.push(secao("Horário de trabalho", "Jornada e modelo", `<p class="texto">${esc(pg.horario)}${pg.modeloTrabalho ? `<br><span class="mini">Modelo ${esc(pg.modeloTrabalho.toLowerCase())}</span>` : ""}</p>`));
+    if (linhaInfo.length) partes.push(`<div class="duas-col">${linhaInfo.join("")}</div>`);
+    if ((pg.beneficios || []).length) partes.push(secao("Benefícios", "O que oferecemos", `<div class="beneficios">${pg.beneficios.map((b) => `<span>✓ ${esc(b)}</span>`).join("")}</div>`));
+    if (local) partes.push(secao("Local de trabalho", "Onde você vai atuar", `<p class="texto">📍 ${esc(local)}</p>`));
+    if (vaga.descricao) partes.push(secao("Informações adicionais", "Mais detalhes da vaga", `<p class="texto">${esc(vaga.descricao)}</p>`));
+    const cabecalho = partes.join("");
 
     if (!vaga.aberta) {
       raiz.innerHTML = `${cabecalho}<div class="cartao vazio">As inscrições para esta vaga estão encerradas. Obrigado pelo interesse!<br><br><a href="/vagas">Ver outras vagas abertas</a></div>`;
@@ -76,7 +160,10 @@
 
     raiz.innerHTML = `${cabecalho}
       <form class="cartao" id="form" novalidate>
-        <h2 style="margin-top:0;">Inscreva-se</h2>
+        <a id="candidatar"></a>
+        <div class="etapa">Candidatura</div>
+        <h2 style="margin:4px 0 4px;">Dê o próximo passo</h2>
+        <p class="secao-sub" style="margin-bottom:6px;">${vaga.pedeDisc ? "Envie seu currículo e, em seguida, faça o teste de perfil comportamental (DISC) — tudo em cerca de 10 minutos." : "Envie seu currículo em poucos minutos."}</p>
         <label for="nome">Nome completo</label><input type="text" id="nome" autocomplete="name" required />
         <div class="linha">
           <div><label for="email">E-mail</label><input type="email" id="email" autocomplete="email" required /></div>

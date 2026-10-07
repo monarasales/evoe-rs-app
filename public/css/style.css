@@ -410,6 +410,22 @@ table tr:hover td { background: #fafbfc; }
 .combo-detalhe { font-size: 11.5px; color: var(--text-muted); margin-top: 1px; }
 .combo-vazio { padding: 10px 12px; color: var(--text-muted); font-size: 13px; }
 
+/* ---------- Página da vaga (editor) ---------- */
+.pagina-box { display: flex; gap: 12px; align-items: center; justify-content: space-between; flex-wrap: wrap; background: var(--purple-light); border-radius: 10px; padding: 12px 14px; }
+.modal-content:has(.form-pagina) { width: 760px; }
+.lista-editavel { display: grid; gap: 6px; }
+.lista-item { display: flex; gap: 6px; align-items: center; }
+.lista-item input { flex: 1; min-width: 0; padding: 9px 11px; border: 1px solid var(--border); border-radius: 8px; font-size: 13.5px; }
+.lista-item select { width: 120px; padding: 8px; border: 1px solid var(--border); border-radius: 8px; font-size: 13px; }
+.lista-adicionar { margin-top: 6px; }
+.chips { display: flex; flex-wrap: wrap; gap: 6px; }
+.chips.sugestoes { margin-top: 8px; }
+.chip { display: inline-flex; align-items: center; gap: 6px; background: var(--teal-light); color: var(--navy); border-radius: 20px; padding: 4px 10px; font-size: 13px; border: 1px solid transparent; }
+.chip button { background: none; border: none; color: var(--text-muted); padding: 0; font-size: 12px; }
+.chip-sugestao { background: white; border: 1px dashed var(--border); color: var(--text-muted); cursor: pointer; }
+.chip-sugestao:hover { border-color: var(--teal); color: var(--navy); }
+@media (max-width: 860px) { .lista-item { flex-wrap: wrap; } .lista-item select { width: auto; flex: 1; } .lista-item input, .lista-item select { font-size: 16px; } }
+
 /* ---------- Link de inscrição da vaga ---------- */
 .link-box { background: var(--bg); border-radius: 10px; padding: 12px 14px; }
 .link-url input { width: 100%; padding: 9px 11px; border: 1px solid var(--border); border-radius: 8px; font-size: 13px; background: white; color: var(--navy); }

@@ -5,6 +5,7 @@ const { requireAuth } = require("../middleware/auth");
 const { notifyMudancaVaga } = require("../utils/notify");
 const { computeVagaFields, hojeStr } = require("../utils/vagaCompute");
 const { ETAPAS_VAGA, PRIORIDADES } = require("../utils/constants");
+const { normalizarPagina, TIPOS_CONTRATACAO, MODELOS_TRABALHO, FREQUENCIAS } = require("../utils/vagaPagina");
 
 const router = express.Router();
 
@@ -269,6 +270,18 @@ router.patch("/:id/link", requireAuth, (req, res) => {
   if (b.exigirDisc !== undefined) dados.exigirDisc = !!b.exigirDisc;
   if (b.descricaoPublica !== undefined) dados.descricaoPublica = String(b.descricaoPublica || "").slice(0, 8000);
   res.json(comCampos(db.update("vagas", vaga.id, dados)));
+});
+
+// Conteúdo estruturado da página pública da vaga (missão, objetivos, responsabilidades...).
+router.get("/pagina/opcoes", (req, res) => res.json({ tiposContratacao: TIPOS_CONTRATACAO, modelosTrabalho: MODELOS_TRABALHO, frequencias: FREQUENCIAS }));
+
+router.put("/:id/pagina", requireAuth, (req, res) => {
+  const vaga = db.findById("vagas", req.params.id);
+  if (!vaga) return res.status(404).json({ erro: "Vaga não encontrada." });
+  if (!podeEditar(req, vaga)) return res.status(403).json({ erro: "Você só pode editar a página de vagas atribuídas a você." });
+  // Merge com o que já existia: campos desconhecidos/antigos dentro de "pagina" são preservados.
+  const pagina = { ...(vaga.pagina || {}), ...normalizarPagina(req.body || {}) };
+  res.json(comCampos(db.update("vagas", vaga.id, { pagina, paginaAtualizadaEm: new Date().toISOString(), paginaAtualizadaPor: req.consultor.nome })));
 });
 
 router.delete("/:id", requireAuth, (req, res) => {

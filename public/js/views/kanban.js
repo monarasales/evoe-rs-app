@@ -2,6 +2,7 @@ import { api } from "../api.js";
 import { store, podeGerenciarVagas, showToast, nomeEmpresa, nomeConsultor, formatarData, consultoresDeVagas } from "../state.js";
 import { abrirModal, fecharModal } from "../modal.js";
 import { navegarPara } from "../router.js";
+import { abrirEditorPagina, progressoPagina } from "./vagaPagina.js";
 
 const ETAPAS_ENCERRADAS_KANBAN = ["11. Aprovado", "12. Cancelada/Encerrada"];
 
@@ -364,7 +365,19 @@ export async function renderKanban(root) {
           <textarea id="v-obs" ${podeEditar ? "" : "disabled"}>${editando ? escapeHtml(vaga.observacoes || "") : ""}</textarea>
         </div>
         ${editando ? `<div class="form-row"><button type="button" id="btn-ver-candidatos" class="link-btn">Ver candidatos desta vaga (${vaga.qtdCandidatos}) →</button></div>` : ""}
-        ${editando && podeEditar ? `<div class="form-row link-box" id="link-box">${htmlLinkInscricao(vaga)}</div>` : ""}
+        ${
+          editando && podeEditar
+            ? `<div class="form-row pagina-box">
+                <div><strong>Página da vaga</strong> <span class="sub">(missão, objetivos, responsabilidades, requisitos, salário, benefícios, horário, bairro...)</span>
+                  <div class="sub">${(() => {
+                    const pr = progressoPagina(vaga.pagina);
+                    return pr.feitas === pr.total ? "✅ Todas as seções preenchidas" : `${pr.feitas} de ${pr.total} seções preenchidas`;
+                  })()}</div></div>
+                <button type="button" class="btn btn-secondary btn-sm" id="btn-pagina-vaga">📝 Editar página da vaga</button>
+              </div>
+              <div class="form-row link-box" id="link-box">${htmlLinkInscricao(vaga)}</div>`
+            : ""
+        }
         ${editando && podeEditar && !["11. Aprovado", "12. Cancelada/Encerrada"].includes(vaga.etapaAtual) ? `
         <div class="form-row standby-box ${vaga.emStandBy ? "standby-box--ativo" : ""}">
           <label>Stand By ${vaga.emStandBy ? `— pausada desde ${formatarData(vaga.dataInicioStandBy)}${vaga.motivoStandBy ? ` (${escapeHtml(vaga.motivoStandBy)})` : ""}` : ""}</label>
@@ -382,7 +395,13 @@ export async function renderKanban(root) {
 
     document.getElementById("btn-cancelar").addEventListener("click", fecharModal);
 
-    if (editando && podeEditar) ligarLinkInscricao(vaga);
+    if (editando && podeEditar) {
+      ligarLinkInscricao(vaga);
+      document.getElementById("btn-pagina-vaga").addEventListener("click", () =>
+        // Ao salvar (ou fechar), volta para a vaga com os dados atualizados.
+        abrirEditorPagina(vaga, () => abrirVaga(vaga.id))
+      );
+    }
 
     if (editando) {
       const btnCand = document.getElementById("btn-ver-candidatos");
@@ -491,8 +510,8 @@ function htmlLinkInscricao(vaga) {
     <div class="checkbox-row" style="margin-top:10px;"><input type="checkbox" id="link-abertas" ${vaga.inscricoesAbertas !== false ? "checked" : ""} /><label for="link-abertas" style="margin:0;font-weight:400;">Aceitar inscrições pelo link</label></div>
     <div class="checkbox-row" style="margin-top:6px;"><input type="checkbox" id="link-empresa" ${vaga.mostrarEmpresa ? "checked" : ""} /><label for="link-empresa" style="margin:0;font-weight:400;">Mostrar o nome da empresa (desmarcado = "Empresa confidencial")</label></div>
     <div class="checkbox-row" style="margin-top:6px;"><input type="checkbox" id="link-disc" ${vaga.exigirDisc !== false ? "checked" : ""} /><label for="link-disc" style="margin:0;font-weight:400;">Pedir o teste DISC logo após a inscrição</label></div>
-    <label style="margin-top:10px;">Texto que o candidato vê</label>
-    <textarea id="link-descricao" rows="6" placeholder="Atividades, requisitos, benefícios, horário, local... (o perfil interno da vaga NÃO é mostrado ao candidato)">${escapeHtml(vaga.descricaoPublica || "")}</textarea>
+    <label style="margin-top:10px;">Informações adicionais <span class="sub">(opcional — aparece no fim da página; o conteúdo principal fica em "Editar página da vaga")</span></label>
+    <textarea id="link-descricao" rows="3" placeholder="Algo que não se encaixe nas seções da página. O perfil interno da vaga NÃO é mostrado ao candidato.">${escapeHtml(vaga.descricaoPublica || "")}</textarea>
     <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:6px;">
       ${vaga.perfilVaga && !vaga.descricaoPublica ? '<button type="button" class="link-btn" id="link-usar-perfil">Usar o perfil da vaga como base (revise antes de salvar)</button>' : ""}
       <button type="button" class="btn btn-secondary btn-sm" id="link-salvar" style="margin-left:auto;">Salvar configurações do link</button>
@@ -513,7 +532,7 @@ function ligarLinkInscricao(vaga) {
     gerar.addEventListener("click", async () => {
       try {
         redesenhar(await api.patch(`/api/vagas/${vaga.id}/link`, { inscricoesAbertas: true }));
-        showToast("Link criado! Escreva o texto que o candidato vai ver e salve.", "sucesso");
+        showToast('Link criado! Agora preencha a "Página da vaga" com as informações para o candidato.', "sucesso");
       } catch (err) {
         showToast(err.message, "erro");
       }

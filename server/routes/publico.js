@@ -9,6 +9,7 @@ const { notify } = require("../utils/notify");
 const crypto = require("crypto");
 const { salvarCurriculo } = require("../utils/curriculos");
 const disc = require("../utils/disc");
+const { paginaPublica } = require("../utils/vagaPagina");
 
 const router = express.Router();
 
@@ -32,6 +33,7 @@ function vagaPublica(v) {
     titulo: v.titulo,
     empresa: empresa || null,
     descricao: v.descricaoPublica || "",
+    pagina: paginaPublica(v.pagina),
     pedeDisc: pedeDisc(v),
     publicadaEm: v.linkCriadoEm || v.dataAbertura || null,
     aberta: aceitaInscricao(v),

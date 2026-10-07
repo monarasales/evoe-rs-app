@@ -44,6 +44,9 @@ Baseado no documento "Controle de Ponto Próprio" (Resolut). Construído por eta
 - Únicas rotas SEM login: `/api/publico/*` (routes/publico.js) e as páginas `/vagas` e `/vaga/<linkToken>`
   (public/inscricao.html + js/inscricao.js). Expõem só título, `descricaoPublica` e (se `mostrarEmpresa`) o nome da empresa —
   NUNCA `perfilVaga`, salário, consultor ou candidatos.
+- Conteúdo da página: `vaga.pagina` (missão, objetivos, responsabilidades c/ frequência, requisitos, diferenciais,
+  perfil comportamental, ferramentas, salário em TEXTO, benefícios, horário, bairro/cidade, contratação, modelo) —
+  `server/utils/vagaPagina.js`; editor em `public/js/views/vagaPagina.js`. `vaga.salario` (número) é interno do Financeiro.
 - Inscrição cria candidato "Inscrito"/origem "Link da vaga" com `consentimentoLgpd`; mesmo e-mail na mesma vaga não duplica
   (só preenche campos vazios, guarda `reinscricoes` e nova versão do currículo). Currículos: `server/utils/curriculos.js`.
 
