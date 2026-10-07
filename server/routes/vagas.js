@@ -4,6 +4,7 @@ const { requireAuth } = require("../middleware/auth");
 const { notifyMudancaVaga } = require("../utils/notify");
 const { computeVagaFields, hojeStr } = require("../utils/vagaCompute");
 const { ETAPAS_VAGA, PRIORIDADES } = require("../utils/constants");
+const { criarParaVaga: criarPesquisaNps } = require("../utils/npsPesquisas");
 const { normalizarPagina, TIPOS_CONTRATACAO, MODELOS_TRABALHO, FREQUENCIAS, gerarTokenVaga: gerarToken } = require("../utils/vagaPagina");
 
 const router = express.Router();
@@ -176,6 +177,13 @@ router.patch("/:id/etapa", requireAuth, (req, res) => {
       : `${req.consultor.nome} moveu a vaga "${vaga.titulo}" para a etapa "${etapa}".`,
   });
 
+  // Vaga fechada (11. Aprovado): cria e envia a pesquisa de satisfação (NPS) ao cliente.
+  // Roda em segundo plano — o envio de e-mail não atrasa a resposta da tela.
+  if (etapa === "11. Aprovado") {
+    criarPesquisaNps(db.findById("vagas", vaga.id), { por: req.consultor.nome, base: `${req.protocol}://${req.get("host")}` }).catch((err) =>
+      console.error("[nps] Falha ao criar pesquisa:", err.message)
+    );
+  }
   res.json(comCampos(atualizado));
 });
 

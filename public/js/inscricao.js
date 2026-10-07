@@ -26,6 +26,7 @@
   if (partes[0] === "vaga" && partes[1]) paginaVaga(decodeURIComponent(partes[1]));
   else if (partes[0] === "disc" && partes[1]) paginaDisc(decodeURIComponent(partes[1]));
   else if (partes[0] === "talentos") paginaTalentos();
+  else if (partes[0] === "avaliacao" && partes[1]) paginaAvaliacao(decodeURIComponent(partes[1]));
   else listaVagas();
 
   // ---------- Lista de vagas abertas ----------
@@ -149,6 +150,118 @@
       desenhar();
     });
     desenhar();
+  }
+
+  // ---------- Pesquisa de satisfação (NPS) do cliente ----------
+  async function paginaAvaliacao(token) {
+    let d;
+    try {
+      d = await api(`/api/publico/avaliacao/${encodeURIComponent(token)}`);
+    } catch (err) {
+      raiz.innerHTML = `<div class="cartao vazio">${esc(err.message)}</div>`;
+      return;
+    }
+    const obrigado = (titulo, texto) => {
+      raiz.innerHTML = `<div class="cartao sucesso"><div class="icone">💜</div><h1>${titulo}</h1><p>${texto}</p></div>`;
+      window.scrollTo(0, 0);
+    };
+    if (d.respondida) return obrigado("Pesquisa já respondida", "Recebemos sua avaliação. Muito obrigado pela parceria!");
+
+    const AJUDA = {
+      atendimento: "Cordialidade, disponibilidade e facilidade de contato com a equipe.",
+      qualidade: "Aderência dos candidatos apresentados ao perfil da vaga.",
+      prazo: "Cumprimento dos prazos combinados no processo.",
+      atualizacao: "Frequência e clareza das atualizações sobre o andamento.",
+      consultor: d.consultor ? `Como você avalia o trabalho de ${d.consultor}?` : "Como você avalia o trabalho do(a) consultor(a)?",
+    };
+    const respostas = { criterios: {}, nps: null };
+    raiz.innerHTML = `
+      <div class="cartao">
+        <div class="etapa">Pesquisa de satisfação</div>
+        <h1 style="margin-top:4px;">Como foi sua experiência com a Evoé?</h1>
+        <p class="secao-sub">Processo seletivo: <strong>${esc(d.vaga)}</strong>${d.empresa ? ` · ${esc(d.empresa)}` : ""}. Leva 1 minuto.</p>
+      </div>
+      <form id="form-nps" novalidate>
+        <div class="cartao">
+          <h2 style="margin-top:0;">De 1 a 5, como você avalia:</h2>
+          ${d.criterios
+            .map(
+              (c) => `<div class="criterio" data-criterio="${c.id}">
+                <div class="criterio-nome">${esc(c.id === "consultor" && d.consultor ? `Consultor(a): ${d.consultor}` : c.nome)}</div>
+                <div class="mini">${esc(AJUDA[c.id] || "")}</div>
+                <div class="estrelas" role="radiogroup" aria-label="${esc(c.nome)}">
+                  ${[1, 2, 3, 4, 5].map((n) => `<button type="button" class="estrela" data-nota="${n}" aria-label="${n} de 5">★</button>`).join("")}
+                  <span class="estrela-rotulo"></span>
+                </div>
+              </div>`
+            )
+            .join("")}
+        </div>
+        <div class="cartao">
+          <h2 style="margin-top:0;">De 0 a 10, o quanto você recomendaria a Evoé a um amigo ou parceiro de negócios?</h2>
+          <div class="nps-escala">${Array.from({ length: 11 }, (_, n) => `<button type="button" class="nps-nota nps-${n <= 6 ? "baixo" : n <= 8 ? "medio" : "alto"}" data-nps="${n}">${n}</button>`).join("")}</div>
+          <div class="nps-legenda"><span>Nada provável</span><span>Muito provável</span></div>
+        </div>
+        <div class="cartao">
+          <label for="feedback" style="margin-top:0;">Quer deixar um comentário? <span class="opc">(opcional)</span></label>
+          <textarea id="feedback" maxlength="3000" placeholder="O que fizemos bem e o que podemos melhorar?"></textarea>
+          <label for="respondente">Seu nome <span class="opc">(opcional)</span></label>
+          <input type="text" id="respondente" value="${esc(d.contato || "")}" />
+          <div id="erro" class="erro hidden"></div>
+          <button type="submit" class="botao" id="enviar">Enviar avaliação</button>
+        </div>
+      </form>`;
+
+    const ROTULOS = ["", "Muito ruim", "Ruim", "Regular", "Bom", "Excelente"];
+    raiz.querySelectorAll(".criterio").forEach((bloco) =>
+      bloco.querySelectorAll(".estrela").forEach((b) =>
+        b.addEventListener("click", () => {
+          const nota = Number(b.dataset.nota);
+          respostas.criterios[bloco.dataset.criterio] = nota;
+          bloco.querySelectorAll(".estrela").forEach((x) => x.classList.toggle("on", Number(x.dataset.nota) <= nota));
+          bloco.querySelector(".estrela-rotulo").textContent = ROTULOS[nota];
+          document.getElementById("erro").classList.add("hidden");
+        })
+      )
+    );
+    raiz.querySelectorAll(".nps-nota").forEach((b) =>
+      b.addEventListener("click", () => {
+        respostas.nps = Number(b.dataset.nps);
+        raiz.querySelectorAll(".nps-nota").forEach((x) => x.classList.toggle("on", x === b));
+        document.getElementById("erro").classList.add("hidden");
+      })
+    );
+    document.getElementById("form-nps").addEventListener("submit", async (ev) => {
+      ev.preventDefault();
+      const erro = document.getElementById("erro");
+      const falta = d.criterios.find((c) => !respostas.criterios[c.id]);
+      if (falta) {
+        erro.textContent = `Dê uma nota de 1 a 5 para "${falta.nome}".`;
+        erro.classList.remove("hidden");
+        return raiz.querySelector(`[data-criterio="${falta.id}"]`).scrollIntoView({ behavior: "smooth", block: "center" });
+      }
+      if (respostas.nps === null) {
+        erro.textContent = "Responda de 0 a 10 o quanto recomendaria a Evoé.";
+        erro.classList.remove("hidden");
+        return;
+      }
+      const botao = document.getElementById("enviar");
+      botao.disabled = true;
+      botao.textContent = "Enviando...";
+      try {
+        await api(`/api/publico/avaliacao/${encodeURIComponent(token)}`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ ...respostas, feedback: document.getElementById("feedback").value, respondente: document.getElementById("respondente").value }),
+        });
+        obrigado("Obrigado pela avaliação!", "Sua opinião ajuda a Evoé a melhorar a cada processo. Foi um prazer trabalhar com você!");
+      } catch (err) {
+        erro.textContent = err.message;
+        erro.classList.remove("hidden");
+        botao.disabled = false;
+        botao.textContent = "Enviar avaliação";
+      }
+    });
   }
 
   // ---------- Banco de talentos ----------

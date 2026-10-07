@@ -63,6 +63,14 @@ Baseado no documento "Controle de Ponto Próprio" (Resolut). Construído por eta
 - Avaliação: `dataEntrevista` (consultoria), `dataEntrevistaCliente`, `dataRetornoCliente`, `avaliacaoConsultoria`/`notaConsultoria`,
   `avaliacaoEmpresa`/`notaEmpresa` (1–5), além de `parecerComportamental` e checagem de referência.
 
+## Pesquisa de satisfação (NPS)
+- Disparo: vaga vai para "11. Aprovado" (`PATCH /api/vagas/:id/etapa`) -> `utils/npsPesquisas.criarParaVaga` (uma por vaga,
+  coleção `pesquisasNps`): e-mail automático (contatos do CRM `empresas.emailContato` + `contratos.emailEnviadoPara`),
+  notificação ao consultor/gestor para enviar por WhatsApp (link wa.me pronto), lembrete por e-mail após 3 dias.
+- WhatsApp é 1 clique (não há API oficial da Meta integrada). Página pública `/avaliacao/<token>` (noindex).
+- Cálculo puro em `utils/nps.js` (NPS 0–10 padrão de mercado; critérios 1–5), testes em `test/nps.test.js`.
+- Painel (só Gestor): menu Comercial › Satisfação (NPS), `GET /api/nps/painel`.
+
 ## Teste DISC
 - `server/utils/disc.js`: questionário PRÓPRIO da Evoé (24 grupos "mais/menos", base Marston 1928) — não copiar
   itens de testes comerciais (ex.: Mr.Coach é protegido por direitos autorais). Pontuação pura, testes em `test/disc.test.js`.

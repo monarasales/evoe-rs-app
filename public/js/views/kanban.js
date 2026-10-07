@@ -3,6 +3,7 @@ import { store, podeGerenciarVagas, showToast, nomeEmpresa, nomeConsultor, forma
 import { abrirModal, fecharModal } from "../modal.js";
 import { navegarPara } from "../router.js";
 import { abrirEditorPagina, progressoPagina } from "./vagaPagina.js";
+import { ligarAcoes as ligarAcoesNps } from "./nps.js";
 
 const ETAPAS_ENCERRADAS_KANBAN = ["11. Aprovado", "12. Cancelada/Encerrada"];
 
@@ -375,6 +376,7 @@ export async function renderKanban(root) {
                   })()}</div></div>
                 <button type="button" class="btn btn-secondary btn-sm" id="btn-pagina-vaga">📝 Editar página da vaga</button>
               </div>
+              ${vaga.etapaAtual === "11. Aprovado" ? '<div class="form-row nps-box" id="nps-box"><div class="sub">Carregando pesquisa de satisfação...</div></div>' : ""}
               <div class="form-row link-box" id="link-box">${htmlLinkInscricao(vaga)}</div>`
             : ""
         }
@@ -397,6 +399,7 @@ export async function renderKanban(root) {
 
     if (editando && podeEditar) {
       ligarLinkInscricao(vaga);
+      if (vaga.etapaAtual === "11. Aprovado") carregarNpsDaVaga(vaga);
       document.getElementById("btn-pagina-vaga").addEventListener("click", () =>
         // Ao salvar (ou fechar), volta para a vaga com os dados atualizados.
         abrirEditorPagina(vaga, () => abrirVaga(vaga.id))
@@ -569,4 +572,50 @@ function ligarLinkInscricao(vaga) {
       showToast(err.message, "erro");
     }
   });
+}
+
+// ---------- Pesquisa de satisfação (NPS) da vaga fechada ----------
+async function carregarNpsDaVaga(vaga) {
+  const caixa = document.getElementById("nps-box");
+  if (!caixa) return;
+  let d;
+  try {
+    d = await api.get(`/api/nps/vaga/${vaga.id}`);
+  } catch (err) {
+    caixa.innerHTML = `<div class="sub">${escapeHtml(err.message)}</div>`;
+    return;
+  }
+  const p = d.pesquisa;
+  const c = d.contatos;
+  const contatos = `<div class="sub">Contato do cliente (CRM): ${escapeHtml(c.contatoNome || "—")} · ${c.emails.length ? escapeHtml(c.emails.join(", ")) : "<span class='saldo-neg'>sem e-mail</span>"} · ${c.whatsapp ? escapeHtml(c.whatsapp) : "<span class='saldo-neg'>sem WhatsApp</span>"}</div>`;
+  if (!p) {
+    caixa.innerHTML = `<label>⭐ Pesquisa de satisfação (NPS)</label>${contatos}
+      <button type="button" class="btn btn-secondary btn-sm" id="nps-criar" style="margin-top:8px;">Criar e enviar pesquisa</button>`;
+    document.getElementById("nps-criar").addEventListener("click", async () => {
+      try {
+        const r = await api.post(`/api/nps/vaga/${vaga.id}/enviar`);
+        showToast(r.email.ok ? "Pesquisa criada e enviada por e-mail. Envie também pelo WhatsApp." : `Pesquisa criada. E-mail não enviado: ${r.email.erro}`, r.email.ok ? "sucesso" : "erro");
+        carregarNpsDaVaga(vaga);
+      } catch (err) {
+        showToast(err.message, "erro");
+      }
+    });
+    return;
+  }
+  const r = p.respostas;
+  const email = p.envios.filter((e) => e.canal.startsWith("email")).slice(-1)[0];
+  caixa.innerHTML = `<label>⭐ Pesquisa de satisfação (NPS) ${r ? `<span class="tag tag-nprazo">respondida: ${r.nps}/10</span>` : '<span class="tag tag-standby">aguardando resposta</span>'}</label>
+    ${contatos}
+    <div class="sub">${email ? (email.ok ? "✉️ E-mail enviado" : `✉️ E-mail não enviado: ${escapeHtml(email.erro || "")}`) : ""}${p.envios.some((e) => e.canal === "whatsapp") ? " · 💬 WhatsApp aberto" : ""}</div>
+    ${r && r.feedback ? `<div class="parecer-texto" style="margin-top:6px;">"${escapeHtml(r.feedback)}"</div>` : ""}
+    ${
+      r
+        ? ""
+        : `<div class="link-acoes" style="margin-top:8px;">
+            <button type="button" class="btn btn-primary btn-sm" data-whats="${p.id}" data-link="${escapeHtml(p.linkWhatsapp)}">Enviar pelo WhatsApp</button>
+            <button type="button" class="btn btn-outline btn-sm" data-reenviar="${vaga.id}">Reenviar e-mail</button>
+            <button type="button" class="btn btn-outline btn-sm" data-copiar="${escapeHtml(p.link)}">Copiar link</button>
+          </div>`
+    }`;
+  ligarAcoesNps(caixa, () => carregarNpsDaVaga(vaga));
 }

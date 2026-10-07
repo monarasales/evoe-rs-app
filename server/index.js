@@ -73,11 +73,12 @@ app.use("/api/ponto", require("./routes/ponto"));
 app.use("/api/ponto-gestao", require("./routes/pontoGestao"));
 app.use("/api/configuracao", require("./routes/configuracao"));
 app.use("/api/publico", require("./routes/publico"));
+app.use("/api/nps", require("./routes/nps"));
 
 // Páginas públicas: /vagas (todas as abertas), /vaga/<código> (inscrição),
 // /talentos (banco de talentos) e /disc/<código> (teste DISC individual do candidato).
 // O servidor injeta título, prévia para WhatsApp e dados para o Google para Vagas.
-app.get(["/vagas", "/vaga/:token", "/disc/:token", "/talentos"], (req, res) => {
+app.get(["/vagas", "/vaga/:token", "/disc/:token", "/talentos", "/avaliacao/:token"], (req, res) => {
   res.type("html").send(require("./utils/paginaPublicaSeo").renderizar(req));
 });
 
@@ -103,6 +104,7 @@ app.use((err, req, res, next) => {
 startDeadlineChecker(60);
 startContratoChecker(60);
 startBackupDiario(60);
+require("./utils/npsPesquisas").startLembretesNps(60);
 
 // Configuração inicial do ponto (escritório, feriados, vínculos) — roda em segundo plano.
 require("./utils/ponto/configInicial").aplicarConfiguracaoInicial();

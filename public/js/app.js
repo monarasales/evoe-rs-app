@@ -12,6 +12,7 @@ import { renderFinanceiro } from "./views/financeiro.js";
 import { renderPonto } from "./views/ponto.js";
 import { renderColaboradores } from "./views/colaboradores.js";
 import { renderPontoGestao } from "./views/pontoGestao.js";
+import { renderNps } from "./views/nps.js";
 
 const loginScreen = document.getElementById("login-screen");
 const mainScreen = document.getElementById("main-screen");
@@ -45,6 +46,7 @@ const NAV_SECOES = [
     itens: [
       { href: "#/crm", label: "CRM", icone: "🤝", somenteGestor: true },
       { href: "#/financeiro", label: "Financeiro", icone: "💰", somenteGestor: true },
+      { href: "#/nps", label: "Satisfação (NPS)", icone: "⭐", somenteGestor: true },
     ],
   },
   {
@@ -190,6 +192,7 @@ function registrarRotas() {
   registrarRota("/financeiro", renderFinanceiro);
   registrarRota("/ponto", renderPonto);
   registrarRota("/ponto-gestao", renderPontoGestao);
+  registrarRota("/nps", renderNps);
   registrarRota("/colaboradores", renderColaboradores);
 }
 

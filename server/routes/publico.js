@@ -10,6 +10,7 @@ const crypto = require("crypto");
 const { salvarCurriculo } = require("../utils/curriculos");
 const disc = require("../utils/disc");
 const { paginaPublica, gerarTokenVaga } = require("../utils/vagaPagina");
+const nps = require("../utils/nps");
 
 const router = express.Router();
 
@@ -261,6 +262,52 @@ router.post("/talentos", (req, res) => {
     );
   if (!candidato.disc && !candidato.discToken) candidato = db.update("candidatos", candidato.id, { discToken: novoTokenDisc(), discSolicitadoEm: new Date().toISOString() });
   res.status(201).json({ ok: true, atualizada: !!existente, discUrl: candidato.disc ? null : `/disc/${candidato.discToken}` });
+});
+
+// ---------- Pesquisa de satisfação (NPS) do cliente ----------
+const acharPesquisa = (token) => db.readCollection("pesquisasNps").find((p) => p.token && p.token === token);
+
+router.get("/avaliacao/:token", (req, res) => {
+  const p = acharPesquisa(req.params.token);
+  if (!p) return res.status(404).json({ erro: "Pesquisa não encontrada. Confira o link recebido." });
+  res.json({
+    vaga: p.vagaTitulo,
+    empresa: p.empresaNome,
+    contato: p.contatoNome,
+    consultor: p.consultorNome,
+    respondida: !!p.respondidaEm,
+    criterios: nps.CRITERIOS,
+  });
+});
+
+router.post("/avaliacao/:token", (req, res) => {
+  const p = acharPesquisa(req.params.token);
+  if (!p) return res.status(404).json({ erro: "Pesquisa não encontrada." });
+  if (p.respondidaEm) return res.status(400).json({ erro: "Esta pesquisa já foi respondida. Obrigado!" });
+  if (limiteExcedido(req.ip)) return res.status(429).json({ erro: "Muitos envios em pouco tempo. Aguarde alguns minutos." });
+  let respostas;
+  try {
+    respostas = nps.validarRespostas(req.body || {});
+  } catch (err) {
+    return res.status(400).json({ erro: err.message });
+  }
+  db.update("pesquisasNps", p.id, { respostas, respondidaEm: new Date().toISOString() });
+  const vaga = db.findById("vagas", p.vagaId);
+  const destinos = new Set([p.consultorId]);
+  db.readCollection("consultores")
+    .filter((c) => c.perfil === "Gestor" && c.ativo !== false)
+    .forEach((c) => destinos.add(c.id));
+  const cat = nps.categoria(respostas.nps);
+  destinos.forEach((id) =>
+    notify({
+      tipo: "Pesquisa NPS respondida",
+      vagaId: vaga ? vaga.id : null,
+      destinatarioId: id,
+      assunto: `${cat === "detrator" ? "⚠️ " : ""}NPS respondido: ${p.empresaNome || p.vagaTitulo} deu ${respostas.nps}/10`,
+      mensagem: `${p.empresaNome || "O cliente"} respondeu a pesquisa da vaga "${p.vagaTitulo}": recomendação ${respostas.nps}/10 (${cat}).${respostas.feedback ? ` Comentário: "${respostas.feedback.slice(0, 200)}"` : ""}`,
+    })
+  );
+  res.status(201).json({ ok: true, categoria: cat });
 });
 
 // ---------- Teste DISC (link individual do candidato) ----------

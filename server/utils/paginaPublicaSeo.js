@@ -112,6 +112,10 @@ function renderizar(req) {
   } else if (partes[0] === "disc") {
     titulo = "Teste de perfil comportamental — Evoé Gestão e RH";
     indexar = false; // link pessoal do candidato
+  } else if (partes[0] === "avaliacao") {
+    titulo = "Pesquisa de satisfação — Evoé Gestão e RH";
+    descricao = "Conte como foi o processo seletivo conduzido pela Evoé Gestão e RH.";
+    indexar = false; // link pessoal do cliente
   } else if (partes[0] === "talentos") {
     titulo = "Banco de talentos — Evoé Gestão e RH";
     descricao = "Não encontrou a vaga ideal? Cadastre seu currículo no banco de talentos da Evoé Gestão e RH.";
