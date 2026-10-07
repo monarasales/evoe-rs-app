@@ -308,7 +308,7 @@ export async function renderDashboard(root) {
     <div id="tabela-ranking"></div>
 
     <h3 class="section-title">Taxa de Conversão do Funil por Consultor</h3>
-    <div class="sub" style="margin:-8px 0 12px;">Dos candidatos inscritos, quantos chegaram a Aprovado pelo Cliente — mede qualidade da triagem, não só volume.</div>
+    <div class="sub" style="margin:-8px 0 12px;">Dos candidatos inscritos, quantos chegaram a Aprovado — mede qualidade da triagem, não só volume.</div>
     <div id="tabela-conversao"></div>
 
     <h3 class="section-title">SLA de Fechamento (ideal até 10 dias, dentro até 15 dias) e Meta Mensal por Consultor</h3>

@@ -442,6 +442,49 @@ table tr:hover td { background: #fafbfc; }
 .disc-C, .disc-fill-C { background: #3b7dd8 !important; }
 .disc-barra { display: grid; grid-template-columns: 130px 1fr 30px; gap: 8px; align-items: center; font-size: 13px; margin: 5px 0; }
 
+/* ---------- Funil do candidato ---------- */
+.funil-chips { display: flex; gap: 6px; flex-wrap: wrap; margin: 4px 0 12px; }
+.funil-chip { border: 1px solid var(--border); background: white; border-radius: 20px; padding: 6px 12px; font-size: 12.5px; color: var(--text); cursor: pointer; }
+.funil-chip strong { margin-left: 4px; color: var(--navy); }
+.funil-chip.ativo { background: var(--navy); color: white; border-color: var(--navy); }
+.funil-chip.ativo strong { color: white; }
+.fase-tag { white-space: nowrap; }
+.fase-recrutamento { background: #eef1f5; color: var(--text-muted); }
+.fase-triagem { background: var(--purple-light); color: var(--purple); }
+.fase-selecao-com-rh { background: var(--teal-light); color: #128a80; }
+.fase-checagem-de-referencia { background: #fff4e5; color: #a8650a; }
+.fase-selecao-com-gestor { background: #e7efff; color: #3b62c4; }
+.fase-aprovado { background: var(--success-bg); color: var(--success); }
+.fase-reprovado { background: var(--danger-bg); color: var(--danger); }
+.fase-desistiu { background: #eceff1; color: var(--text-muted); }
+.funil-chip.fase-reprovado:not(.ativo), .funil-chip.fase-aprovado:not(.ativo) { border-color: transparent; }
+.funil-box { background: var(--bg); border-radius: 10px; padding: 12px 14px; }
+.funil-passos { display: grid; grid-template-columns: repeat(6, 1fr); gap: 4px; }
+.funil-passo { background: none; border: none; padding: 4px 2px; display: flex; flex-direction: column; align-items: center; gap: 4px; cursor: pointer; color: var(--text-muted); font-size: 11.5px; text-align: center; line-height: 1.2; }
+.funil-passo:disabled { cursor: default; }
+.funil-bola { width: 28px; height: 28px; border-radius: 50%; border: 2px solid var(--border); background: white; display: flex; align-items: center; justify-content: center; font-weight: 700; font-size: 12px; }
+.funil-passo.feito { color: var(--success); }
+.funil-passo.feito .funil-bola { background: var(--success-bg); border-color: var(--success); color: var(--success); }
+.funil-passo.atual { color: var(--navy); font-weight: 700; }
+.funil-passo.atual .funil-bola { background: var(--brand-gradient); border-color: transparent; color: white; }
+.funil-final { margin-top: 10px; padding: 8px 12px; border-radius: 8px; font-size: 13.5px; }
+.funil-final.reprovado { background: var(--danger-bg); color: var(--danger); }
+.funil-final.aprovado { background: var(--success-bg); color: var(--success); }
+.funil-final.desistiu { background: #eceff1; color: var(--text-muted); }
+.funil-reprovar { margin-top: 10px; background: white; border: 1px solid var(--danger-bg); border-radius: 8px; padding: 10px 12px; }
+.funil-historico { margin: 6px 0 0; padding-left: 18px; font-size: 12.5px; }
+.funil-box .sub, .funil-box summary { font-size: 12.5px; color: var(--text-muted); }
+.form-cols.tres { grid-template-columns: repeat(3, 1fr); }
+.avaliacoes { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-bottom: 14px; }
+.avaliacao-box { background: var(--bg); border-radius: 10px; padding: 10px 12px; }
+.avaliacao-box textarea { width: 100%; padding: 9px 11px; border: 1px solid var(--border); border-radius: 8px; font-size: 13.5px; font-family: inherit; resize: vertical; }
+.avaliacao-topo { display: flex; justify-content: space-between; align-items: center; gap: 8px; margin-bottom: 6px; font-size: 13.5px; }
+.nota-select { border: 1px solid var(--border); border-radius: 8px; padding: 4px 6px; font-size: 13px; color: #c98a00; background: white; }
+@media (max-width: 860px) {
+  .funil-passos { grid-template-columns: repeat(3, 1fr); row-gap: 10px; }
+  .form-cols.tres, .avaliacoes { grid-template-columns: 1fr; }
+}
+
 /* ---------- Candidatos ---------- */
 .cand-filtros { display: grid; grid-template-columns: 2fr 2fr 1fr; gap: 10px; margin-bottom: 10px; }
 .cand-filtros .input-toolbar { width: 100%; }

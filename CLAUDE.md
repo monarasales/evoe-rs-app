@@ -50,6 +50,15 @@ Baseado no documento "Controle de Ponto Próprio" (Resolut). Construído por eta
 - Inscrição cria candidato "Inscrito"/origem "Link da vaga" com `consentimentoLgpd`; mesmo e-mail na mesma vaga não duplica
   (só preenche campos vazios, guarda `reinscricoes` e nova versão do currículo). Currículos: `server/utils/curriculos.js`.
 
+## Funil do candidato
+- Campo `fase` (FASES_CANDIDATO em constants.js): Recrutamento → Triagem → Seleção com RH → Checagem de referência →
+  Seleção com gestor → Aprovado | Reprovado (exige motivo, `reprovacao`) | Desistiu. Mudança via `POST /api/candidatos/:id/fase`,
+  sempre registrada em `historicoFases`; reativar guarda a reprovação em `reprovacoesAnteriores`.
+- `etapaCandidato` (14 etapas antigas) é mantido como histórico; `utils/migracaoFases.js` deu `fase` a todos (uma vez,
+  `faseMigradaDe`). Indicadores usam `fase`.
+- Avaliação: `dataEntrevista` (consultoria), `dataEntrevistaCliente`, `dataRetornoCliente`, `avaliacaoConsultoria`/`notaConsultoria`,
+  `avaliacaoEmpresa`/`notaEmpresa` (1–5), além de `parecerComportamental` e checagem de referência.
+
 ## Teste DISC
 - `server/utils/disc.js`: questionário PRÓPRIO da Evoé (24 grupos "mais/menos", base Marston 1928) — não copiar
   itens de testes comerciais (ex.: Mr.Coach é protegido por direitos autorais). Pontuação pura, testes em `test/disc.test.js`.

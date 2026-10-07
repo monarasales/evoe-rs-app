@@ -6,7 +6,7 @@ const { computeVagaFields, hojeStr } = require("../utils/vagaCompute");
 const {
   ETAPAS_VAGA,
   ETAPAS_ENCERRADAS,
-  ETAPAS_CANDIDATO,
+  FASES_CANDIDATO,
   META_VAGAS_FECHADAS_MES,
   SLA_DIAS_IDEAL,
   SLA_DIAS_LIMITE,
@@ -85,8 +85,12 @@ router.get("/dashboard", requireAuth, (req, res) => {
     ? candidatosTodos.filter((c) => vagaIds.has(c.vagaId))
     : candidatosTodos;
   const candidatosPorEtapa = {};
-  ETAPAS_CANDIDATO.forEach((e) => (candidatosPorEtapa[e] = 0));
-  candidatosEscopo.forEach((c) => (candidatosPorEtapa[c.etapaCandidato] = (candidatosPorEtapa[c.etapaCandidato] || 0) + 1));
+  // Funil novo (fase). Candidato sem fase (não deveria existir após a migração) conta pela etapa antiga.
+  FASES_CANDIDATO.forEach((f) => (candidatosPorEtapa[f] = 0));
+  candidatosEscopo.forEach((c) => {
+    const chave = c.fase || c.etapaCandidato;
+    candidatosPorEtapa[chave] = (candidatosPorEtapa[chave] || 0) + 1;
+  });
 
   // --- Vagas fechadas por consultor -------------------------------------------------
   const vagasFechadas = vagasComCampos.filter((v) => v.etapaAtual === "11. Aprovado");
@@ -123,12 +127,12 @@ router.get("/dashboard", requireAuth, (req, res) => {
     const fechadasNoMes = fechadasDoConsultor.filter((v) => (v.dataFechamento || "").slice(0, 7) === anoMesAtual).length;
 
     // --- Taxa de conversão do funil: dos candidatos inscritos nas vagas deste
-    // consultor, quantos chegaram a "Aprovado pelo Cliente" (o desfecho de sucesso).
+    // consultor, quantos chegaram a "Aprovado" (o desfecho de sucesso).
     // Indicador de qualidade de triagem/condução do processo, não só de volume.
     const vagasDoConsultor = vagasComCampos.filter((v) => v.consultorId === c.id);
     const vagaIdsDoConsultor = new Set(vagasDoConsultor.map((v) => v.id));
     const candidatosDoConsultor = candidatosTodos.filter((cd) => vagaIdsDoConsultor.has(cd.vagaId));
-    const candidatosAprovados = candidatosDoConsultor.filter((cd) => cd.etapaCandidato === "Aprovado pelo Cliente").length;
+    const candidatosAprovados = candidatosDoConsultor.filter((cd) => cd.fase === "Aprovado" || (!cd.fase && cd.etapaCandidato === "Aprovado pelo Cliente")).length;
     const taxaConversaoPct = candidatosDoConsultor.length
       ? Math.round((candidatosAprovados / candidatosDoConsultor.length) * 1000) / 10
       : 0;

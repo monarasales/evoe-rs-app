@@ -16,6 +16,8 @@ seed();
 // Ponto: garante a escala padrão e converte registros do ponto antigo em marcações.
 require("./utils/ponto/jornada").garantirJornadaPadrao();
 require("./utils/ponto/migracao").migrarPontoLegado();
+// Candidatos: converte a etapa antiga para o funil novo (uma vez; nada é apagado).
+require("./utils/migracaoFases").migrarFasesCandidatos();
 
 const app = express();
 const PORT = process.env.PORT || 3000;

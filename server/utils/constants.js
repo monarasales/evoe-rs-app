@@ -34,6 +34,53 @@ const ETAPAS_CANDIDATO = [
   "Desistiu",
 ];
 
+// Funil do candidato (fase atual). As 6 primeiras são o caminho do processo; as 3 últimas
+// são desfechos. A lista antiga ETAPAS_CANDIDATO continua existindo: cada candidato
+// mantém seu "etapaCandidato" original (histórico) e ganhou o campo "fase".
+const FASES_CANDIDATO = [
+  "Recrutamento",
+  "Triagem",
+  "Seleção com RH",
+  "Checagem de referência",
+  "Seleção com gestor",
+  "Aprovado",
+  "Reprovado",
+  "Desistiu",
+];
+const FASES_FINAIS = ["Aprovado", "Reprovado", "Desistiu"];
+const MOTIVOS_REPROVACAO = [
+  "Fora do perfil da vaga",
+  "Experiência insuficiente",
+  "Formação não atende",
+  "Pretensão salarial acima",
+  "Localização / deslocamento",
+  "Disponibilidade de horário",
+  "Não compareceu à entrevista",
+  "Sem retorno do candidato",
+  "Referências desfavoráveis",
+  "Perfil comportamental não aderente",
+  "Reprovado pelo cliente",
+  "Vaga preenchida por outro candidato",
+  "Outro",
+];
+// Conversão da etapa antiga para a fase do funil novo (usada uma única vez na migração).
+const FASE_DA_ETAPA_ANTIGA = {
+  Inscrito: "Recrutamento",
+  "Triagem OK": "Seleção com RH",
+  Convocado: "Seleção com RH",
+  Entrevistado: "Seleção com RH",
+  "Aprovado na Entrevista": "Checagem de referência",
+  "Reprovado na Entrevista": "Reprovado",
+  "Referência OK": "Seleção com gestor",
+  "Referência com Ressalva": "Seleção com gestor",
+  "Parecer Comportamental OK": "Seleção com gestor",
+  "Entrevista Final Agendada (Cliente)": "Seleção com gestor",
+  "Aguardando Retorno Cliente": "Seleção com gestor",
+  "Aprovado pelo Cliente": "Aprovado",
+  "Reprovado pelo Cliente": "Reprovado",
+  Desistiu: "Desistiu",
+};
+
 const PRIORIDADES = ["Alta", "Média", "Baixa"];
 
 // CRM — Prospects: quem entra em contato querendo cotar serviço, ainda sem ser cliente.
@@ -99,6 +146,10 @@ const CONTRATO_PADRAO = {
 };
 
 module.exports = {
+  FASES_CANDIDATO,
+  FASES_FINAIS,
+  MOTIVOS_REPROVACAO,
+  FASE_DA_ETAPA_ANTIGA,
   PERFIS_CONDUZEM_VAGAS,
   ETAPAS_VAGA,
   ETAPAS_ENCERRADAS,

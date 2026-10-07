@@ -59,13 +59,17 @@ export async function renderCandidatos(root, params) {
     <div class="cand-filtros">
       <input type="search" id="cand-busca" class="input-toolbar" placeholder="🔍 Buscar por nome, e-mail, telefone, cidade ou parecer" />
       <div id="cand-filtro-vaga"></div>
-      <select id="cand-filtro-etapa" class="input-toolbar"><option value="">Todas as etapas</option></select>
     </div>
+    <div class="funil-chips" id="cand-funil"></div>
     <div id="cand-contagem" class="sub" style="margin-bottom:8px;"></div>
     <div id="candidatos-tabela"><div class="empty-state">Carregando...</div></div>
   `;
 
-  const vagas = await api.get("/api/vagas");
+  const [vagas, fasesInfo] = await Promise.all([api.get("/api/vagas"), api.get("/api/candidatos/fases")]);
+  const FASES = fasesInfo.fases;
+  const FINAIS = fasesInfo.finais;
+  const CAMINHO = FASES.filter((f) => !FINAIS.includes(f));
+  motivosReprovacao = fasesInfo.motivos;
   const empresaNome = (id) => (store.empresas.find((e) => e.id === id) || {}).nome || "Sem empresa";
   const vagaPorId = (id) => vagas.find((v) => v.id === id);
   const rotuloVaga = (v) => `${empresaNome(v.empresaId)} — ${v.titulo}`;
@@ -83,8 +87,7 @@ export async function renderCandidatos(root, params) {
   let todos = [];
   let filtroVaga = params.vagaId || "";
   const busca = root.querySelector("#cand-busca");
-  const filtroEtapa = root.querySelector("#cand-filtro-etapa");
-  filtroEtapa.innerHTML += store.etapasCandidato.map((e) => `<option>${escapeHtml(e)}</option>`).join("");
+  let filtroFase = "";
 
   const cbFiltro = criarCombobox(root.querySelector("#cand-filtro-vaga"), {
     opcoes: opcoesVaga(vagas),
@@ -106,7 +109,7 @@ export async function renderCandidatos(root, params) {
     const q = normalizar(busca.value.trim());
     return todos
       .filter((c) => !filtroVaga || c.vagaId === filtroVaga)
-      .filter((c) => !filtroEtapa.value || c.etapaCandidato === filtroEtapa.value)
+      .filter((c) => !filtroFase || (c.fase || "Recrutamento") === filtroFase)
       .filter((c) => {
         if (!q) return true;
         const texto = [c.nome, c.email, c.telefone, c.cidade, c.linkedin, c.parecerComportamental, c.obsReferencia, ...(c.pareceres || []).map((p) => p.texto)].join(" ");
@@ -116,7 +119,26 @@ export async function renderCandidatos(root, params) {
       .sort((a, b) => normalizar(a.nome).localeCompare(normalizar(b.nome), "pt-BR"));
   }
 
+  // Contadores do funil (respeitam vaga e busca, não a fase escolhida).
+  function desenharFunil() {
+    const salvo = filtroFase;
+    filtroFase = "";
+    const base = filtrados();
+    filtroFase = salvo;
+    const conta = (f) => base.filter((c) => (c.fase || "Recrutamento") === f).length;
+    root.querySelector("#cand-funil").innerHTML =
+      `<button type="button" class="funil-chip ${!filtroFase ? "ativo" : ""}" data-fase="">Todas <strong>${base.length}</strong></button>` +
+      FASES.map((f) => `<button type="button" class="funil-chip fase-${classeFase(f)} ${filtroFase === f ? "ativo" : ""}" data-fase="${escapeHtml(f)}">${escapeHtml(f)} <strong>${conta(f)}</strong></button>`).join("");
+    root.querySelectorAll(".funil-chip").forEach((b) =>
+      b.addEventListener("click", () => {
+        filtroFase = b.dataset.fase;
+        montarTabela();
+      })
+    );
+  }
+
   function montarTabela() {
+    desenharFunil();
     const el = root.querySelector("#candidatos-tabela");
     const lista = filtrados();
     root.querySelector("#cand-contagem").textContent = `${lista.length} candidato(s)${lista.length !== todos.length ? ` de ${todos.length}` : ""}`;
@@ -127,7 +149,7 @@ export async function renderCandidatos(root, params) {
     el.innerHTML = `
       <div class="tabela-rolavel"><table>
         <thead>
-          <tr><th>Candidato</th><th>Empresa · Vaga</th><th>Etapa</th><th>DISC</th><th>Currículo</th><th>Pareceres</th><th>Entrevista</th><th></th></tr>
+          <tr><th>Candidato</th><th>Empresa · Vaga</th><th>Fase</th><th>DISC</th><th>Currículo</th><th>Pareceres</th><th>Entrevistas</th><th></th></tr>
         </thead>
         <tbody>
           ${lista
@@ -138,11 +160,11 @@ export async function renderCandidatos(root, params) {
             <tr data-id="${c.id}">
               <td><strong>${escapeHtml(c.nome)}</strong>${c.inscritoPeloLink ? ' <span class="tag tag-prospect-contato" title="Inscrito pelo link da vaga">link</span>' : ""}<div class="sub">${escapeHtml([c.telefone, c.email].filter(Boolean).join(" · "))}</div></td>
               <td>${v ? `${escapeHtml(empresaNome(v.empresaId))}<div class="sub">${escapeHtml(v.titulo)}</div>` : "—"}</td>
-              <td>${escapeHtml(c.etapaCandidato)}</td>
+              <td>${tagFase(c)}</td>
               <td>${c.disc ? `<span class="tag disc-tag disc-${c.disc.resultado.primario}" title="Perfil DISC">${escapeHtml(c.disc.resultado.perfil)}</span>` : c.discToken ? '<span class="sub" title="Link do teste enviado, aguardando resposta">⏳</span>' : '<span class="sub">—</span>'}</td>
               <td>${c.curriculo ? `<a href="/api/candidatos/${c.id}/curriculo" target="_blank" rel="noopener" title="${escapeHtml(c.curriculo.nomeOriginal)}">📄 abrir</a>` : '<span class="sub">—</span>'}</td>
               <td>${nPareceres ? `💬 ${nPareceres}` : '<span class="sub">—</span>'}${c.jusbrasilOk ? ' <span title="Referência/Jusbrasil OK">✅</span>' : ""}</td>
-              <td>${c.dataEntrevista ? dataBr(c.dataEntrevista) : "—"}</td>
+              <td class="sub">${[c.dataEntrevista ? `RH ${dataBr(c.dataEntrevista)}` : "", c.dataEntrevistaCliente ? `Cliente ${dataBr(c.dataEntrevistaCliente)}` : ""].filter(Boolean).join("<br>") || "—"}</td>
               <td><button class="btn btn-outline btn-sm btn-editar">Abrir</button></td>
             </tr>`;
             })
@@ -163,7 +185,7 @@ export async function renderCandidatos(root, params) {
     clearTimeout(espera);
     espera = setTimeout(montarTabela, 150);
   });
-  filtroEtapa.addEventListener("change", montarTabela);
+
   root.querySelector("#btn-novo-candidato").addEventListener("click", () => abrirFormularioCandidato(null));
 
   await carregar();
@@ -186,12 +208,12 @@ export async function renderCandidatos(root, params) {
               : '<label>Empresa / vaga *</label><div id="c-vaga"></div><div class="sub" style="margin-top:4px;">Digite a primeira letra da empresa ou do cargo.</div>'
           }
         </div>
-        <div class="form-row">
-          <label>Etapa do candidato</label>
-          <select id="c-etapa">
-            ${store.etapasCandidato.map((e) => `<option ${(c.etapaCandidato || "Inscrito") === e ? "selected" : ""}>${escapeHtml(e)}</option>`).join("")}
-          </select>
-        </div>
+        ${
+          editando
+            ? `<div class="section-title">Funil do candidato</div><div id="c-funil">${blocoFunil(c)}</div>`
+            : `<div class="form-row"><label>Fase inicial</label>
+                <select id="c-fase-inicial">${CAMINHO.map((f) => `<option ${f === "Recrutamento" ? "selected" : ""}>${escapeHtml(f)}</option>`).join("")}</select></div>`
+        }
 
         <div class="section-title">Dados do candidato</div>
         <div class="form-row"><label>Nome completo *</label><input type="text" id="c-nome" value="${v("nome")}" /></div>
@@ -229,10 +251,23 @@ export async function renderCandidatos(root, params) {
 
         ${editando ? `<div class="section-title">Teste DISC</div><div id="c-disc">${blocoDisc(c)}</div>` : ""}
 
-        <div class="section-title">Avaliação</div>
-        <div class="form-cols">
-          <div class="form-row"><label>Data da entrevista</label><input type="text" id="c-data-entrevista" inputmode="numeric" maxlength="10" placeholder="dd/mm/aaaa" value="${c.dataEntrevista ? dataBr(c.dataEntrevista) : ""}" /></div>
+        <div class="section-title">Datas do processo</div>
+        <div class="form-cols tres">
+          <div class="form-row"><label>Entrevista com a consultoria</label><input type="text" id="c-data-entrevista" inputmode="numeric" maxlength="10" placeholder="dd/mm/aaaa" value="${c.dataEntrevista ? dataBr(c.dataEntrevista) : ""}" /></div>
+          <div class="form-row"><label>Entrevista com o cliente</label><input type="text" id="c-data-entrevista-cliente" inputmode="numeric" maxlength="10" placeholder="dd/mm/aaaa" value="${c.dataEntrevistaCliente ? dataBr(c.dataEntrevistaCliente) : ""}" /></div>
           <div class="form-row"><label>Retorno do cliente</label><input type="text" id="c-data-retorno" inputmode="numeric" maxlength="10" placeholder="dd/mm/aaaa" value="${c.dataRetornoCliente ? dataBr(c.dataRetornoCliente) : ""}" /></div>
+        </div>
+
+        <div class="section-title">Avaliação</div>
+        <div class="avaliacoes">
+          <div class="avaliacao-box">
+            <div class="avaliacao-topo"><strong>Avaliação da consultoria</strong> ${seletorNota("c-nota-consultoria", c.notaConsultoria)}</div>
+            <textarea id="c-av-consultoria" rows="4" placeholder="Avaliação da Evoé na entrevista: competências, pontos fortes, pontos de atenção, aderência à vaga...">${v("avaliacaoConsultoria")}</textarea>
+          </div>
+          <div class="avaliacao-box">
+            <div class="avaliacao-topo"><strong>Avaliação da empresa (cliente)</strong> ${seletorNota("c-nota-empresa", c.notaEmpresa)}</div>
+            <textarea id="c-av-empresa" rows="4" placeholder="Devolutiva do cliente após a entrevista com o gestor...">${v("avaliacaoEmpresa")}</textarea>
+          </div>
         </div>
         <div class="form-row"><label>Parecer comportamental</label><textarea id="c-parecer" rows="3">${v("parecerComportamental")}</textarea></div>
         <div class="form-row checkbox-row">
@@ -279,6 +314,7 @@ export async function renderCandidatos(root, params) {
     $("c-telefone").addEventListener("input", (e) => (e.target.value = telefoneMascara(e.target.value)));
     campoData($("c-data-entrevista"));
     campoData($("c-data-retorno"));
+    campoData($("c-data-entrevista-cliente"));
     $("btn-cancelar-c").addEventListener("click", fecharModal);
 
     let vagaEscolhida = editando ? c.vagaId : filtroVaga && vagasQuePodeEditar().some((x) => x.id === filtroVaga) ? filtroVaga : "";
@@ -292,6 +328,7 @@ export async function renderCandidatos(root, params) {
     }
 
     if (editando) {
+      ligarFunil(c);
       ligarDisc(c);
       ligarPareceres(c);
       let vagaCopia = "";
@@ -324,6 +361,51 @@ export async function renderCandidatos(root, params) {
           }
         });
       }
+    }
+
+    function ligarFunil(cand) {
+      const area = $("c-funil");
+      const mover = async (fase, extra = {}) => {
+        try {
+          Object.assign(cand, await api.post(`/api/candidatos/${cand.id}/fase`, { fase, ...extra }));
+          area.innerHTML = blocoFunil(cand);
+          ligarFunil(cand);
+          carregar();
+          showToast(`${cand.nome}: ${fase}.`, "sucesso");
+        } catch (err) {
+          mostrarErro(err.message);
+        }
+      };
+      area.querySelectorAll("[data-ir]").forEach((b) =>
+        b.addEventListener("click", () => {
+          const fase = b.dataset.ir;
+          if (b.dataset.confirmar && !confirm(`Mover ${cand.nome} para "${fase}"?`)) return;
+          mover(fase);
+        })
+      );
+      const btnReprovar = area.querySelector("#funil-reprovar");
+      if (btnReprovar)
+        btnReprovar.addEventListener("click", () => {
+          area.querySelector("#funil-painel-reprovar").classList.toggle("hidden");
+        });
+      const confirmar = area.querySelector("#funil-confirmar-reprovar");
+      if (confirmar)
+        confirmar.addEventListener("click", () => {
+          const motivo = area.querySelector("#funil-motivo").value;
+          if (!motivo) return mostrarErro("Escolha o motivo da reprovação.");
+          mover("Reprovado", { motivo, observacao: area.querySelector("#funil-obs").value });
+        });
+      const devolutiva = area.querySelector("#funil-devolutiva");
+      if (devolutiva)
+        devolutiva.addEventListener("click", () => {
+          const vaga = vagaPorId(cand.vagaId);
+          const tel = String(cand.telefone || "").replace(/\D/g, "");
+          const texto =
+            `Olá, ${(cand.nome || "").split(" ")[0]}! Agradecemos muito seu interesse e participação no processo seletivo` +
+            `${vaga ? ` para a vaga de ${vaga.titulo}` : ""}. Neste momento, seguiremos com outros perfis mais aderentes aos requisitos da vaga. ` +
+            `Seu currículo continuará em nosso banco de talentos para futuras oportunidades. Desejamos sucesso! — Evoé Gestão e RH`;
+          window.open(`https://wa.me/${tel.length >= 10 ? "55" + tel : ""}?text=${encodeURIComponent(texto)}`, "_blank", "noopener");
+        });
     }
 
     function ligarDisc(cand) {
@@ -408,10 +490,11 @@ export async function renderCandidatos(root, params) {
       const nome = $("c-nome").value.trim();
       const dataEntrevista = brParaIso($("c-data-entrevista").value);
       const dataRetornoCliente = brParaIso($("c-data-retorno").value);
+      const dataEntrevistaCliente = brParaIso($("c-data-entrevista-cliente").value);
       const arquivo = $("c-curriculo").files[0];
       if (!editando && !vagaEscolhida) return mostrarErro("Escolha a vaga (digite a empresa ou o cargo).");
       if (!nome) return mostrarErro("Informe o nome do candidato.");
-      if (dataEntrevista === null || dataRetornoCliente === null) return mostrarErro("Datas no formato dd/mm/aaaa (ex.: 15/10/2026).");
+      if (dataEntrevista === null || dataRetornoCliente === null || dataEntrevistaCliente === null) return mostrarErro("Datas no formato dd/mm/aaaa (ex.: 15/10/2026).");
       if (arquivo && arquivo.size > 8 * 1024 * 1024) return mostrarErro("O currículo passa de 8 MB.");
 
       const payload = {
@@ -422,8 +505,12 @@ export async function renderCandidatos(root, params) {
         linkedin: $("c-linkedin").value.trim(),
         origem: $("c-origem").value,
         pretensaoSalarial: $("c-pretensao").value.trim(),
-        etapaCandidato: $("c-etapa").value,
         dataEntrevista: dataEntrevista || null,
+        dataEntrevistaCliente: dataEntrevistaCliente || null,
+        avaliacaoConsultoria: $("c-av-consultoria").value,
+        notaConsultoria: $("c-nota-consultoria").value || null,
+        avaliacaoEmpresa: $("c-av-empresa").value,
+        notaEmpresa: $("c-nota-empresa").value || null,
         dataRetornoCliente: dataRetornoCliente || null,
         jusbrasilOk: $("c-jusbrasil").checked,
         obsReferencia: $("c-obs-referencia").value,
@@ -437,7 +524,7 @@ export async function renderCandidatos(root, params) {
         if (editando) {
           salvo = await api.patch(`/api/candidatos/${c.id}`, payload);
         } else {
-          salvo = await api.post("/api/candidatos", { ...payload, vagaId: vagaEscolhida });
+          salvo = await api.post("/api/candidatos", { ...payload, vagaId: vagaEscolhida, fase: $("c-fase-inicial").value });
         }
         const avisos = [];
         if (arquivo) {
@@ -562,5 +649,82 @@ function blocoDisc(c) {
     <div class="sub" style="margin-bottom:8px;">Este candidato ainda não fez o teste DISC.</div>
     <button type="button" class="btn btn-secondary btn-sm" id="disc-gerar">Gerar link do teste DISC</button>
     ${historico}
+  </div>`;
+}
+
+// ---------- Funil do candidato ----------
+let motivosReprovacao = []; // vem do servidor (GET /api/candidatos/fases)
+const ORDEM_FUNIL = ["Recrutamento", "Triagem", "Seleção com RH", "Checagem de referência", "Seleção com gestor", "Aprovado"];
+const classeFase = (f) =>
+  String(f || "")
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase()
+    .replace(/[^a-z]+/g, "-");
+
+function tagFase(c) {
+  const fase = c.fase || "Recrutamento";
+  const titulo = fase === "Reprovado" && c.reprovacao ? `${c.reprovacao.motivo}${c.reprovacao.fase ? ` (na ${c.reprovacao.fase})` : ""}` : "";
+  return `<span class="tag fase-tag fase-${classeFase(fase)}" title="${escapeHtml(titulo)}">${escapeHtml(fase)}</span>${
+    fase === "Reprovado" && c.reprovacao ? `<div class="sub">${escapeHtml(c.reprovacao.motivo)}</div>` : ""
+  }`;
+}
+
+function seletorNota(id, valor) {
+  return `<select id="${id}" class="nota-select" title="Nota de 1 a 5">
+    <option value="">Nota —</option>
+    ${[5, 4, 3, 2, 1].map((n) => `<option value="${n}" ${Number(valor) === n ? "selected" : ""}>${"★".repeat(n)}${"☆".repeat(5 - n)}</option>`).join("")}
+  </select>`;
+}
+
+function blocoFunil(c) {
+  const fase = c.fase || "Recrutamento";
+  const idx = ORDEM_FUNIL.indexOf(fase);
+  const final = ["Aprovado", "Reprovado", "Desistiu"].includes(fase);
+  const passos = ORDEM_FUNIL.map((f, i) => {
+    const estado = f === fase ? "atual" : idx >= 0 && i < idx ? "feito" : "";
+    return `<button type="button" class="funil-passo ${estado}" data-ir="${escapeHtml(f)}" data-confirmar="1" ${f === fase ? "disabled" : ""}>
+      <span class="funil-bola">${estado === "feito" ? "✓" : i + 1}</span><span class="funil-nome">${escapeHtml(f)}</span></button>`;
+  }).join("");
+  const proxima = idx >= 0 && idx < ORDEM_FUNIL.length - 1 ? ORDEM_FUNIL[idx + 1] : null;
+  const rotuloAvancar =
+    fase === "Recrutamento" || fase === "Triagem" ? "✅ Aprovar na triagem" : proxima === "Aprovado" ? "🏆 Aprovar candidato" : `Avançar para ${proxima}`;
+  const destinoAvancar = fase === "Recrutamento" || fase === "Triagem" ? "Seleção com RH" : proxima;
+  const historico = (c.historicoFases || [])
+    .slice()
+    .reverse()
+    .map(
+      (h) =>
+        `<li><strong>${escapeHtml(h.fase)}</strong> · ${h.em ? new Date(h.em).toLocaleString("pt-BR", { dateStyle: "short", timeStyle: "short" }) : ""}${h.por ? ` · ${escapeHtml(h.por)}` : ""}${h.motivo ? ` · motivo: ${escapeHtml(h.motivo)}` : ""}${h.obs ? ` · ${escapeHtml(h.obs)}` : ""}</li>`
+    )
+    .join("");
+  const motivos = motivosReprovacao;
+  return `<div class="funil-box">
+    <div class="funil-passos">${passos}</div>
+    ${
+      fase === "Reprovado"
+        ? `<div class="funil-final reprovado">❌ <strong>Reprovado</strong>${c.reprovacao ? ` na fase ${escapeHtml(c.reprovacao.fase || "—")} · ${escapeHtml(c.reprovacao.motivo)}${c.reprovacao.observacao ? ` — ${escapeHtml(c.reprovacao.observacao)}` : ""}${c.reprovacao.por ? ` <span class="sub">(${escapeHtml(c.reprovacao.por)}, ${new Date(c.reprovacao.em).toLocaleDateString("pt-BR")})</span>` : ""}` : ""}</div>`
+        : fase === "Desistiu"
+        ? '<div class="funil-final desistiu">🚪 <strong>Candidato desistiu</strong></div>'
+        : fase === "Aprovado"
+        ? '<div class="funil-final aprovado">🏆 <strong>Aprovado no processo</strong></div>'
+        : ""
+    }
+    <div class="link-acoes" style="margin-top:10px;">
+      ${!final && destinoAvancar ? `<button type="button" class="btn btn-primary btn-sm" data-ir="${escapeHtml(destinoAvancar)}" ${destinoAvancar === "Aprovado" ? 'data-confirmar="1"' : ""}>${rotuloAvancar}</button>` : ""}
+      ${!final ? `<button type="button" class="btn btn-danger btn-sm" id="funil-reprovar">❌ Reprovar${fase === "Recrutamento" || fase === "Triagem" ? " na triagem" : ""}</button>` : ""}
+      ${!final ? '<button type="button" class="btn btn-outline btn-sm" data-ir="Desistiu" data-confirmar="1">Desistiu</button>' : ""}
+      ${final ? `<button type="button" class="btn btn-outline btn-sm" data-ir="${escapeHtml((c.reprovacao && c.reprovacao.fase) || "Triagem")}" data-confirmar="1">↩ Reativar candidato</button>` : ""}
+      ${fase === "Reprovado" ? '<button type="button" class="btn btn-outline btn-sm" id="funil-devolutiva">Enviar devolutiva pelo WhatsApp</button>' : ""}
+    </div>
+    <div class="funil-reprovar hidden" id="funil-painel-reprovar">
+      <div class="form-cols">
+        <div class="form-row"><label>Motivo da reprovação</label><select id="funil-motivo"><option value="">Escolha...</option>${motivos.map((m) => `<option>${m}</option>`).join("")}</select></div>
+        <div class="form-row"><label>Observação <span class="sub">(opcional, interna)</span></label><input type="text" id="funil-obs" maxlength="1000" /></div>
+      </div>
+      <button type="button" class="btn btn-danger btn-sm" id="funil-confirmar-reprovar">Confirmar reprovação</button>
+    </div>
+    ${c.faseMigradaDe ? `<div class="sub" style="margin-top:8px;">Etapa no modelo antigo: ${escapeHtml(c.faseMigradaDe)}</div>` : ""}
+    ${historico ? `<details style="margin-top:6px;"><summary class="sub">Histórico do funil</summary><ul class="funil-historico">${historico}</ul></details>` : ""}
   </div>`;
 }

@@ -125,6 +125,8 @@ router.post("/vagas/:token/inscricao", (req, res) => {
         vagaId: vaga.id,
         origem: "Link da vaga",
         etapaCandidato: "Inscrito",
+        fase: "Recrutamento",
+        historicoFases: [{ fase: "Recrutamento", em: new Date().toISOString(), por: "Candidato (link da vaga)" }],
         dataEntrevista: null,
         jusbrasilOk: false,
         obsReferencia: "",

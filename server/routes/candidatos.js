@@ -5,7 +5,7 @@ const { salvarCurriculo, caminhoCurriculo } = require("../utils/curriculos");
 const { relatorioDisc } = require("../utils/discRelatorio");
 const { requireAuth } = require("../middleware/auth");
 const { notify } = require("../utils/notify");
-const { ETAPAS_CANDIDATO } = require("../utils/constants");
+const { ETAPAS_CANDIDATO, FASES_CANDIDATO, FASES_FINAIS, MOTIVOS_REPROVACAO } = require("../utils/constants");
 
 const router = express.Router();
 
@@ -20,7 +20,12 @@ const CAMPOS = [
   "origem",
   "pretensaoSalarial",
   "etapaCandidato",
-  "dataEntrevista",
+  "dataEntrevista", // entrevista com a consultoria (Evoé)
+  "dataEntrevistaCliente",
+  "avaliacaoConsultoria",
+  "notaConsultoria",
+  "avaliacaoEmpresa",
+  "notaEmpresa",
   "jusbrasilOk",
   "obsReferencia",
   "parecerComportamental",
@@ -42,6 +47,12 @@ function lerCampos(body) {
   for (const c of CAMPOS) if (body[c] !== undefined) dados[c] = body[c];
   for (const c of CAMPOS_TEXTO) if (dados[c] !== undefined) dados[c] = String(dados[c] || "").trim();
   if (dados.jusbrasilOk !== undefined) dados.jusbrasilOk = !!dados.jusbrasilOk;
+  for (const n of ["notaConsultoria", "notaEmpresa"]) {
+    if (dados[n] !== undefined) dados[n] = [1, 2, 3, 4, 5].includes(Number(dados[n])) ? Number(dados[n]) : null;
+  }
+  for (const t of ["avaliacaoConsultoria", "avaliacaoEmpresa"]) {
+    if (dados[t] !== undefined) dados[t] = String(dados[t] || "").slice(0, 5000);
+  }
   return dados;
 }
 
@@ -54,6 +65,10 @@ router.get("/", (req, res) => {
 
 router.get("/etapas", (req, res) => {
   res.json(ETAPAS_CANDIDATO);
+});
+
+router.get("/fases", (req, res) => {
+  res.json({ fases: FASES_CANDIDATO, finais: FASES_FINAIS, motivos: MOTIVOS_REPROVACAO });
 });
 
 router.get("/:id", (req, res) => {
@@ -88,6 +103,8 @@ router.post("/", requireAuth, (req, res) => {
     pareceres: [],
     curriculo: null,
     ...dados,
+    fase: FASES_CANDIDATO.includes(req.body.fase) && !FASES_FINAIS.includes(req.body.fase) ? req.body.fase : "Recrutamento",
+    historicoFases: [{ fase: FASES_CANDIDATO.includes(req.body.fase) && !FASES_FINAIS.includes(req.body.fase) ? req.body.fase : "Recrutamento", em: new Date().toISOString(), por: req.consultor.nome }],
     vagaId,
     criadoPor: req.consultor.id,
   });
@@ -140,6 +157,50 @@ router.delete("/:id", requireAuth, (req, res) => {
   if (!podeEditar(req, vaga)) return res.status(403).json({ erro: "Você só pode excluir candidatos de vagas atribuídas a você." });
   db.remove("candidatos", req.params.id);
   res.json({ ok: true });
+});
+
+// ---------- Funil: mudar a fase do candidato ----------
+// Reprovar exige motivo. Toda mudança entra em "historicoFases" (nada se perde).
+router.post("/:id/fase", requireAuth, (req, res) => {
+  const candidato = db.findById("candidatos", req.params.id);
+  if (!candidato) return res.status(404).json({ erro: "Candidato não encontrado." });
+  const vaga = db.findById("vagas", candidato.vagaId);
+  if (!podeEditar(req, vaga)) return res.status(403).json({ erro: "Você só pode mover candidatos de vagas atribuídas a você." });
+  const { fase } = req.body || {};
+  const motivo = String((req.body || {}).motivo || "").trim();
+  const observacao = String((req.body || {}).observacao || "").trim().slice(0, 1000);
+  if (!FASES_CANDIDATO.includes(fase)) return res.status(400).json({ erro: "Fase inválida." });
+  if (fase === "Reprovado" && !MOTIVOS_REPROVACAO.includes(motivo)) return res.status(400).json({ erro: "Escolha o motivo da reprovação." });
+  if (fase === candidato.fase) return res.json(candidato);
+
+  const agora = new Date().toISOString();
+  const dados = {
+    fase,
+    historicoFases: [
+      ...(candidato.historicoFases || []),
+      { fase, de: candidato.fase || null, em: agora, por: req.consultor.nome, ...(motivo ? { motivo } : {}), ...(observacao ? { obs: observacao } : {}) },
+    ],
+  };
+  if (fase === "Reprovado") {
+    dados.reprovacao = { fase: candidato.fase || null, motivo, observacao, em: agora, por: req.consultor.nome };
+  } else if (candidato.reprovacao) {
+    // Reativado: a reprovação anterior vai para o histórico, não é apagada.
+    dados.reprovacoesAnteriores = [...(candidato.reprovacoesAnteriores || []), candidato.reprovacao];
+    dados.reprovacao = null;
+  }
+  const atualizado = db.update("candidatos", candidato.id, dados);
+
+  if (fase === "Aprovado" && vaga) {
+    const mensagem = `${atualizado.nome} foi aprovado(a) no processo da vaga "${vaga.titulo}".`;
+    const destinos = new Set([vaga.consultorId]);
+    db.readCollection("consultores")
+      .filter((c) => (c.perfil === "Gestor" || c.perfil === "Supervisora") && c.ativo !== false)
+      .forEach((g) => destinos.add(g.id));
+    destinos.forEach((id) =>
+      notify({ tipo: "Candidato Aprovado", vagaId: vaga.id, destinatarioId: id, assunto: `Candidato aprovado: ${atualizado.nome}`, mensagem })
+    );
+  }
+  res.json(atualizado);
 });
 
 // ---------- Pareceres dos consultores (histórico com autor e data) ----------
@@ -242,6 +303,8 @@ router.post("/:id/copiar", requireAuth, (req, res) => {
     disc: origem.disc || null,
     discAnteriores: origem.discAnteriores || [],
     origemCandidatoId: raiz,
+    fase: "Recrutamento",
+    historicoFases: [{ fase: "Recrutamento", em: new Date().toISOString(), por: req.consultor.nome, obs: "Incluído a partir do banco de talentos" }],
     criadoPor: req.consultor.id,
   });
   res.status(201).json(copia);
