@@ -3,6 +3,8 @@
 // interno da vaga, salário usado no Financeiro, consultor, cliente confidencial)
 // ficam fora deste bloco.
 
+const crypto = require("crypto");
+
 const TIPOS_CONTRATACAO = ["CLT", "PJ", "Estágio", "Temporário", "Jovem Aprendiz", "Freelancer"];
 const MODELOS_TRABALHO = ["Presencial", "Híbrido", "Remoto"];
 const FREQUENCIAS = ["", "Diária", "Semanal", "Quinzenal", "Mensal", "Eventual"];
@@ -45,4 +47,16 @@ function paginaPublica(pagina) {
   return pagina ? normalizarPagina(pagina) : null;
 }
 
-module.exports = { normalizarPagina, paginaPublica, TIPOS_CONTRATACAO, MODELOS_TRABALHO, FREQUENCIAS };
+/** Código do link público da vaga: título legível + parte aleatória (não é o id interno). */
+function gerarTokenVaga(titulo) {
+  const slug = String(titulo || "vaga")
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "")
+    .slice(0, 40);
+  return `${slug || "vaga"}-${crypto.randomBytes(5).toString("base64url").replace(/[-_]/g, "x")}`;
+}
+
+module.exports = { normalizarPagina, paginaPublica, gerarTokenVaga, TIPOS_CONTRATACAO, MODELOS_TRABALHO, FREQUENCIAS };

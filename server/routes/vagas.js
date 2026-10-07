@@ -1,11 +1,10 @@
 const express = require("express");
-const crypto = require("crypto");
 const db = require("../db");
 const { requireAuth } = require("../middleware/auth");
 const { notifyMudancaVaga } = require("../utils/notify");
 const { computeVagaFields, hojeStr } = require("../utils/vagaCompute");
 const { ETAPAS_VAGA, PRIORIDADES } = require("../utils/constants");
-const { normalizarPagina, TIPOS_CONTRATACAO, MODELOS_TRABALHO, FREQUENCIAS } = require("../utils/vagaPagina");
+const { normalizarPagina, TIPOS_CONTRATACAO, MODELOS_TRABALHO, FREQUENCIAS, gerarTokenVaga: gerarToken } = require("../utils/vagaPagina");
 
 const router = express.Router();
 
@@ -243,16 +242,6 @@ router.patch("/:id/standby", requireAuth, (req, res) => {
 // O endereço usa um código aleatório (não o id interno) e pode ser ativado/desativado.
 // "descricaoPublica" é o ÚNICO texto que o candidato vê — o "perfil da vaga" interno
 // nunca vai para a página pública. Empresa fica confidencial por padrão.
-function gerarToken(titulo) {
-  const slug = String(titulo || "vaga")
-    .normalize("NFD")
-    .replace(/[\u0300-\u036f]/g, "")
-    .toLowerCase()
-    .replace(/[^a-z0-9]+/g, "-")
-    .replace(/^-+|-+$/g, "")
-    .slice(0, 40);
-  return `${slug || "vaga"}-${crypto.randomBytes(5).toString("base64url").replace(/[-_]/g, "x")}`;
-}
 
 router.patch("/:id/link", requireAuth, (req, res) => {
   const vaga = db.findById("vagas", req.params.id);

@@ -74,10 +74,11 @@ app.use("/api/ponto-gestao", require("./routes/pontoGestao"));
 app.use("/api/configuracao", require("./routes/configuracao"));
 app.use("/api/publico", require("./routes/publico"));
 
-// Páginas públicas: /vagas (todas as abertas), /vaga/<código> (inscrição) e
-// /disc/<código> (teste DISC individual do candidato).
-app.get(["/vagas", "/vaga/:token", "/disc/:token"], (req, res) => {
-  res.sendFile(path.join(__dirname, "..", "public", "inscricao.html"));
+// Páginas públicas: /vagas (todas as abertas), /vaga/<código> (inscrição),
+// /talentos (banco de talentos) e /disc/<código> (teste DISC individual do candidato).
+// O servidor injeta título, prévia para WhatsApp e dados para o Google para Vagas.
+app.get(["/vagas", "/vaga/:token", "/disc/:token", "/talentos"], (req, res) => {
+  res.type("html").send(require("./utils/paginaPublicaSeo").renderizar(req));
 });
 
 app.use(express.static(path.join(__dirname, "..", "public")));

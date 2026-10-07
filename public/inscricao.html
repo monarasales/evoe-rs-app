@@ -5,7 +5,6 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
   <title>Vagas — Evoé Gestão e RH</title>
   <meta name="description" content="Vagas abertas da Evoé Gestão e RH. Inscreva-se enviando seu currículo." />
-  <meta name="robots" content="noindex" />
   <style>
     :root {
       --navy: #122454; --navy-dark: #0b1638; --teal: #22c3b6; --purple: #7c5cfa;
@@ -92,6 +91,43 @@
     .beneficios span { background: var(--bg); border-radius: 20px; padding: 7px 14px; font-size: 14px; font-weight: 600; color: var(--navy); }
     .vaga-tags { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; }
     .vaga-tags span { background: var(--bg); border-radius: 14px; padding: 3px 10px; font-size: 12.5px; color: var(--suave); }
+    /* ----- Lista de vagas ----- */
+    .hero-dentro-lista { display: block; max-width: 980px; }
+    .hero-lista { padding-bottom: 80px; }
+    .busca { display: flex; align-items: center; gap: 10px; background: white; border-radius: 14px; padding: 6px 8px 6px 16px; max-width: 640px; box-shadow: 0 10px 30px rgba(0,0,0,.25); }
+    .busca input { border: none; padding: 12px 4px; font-size: 16px; width: 100%; background: transparent; }
+    .busca input:focus { outline: none; }
+    main.com-hero-lista { max-width: 980px; }
+    .filtros { display: grid; gap: 10px; padding: 14px 18px; }
+    .filtro-grupo { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
+    .filtro-rotulo { font-size: 12px; font-weight: 700; color: var(--suave); text-transform: uppercase; letter-spacing: .4px; min-width: 96px; }
+    .filtro { border: 1px solid var(--borda); background: white; border-radius: 20px; padding: 7px 14px; font-size: 14px; cursor: pointer; color: var(--texto); }
+    .filtro.ativo { background: var(--navy); border-color: var(--navy); color: white; }
+    .filtro-rodape { display: flex; justify-content: space-between; align-items: center; font-size: 13.5px; color: var(--suave); }
+    .link { background: none; border: none; color: var(--purple); font-weight: 600; cursor: pointer; font-size: 13.5px; }
+    .grade-vagas { display: grid; grid-template-columns: repeat(2, 1fr); gap: 16px; margin-bottom: 16px; }
+    .grade-vagas .cartao { margin-bottom: 0; }
+    .vaga-card-pub { display: flex; flex-direction: column; gap: 8px; text-decoration: none; color: inherit; transition: transform .12s, box-shadow .12s; }
+    .vaga-card-pub:hover { transform: translateY(-2px); box-shadow: 0 10px 24px rgba(16,30,44,.12); }
+    .vaga-card-pub h3 { margin: 0; color: var(--navy); font-size: 18px; line-height: 1.25; }
+    .vaga-card-topo { display: flex; gap: 8px; align-items: center; }
+    .selo-nova { background: var(--gradiente); color: white; font-size: 11px; font-weight: 800; padding: 3px 8px; border-radius: 6px; text-transform: uppercase; letter-spacing: .5px; }
+    .resumo { margin: 0; line-height: 1.5; }
+    .vaga-card-rodape { display: flex; justify-content: space-between; align-items: center; margin-top: auto; padding-top: 8px; border-top: 1px solid #f1f3f6; }
+    .salario { color: var(--navy); font-size: 14px; }
+    .vaga-card-pub .ver { color: var(--teal); font-weight: 700; font-size: 14px; }
+    .processo h2, .cta-talentos h2 { margin: 4px 0 12px; }
+    .passos { list-style: none; padding: 0; margin: 0; display: grid; grid-template-columns: repeat(5, 1fr); gap: 14px; }
+    .passos li { display: flex; flex-direction: column; gap: 8px; font-size: 14px; line-height: 1.4; }
+    .cta-talentos { display: flex; gap: 18px; align-items: center; justify-content: space-between; background: linear-gradient(135deg, #e3f8f6, #f1ecff); border: none; }
+    .cta-talentos .botao { width: auto; margin: 0; white-space: nowrap; padding: 14px 20px; }
+    @media (max-width: 820px) {
+      .grade-vagas { grid-template-columns: 1fr; }
+      .passos { grid-template-columns: 1fr; }
+      .passos li { flex-direction: row; align-items: flex-start; }
+      .cta-talentos { flex-direction: column; align-items: stretch; text-align: center; }
+      .filtro-rotulo { min-width: 100%; }
+    }
     @media (max-width: 820px) {
       .hero-dentro { grid-template-columns: 1fr; gap: 20px; }
       .hero h1 { font-size: 30px; }

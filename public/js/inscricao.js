@@ -25,37 +25,153 @@
   const partes = location.pathname.split("/").filter(Boolean);
   if (partes[0] === "vaga" && partes[1]) paginaVaga(decodeURIComponent(partes[1]));
   else if (partes[0] === "disc" && partes[1]) paginaDisc(decodeURIComponent(partes[1]));
+  else if (partes[0] === "talentos") paginaTalentos();
   else listaVagas();
 
-  // ---------- Lista ----------
+  // ---------- Lista de vagas abertas ----------
+  const normalizar = (t) =>
+    String(t || "")
+      .normalize("NFD")
+      .replace(/[\u0300-\u036f]/g, "")
+      .toLowerCase();
+
+  function heroLista(total) {
+    document.querySelector("header").classList.add("hidden");
+    document.body.insertAdjacentHTML(
+      "afterbegin",
+      `<section class="hero hero-lista">
+        <div class="hero-dentro hero-dentro-lista">
+          <div class="hero-topo"><img src="/img/logo-evoe-topbar.svg" alt="Evoé Gestão e RH" onerror="this.remove()" /><span class="selo">Recrutamento e Seleção · Fortaleza/CE</span></div>
+          <h1>Encontre sua próxima oportunidade</h1>
+          <p class="hero-resumo">${total} ${total === 1 ? "vaga aberta" : "vagas abertas"} em processos seletivos conduzidos pela Evoé Gestão e RH. Veja os detalhes e candidate-se em poucos minutos.</p>
+          <div class="busca"><span>🔍</span><input type="search" id="busca" placeholder="Busque por cargo, área, bairro..." autocomplete="off" /></div>
+        </div>
+      </section>`
+    );
+    raiz.classList.add("com-hero", "com-hero-lista");
+  }
+
   async function listaVagas() {
-    document.title = "Vagas abertas — Evoé Gestão e RH";
+    let vagas;
     try {
-      const vagas = await api("/api/publico/vagas");
-      raiz.innerHTML = `
-        <h1>Vagas abertas</h1>
-        <div class="empresa">Escolha uma vaga e envie seu currículo.</div>
-        ${
-          vagas.length
-            ? vagas
-                .map(
-                  (v) => `<a class="cartao vaga-item" href="/vaga/${encodeURIComponent(v.token)}">
-                    <h3>${esc(v.titulo)}</h3>
-                    <div class="empresa" style="margin:0;">${v.empresa ? esc(v.empresa) : "Empresa confidencial"}</div>
-                    ${(() => {
-                      const pg = v.pagina || {};
-                      const tags = [pg.tipoContratacao, pg.modeloTrabalho, [pg.bairro, pg.cidade].filter(Boolean).join(" · "), pg.salario].filter(Boolean);
-                      return tags.length ? `<div class="vaga-tags">${tags.map((t) => `<span>${esc(t)}</span>`).join("")}</div>` : "";
-                    })()}
-                    <div class="ver">Ver vaga e se inscrever →</div>
-                  </a>`
-                )
-                .join("")
-            : '<div class="cartao vazio">No momento não há vagas com inscrições abertas. Volte em breve!</div>'
-        }`;
+      vagas = await api("/api/publico/vagas");
     } catch (err) {
       raiz.innerHTML = `<div class="cartao vazio">${esc(err.message)}</div>`;
+      return;
     }
+    heroLista(vagas.length);
+    const params = new URLSearchParams(location.search);
+    const filtro = { q: params.get("q") || "", tipo: params.get("tipo") || "", modelo: params.get("modelo") || "" };
+    const busca = document.getElementById("busca");
+    busca.value = filtro.q;
+    const valores = (campo) => [...new Set(vagas.map((v) => (v.pagina || {})[campo]).filter(Boolean))].sort();
+    const tipos = valores("tipoContratacao");
+    const modelos = valores("modeloTrabalho");
+
+    raiz.innerHTML = `
+      <div class="filtros cartao">
+        ${tipos.length ? `<div class="filtro-grupo"><span class="filtro-rotulo">Contratação</span>${tipos.map((t) => `<button type="button" class="filtro" data-campo="tipo" data-valor="${esc(t)}">${esc(t)}</button>`).join("")}</div>` : ""}
+        ${modelos.length ? `<div class="filtro-grupo"><span class="filtro-rotulo">Modelo</span>${modelos.map((t) => `<button type="button" class="filtro" data-campo="modelo" data-valor="${esc(t)}">${esc(t)}</button>`).join("")}</div>` : ""}
+        <div class="filtro-rodape"><span id="contagem"></span><button type="button" class="link" id="limpar">Limpar filtros</button></div>
+      </div>
+      <div id="lista" class="grade-vagas"></div>
+      <section class="cartao processo">
+        <div class="etapa">Transparência</div>
+        <h2>Como funciona o nosso processo</h2>
+        <ol class="passos">
+          <li><span class="num">1</span><div><strong>Inscrição</strong><br><span class="mini">Você envia seu currículo pela vaga.</span></div></li>
+          <li><span class="num">2</span><div><strong>Perfil comportamental</strong><br><span class="mini">Um teste rápido (DISC), cerca de 8 minutos.</span></div></li>
+          <li><span class="num">3</span><div><strong>Entrevista com a Evoé</strong><br><span class="mini">Conversa com nossa equipe de seleção.</span></div></li>
+          <li><span class="num">4</span><div><strong>Entrevista com a empresa</strong><br><span class="mini">Os finalistas conversam com o gestor da vaga.</span></div></li>
+          <li><span class="num">5</span><div><strong>Contratação</strong><br><span class="mini">Nossa equipe entra em contato com quem segue no processo.</span></div></li>
+        </ol>
+      </section>
+      <section class="cartao cta-talentos">
+        <div><h2>Não encontrou a vaga ideal?</h2><p class="mini">Cadastre seu currículo no nosso banco de talentos. Quando surgir uma vaga com o seu perfil, entramos em contato.</p></div>
+        <a class="botao" href="/talentos">Cadastrar no banco de talentos</a>
+      </section>`;
+
+    function filtrar() {
+      const q = normalizar(filtro.q.trim());
+      return vagas.filter((v) => {
+        const p = v.pagina || {};
+        if (filtro.tipo && p.tipoContratacao !== filtro.tipo) return false;
+        if (filtro.modelo && p.modeloTrabalho !== filtro.modelo) return false;
+        if (!q) return true;
+        const texto = normalizar([v.titulo, v.empresa, p.bairro, p.cidade, p.missao, p.tipoContratacao, p.modeloTrabalho, ...(p.requisitos || []), ...(p.responsabilidades || []).map((r) => r.texto)].join(" "));
+        return q.split(/\s+/).every((parte) => texto.includes(parte));
+      });
+    }
+
+    function desenhar() {
+      const lista = filtrar();
+      raiz.querySelectorAll(".filtro").forEach((b) => b.classList.toggle("ativo", filtro[b.dataset.campo] === b.dataset.valor));
+      document.getElementById("contagem").textContent = `${lista.length} de ${vagas.length} ${vagas.length === 1 ? "vaga" : "vagas"}`;
+      document.getElementById("limpar").classList.toggle("hidden", !filtro.q && !filtro.tipo && !filtro.modelo);
+      const nova = new URLSearchParams(Object.entries(filtro).filter(([, v]) => v)).toString();
+      history.replaceState(null, "", `/vagas${nova ? `?${nova}` : ""}`);
+      document.getElementById("lista").innerHTML = lista.length
+        ? lista
+            .map((v) => {
+              const p = v.pagina || {};
+              const local = [p.bairro, p.cidade].filter(Boolean).join(" · ");
+              const tags = [p.tipoContratacao, p.modeloTrabalho, local].filter(Boolean);
+              const resumo = p.missao ? (p.missao.length > 140 ? `${p.missao.slice(0, 137).trim()}...` : p.missao) : "";
+              return `<a class="cartao vaga-card-pub" href="/vaga/${encodeURIComponent(v.token)}">
+                <div class="vaga-card-topo">${v.nova ? '<span class="selo-nova">Nova</span>' : ""}<span class="mini">${v.empresa ? esc(v.empresa) : "🔒 Empresa confidencial"}</span></div>
+                <h3>${esc(v.titulo)}</h3>
+                ${resumo ? `<p class="mini resumo">${esc(resumo)}</p>` : ""}
+                ${tags.length ? `<div class="vaga-tags">${tags.map((t) => `<span>${esc(t)}</span>`).join("")}</div>` : ""}
+                <div class="vaga-card-rodape">${p.salario ? `<strong class="salario">💰 ${esc(p.salario)}</strong>` : "<span></span>"}<span class="ver">Ver vaga →</span></div>
+              </a>`;
+            })
+            .join("")
+        : `<div class="cartao vazio" style="grid-column:1/-1;">${vagas.length ? "Nenhuma vaga encontrada com esses filtros." : "No momento não há vagas abertas."}<br><br><a href="/talentos">Cadastre-se no banco de talentos</a> e avisamos quando surgir uma vaga com o seu perfil.</div>`;
+    }
+
+    let espera;
+    busca.addEventListener("input", () => {
+      clearTimeout(espera);
+      espera = setTimeout(() => {
+        filtro.q = busca.value;
+        desenhar();
+      }, 150);
+    });
+    raiz.querySelectorAll(".filtro").forEach((b) =>
+      b.addEventListener("click", () => {
+        filtro[b.dataset.campo] = filtro[b.dataset.campo] === b.dataset.valor ? "" : b.dataset.valor;
+        desenhar();
+      })
+    );
+    document.getElementById("limpar").addEventListener("click", () => {
+      filtro.q = filtro.tipo = filtro.modelo = "";
+      busca.value = "";
+      desenhar();
+    });
+    desenhar();
+  }
+
+  // ---------- Banco de talentos ----------
+  async function paginaTalentos() {
+    let termo;
+    try {
+      termo = await api("/api/publico/termo");
+    } catch (err) {
+      raiz.innerHTML = `<div class="cartao vazio">${esc(err.message)}</div>`;
+      return;
+    }
+    formularioCandidatura({
+      antes: `<h1>Banco de talentos</h1>
+        <div class="empresa">Não encontrou a vaga ideal? Deixe seu currículo com a Evoé. Quando surgir uma oportunidade com o seu perfil, entramos em contato.</div>
+        <p style="margin:-4px 0 14px;"><a href="/vagas">← Ver vagas abertas</a></p>`,
+      titulo: "Cadastre seu currículo",
+      subtitulo: "Leva poucos minutos. Depois, você pode fazer o teste de perfil comportamental (DISC).",
+      endpoint: "/api/publico/talentos",
+      termo,
+      textoBotao: "Cadastrar currículo",
+      destino: "para o nosso <strong>banco de talentos</strong>",
+      pedirArea: true,
+    });
   }
 
   // ---------- Vaga + inscrição ----------
@@ -158,17 +274,34 @@
       return;
     }
 
-    raiz.innerHTML = `${cabecalho}
+    formularioCandidatura({
+      antes: cabecalho,
+      titulo: "Dê o próximo passo",
+      subtitulo: vaga.pedeDisc
+        ? "Envie seu currículo e, em seguida, faça o teste de perfil comportamental (DISC) — tudo em cerca de 10 minutos."
+        : "Envie seu currículo em poucos minutos.",
+      endpoint: `/api/publico/vagas/${encodeURIComponent(token)}/inscricao`,
+      termo,
+      textoBotao: "Enviar inscrição",
+      destino: `para a vaga <strong>${esc(vaga.titulo)}</strong>`,
+    });
+  }
+
+
+  // ---------- Formulário de candidatura (vaga ou banco de talentos) ----------
+  function formularioCandidatura({ antes = "", titulo, subtitulo, endpoint, termo, textoBotao, destino, pedirArea = false }) {
+    raiz.innerHTML = `${antes}
       <form class="cartao" id="form" novalidate>
         <a id="candidatar"></a>
         <div class="etapa">Candidatura</div>
-        <h2 style="margin:4px 0 4px;">Dê o próximo passo</h2>
-        <p class="secao-sub" style="margin-bottom:6px;">${vaga.pedeDisc ? "Envie seu currículo e, em seguida, faça o teste de perfil comportamental (DISC) — tudo em cerca de 10 minutos." : "Envie seu currículo em poucos minutos."}</p>
+        <h2 style="margin:4px 0 4px;">${titulo}</h2>
+        <p class="secao-sub" style="margin-bottom:6px;">${subtitulo}</p>
         <label for="nome">Nome completo</label><input type="text" id="nome" autocomplete="name" required />
         <div class="linha">
           <div><label for="email">E-mail</label><input type="email" id="email" autocomplete="email" required /></div>
           <div><label for="telefone">Telefone / WhatsApp</label><input type="tel" id="telefone" autocomplete="tel" inputmode="numeric" maxlength="15" placeholder="(85) 90000-0000" required /></div>
         </div>
+        ${pedirArea ? '<label for="area">Área ou cargo de interesse</label><input type="text" id="area" placeholder="ex.: Administrativo, Financeiro, Vendas, Atendimento" />' : ""}
         <div class="linha">
           <div><label for="cidade">Cidade <span class="opc">(opcional)</span></label><input type="text" id="cidade" autocomplete="address-level2" /></div>
           <div><label for="pretensao">Pretensão salarial <span class="opc">(opcional)</span></label><input type="text" id="pretensao" placeholder="ex.: R$ 2.500" /></div>
@@ -183,7 +316,7 @@
         <div class="armadilha" aria-hidden="true"><label>Website<input type="text" id="website" tabindex="-1" autocomplete="off" /></label></div>
         <label class="termo"><input type="checkbox" id="consentimento" /><span>${esc(termo.texto)}</span></label>
         <div id="erro" class="erro hidden"></div>
-        <button type="submit" class="botao" id="enviar">Enviar inscrição</button>
+        <button type="submit" class="botao" id="enviar">${textoBotao}</button>
       </form>`;
 
     const $ = (id) => document.getElementById(id);
@@ -199,11 +332,9 @@
         ? `✅ <strong>${esc(f.name)}</strong><div class="dica">Toque para trocar o arquivo</div>`
         : '📎 <strong>Toque para anexar seu currículo</strong><div class="dica">PDF, Word ou foto, até 8 MB</div>';
     });
-
     // Some com o aviso de erro assim que o candidato corrige algo.
     $("form").addEventListener("input", () => $("erro").classList.add("hidden"));
     $("form").addEventListener("change", () => $("erro").classList.add("hidden"));
-
     const mostrarErro = (msg) => {
       $("erro").textContent = msg;
       $("erro").classList.remove("hidden");
@@ -219,9 +350,10 @@
       if (nome.length < 3) return mostrarErro("Informe seu nome completo.");
       if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) return mostrarErro("Informe um e-mail válido.");
       if ($("telefone").value.replace(/\D/g, "").length < 10) return mostrarErro("Informe um telefone/WhatsApp com DDD.");
+      if (pedirArea && !$("area").value.trim()) return mostrarErro("Conte em que área ou cargo você tem interesse.");
       if (!arquivo) return mostrarErro("Anexe seu currículo.");
       if (arquivo.size > 8 * 1024 * 1024) return mostrarErro("O currículo passa de 8 MB. Envie um arquivo menor (um PDF costuma ser bem leve).");
-      if (!$("consentimento").checked) return mostrarErro("Para se inscrever, marque a autorização de uso dos dados (LGPD).");
+      if (!$("consentimento").checked) return mostrarErro("Para continuar, marque a autorização de uso dos dados (LGPD).");
 
       const botao = $("enviar");
       botao.disabled = true;
@@ -233,13 +365,14 @@
           r.onerror = () => reject(new Error("Não foi possível ler o arquivo. Tente outro."));
           r.readAsDataURL(arquivo);
         });
-        const r = await api(`/api/publico/vagas/${encodeURIComponent(token)}/inscricao`, {
+        const r = await api(endpoint, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
             nome,
             email,
             telefone: $("telefone").value,
+            areaInteresse: pedirArea ? $("area").value : undefined,
             cidade: $("cidade").value,
             pretensaoSalarial: $("pretensao").value,
             linkedin: $("linkedin").value,
@@ -249,12 +382,15 @@
             curriculo: { nomeArquivo: arquivo.name, conteudoBase64 },
           }),
         });
+        document.querySelectorAll(".hero").forEach((h) => h.remove());
+        document.querySelector("header").classList.remove("hidden");
+        raiz.classList.remove("com-hero");
         raiz.innerHTML = r.discUrl
           ? `
           <div class="cartao sucesso">
             <div class="icone">✅</div>
-            <h1>Inscrição recebida!</h1>
-            <p>Obrigado, ${esc(nome.split(" ")[0])}! Recebemos seu currículo para a vaga <strong>${esc(vaga.titulo)}</strong>.</p>
+            <h1>${r.atualizada ? "Cadastro atualizado!" : "Recebemos seu currículo!"}</h1>
+            <p>Obrigado, ${esc(nome.split(" ")[0])}! Seu currículo foi enviado ${destino}.</p>
             <div class="proxima">
               <div class="etapa">Próxima etapa</div>
               <h2 style="margin:4px 0 6px;">Teste de perfil comportamental (DISC)</h2>
@@ -266,16 +402,16 @@
           : `
           <div class="cartao sucesso">
             <div class="icone">🎉</div>
-            <h1>${r.atualizada ? "Inscrição atualizada!" : "Inscrição enviada!"}</h1>
-            <p>Obrigado, ${esc(nome.split(" ")[0])}! Recebemos seu currículo para a vaga <strong>${esc(vaga.titulo)}</strong>.
+            <h1>${r.atualizada ? "Cadastro atualizado!" : "Recebemos seu currículo!"}</h1>
+            <p>Obrigado, ${esc(nome.split(" ")[0])}! Seu currículo foi enviado ${destino}.
             Se o seu perfil seguir no processo, nossa equipe entra em contato pelo telefone ou e-mail informados.</p>
-            <a class="botao" href="/vagas">Ver outras vagas abertas</a>
+            <a class="botao" href="/vagas">Ver vagas abertas</a>
           </div>`;
         window.scrollTo(0, 0);
       } catch (err) {
         mostrarErro(err.message);
         botao.disabled = false;
-        botao.textContent = "Enviar inscrição";
+        botao.textContent = textoBotao;
       }
     });
   }

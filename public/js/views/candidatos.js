@@ -90,7 +90,7 @@ export async function renderCandidatos(root, params) {
   let filtroFase = "";
 
   const cbFiltro = criarCombobox(root.querySelector("#cand-filtro-vaga"), {
-    opcoes: opcoesVaga(vagas),
+    opcoes: [{ valor: "__banco__", rotulo: "★ Banco de talentos (sem vaga)", termos: ["banco", "talentos"], detalhe: "Cadastros espontâneos pela página de vagas" }, ...opcoesVaga(vagas)],
     valor: filtroVaga,
     opcaoVazia: "Todas as vagas",
     placeholder: "Vaga: digite a empresa ou o cargo",
@@ -108,11 +108,11 @@ export async function renderCandidatos(root, params) {
   function filtrados() {
     const q = normalizar(busca.value.trim());
     return todos
-      .filter((c) => !filtroVaga || c.vagaId === filtroVaga)
+      .filter((c) => !filtroVaga || (filtroVaga === "__banco__" ? !c.vagaId : c.vagaId === filtroVaga))
       .filter((c) => !filtroFase || (c.fase || "Recrutamento") === filtroFase)
       .filter((c) => {
         if (!q) return true;
-        const texto = [c.nome, c.email, c.telefone, c.cidade, c.linkedin, c.parecerComportamental, c.obsReferencia, ...(c.pareceres || []).map((p) => p.texto)].join(" ");
+        const texto = [c.nome, c.email, c.telefone, c.cidade, c.linkedin, c.areaInteresse, c.parecerComportamental, c.obsReferencia, ...(c.pareceres || []).map((p) => p.texto)].join(" ");
         const digitos = q.replace(/\D/g, "");
         return normalizar(texto).includes(q) || (digitos.length >= 4 && String(c.telefone || "").replace(/\D/g, "").includes(digitos));
       })
@@ -159,7 +159,7 @@ export async function renderCandidatos(root, params) {
               return `
             <tr data-id="${c.id}">
               <td><strong>${escapeHtml(c.nome)}</strong>${c.inscritoPeloLink ? ' <span class="tag tag-prospect-contato" title="Inscrito pelo link da vaga">link</span>' : ""}<div class="sub">${escapeHtml([c.telefone, c.email].filter(Boolean).join(" · "))}</div></td>
-              <td>${v ? `${escapeHtml(empresaNome(v.empresaId))}<div class="sub">${escapeHtml(v.titulo)}</div>` : "—"}</td>
+              <td>${v ? `${escapeHtml(empresaNome(v.empresaId))}<div class="sub">${escapeHtml(v.titulo)}</div>` : !c.vagaId ? `<span class="tag tag-standby">Banco de talentos</span>${c.areaInteresse ? `<div class="sub">${escapeHtml(c.areaInteresse)}</div>` : ""}` : "—"}</td>
               <td>${tagFase(c)}</td>
               <td>${c.disc ? `<span class="tag disc-tag disc-${c.disc.resultado.primario}" title="Perfil DISC">${escapeHtml(c.disc.resultado.perfil)}</span>` : c.discToken ? '<span class="sub" title="Link do teste enviado, aguardando resposta">⏳</span>' : '<span class="sub">—</span>'}</td>
               <td>${c.curriculo ? `<a href="/api/candidatos/${c.id}/curriculo" target="_blank" rel="noopener" title="${escapeHtml(c.curriculo.nomeOriginal)}">📄 abrir</a>` : '<span class="sub">—</span>'}</td>
@@ -204,7 +204,7 @@ export async function renderCandidatos(root, params) {
         <div class="form-row">
           ${
             editando
-              ? `<div class="cand-vaga-atual">${escapeHtml(vagaPorId(c.vagaId) ? rotuloVaga(vagaPorId(c.vagaId)) : "Vaga removida")}</div>`
+              ? `<div class="cand-vaga-atual">${escapeHtml(vagaPorId(c.vagaId) ? rotuloVaga(vagaPorId(c.vagaId)) : !c.vagaId ? `Banco de talentos${c.areaInteresse ? ` — interesse: ${c.areaInteresse}` : ""}` : "Vaga removida")}</div>${!c.vagaId ? '<div class="sub" style="margin-top:4px;">Para colocar no processo de uma vaga, use "Incluir em outra vaga" no fim deste cadastro.</div>' : ""}`
               : '<label>Empresa / vaga *</label><div id="c-vaga"></div><div class="sub" style="margin-top:4px;">Digite a primeira letra da empresa ou do cargo.</div>'
           }
         </div>
@@ -235,7 +235,7 @@ export async function renderCandidatos(root, params) {
         ${
           c.consentimentoLgpd || c.mensagemCandidato
             ? `<div class="cand-inscricao">
-                ${c.inscritoPeloLink ? "🔗 Inscrito(a) pelo link da vaga" : "Dados enviados pelo candidato"}${c.consentimentoLgpd ? ` · consentimento LGPD em ${new Date(c.consentimentoLgpd.aceitoEm).toLocaleString("pt-BR", { dateStyle: "short", timeStyle: "short" })}` : ""}
+                ${c.inscritoPeloLink ? "🔗 Inscrito(a) pelo link da vaga" : c.cadastroEspontaneo ? "⭐ Cadastro espontâneo no banco de talentos" : "Dados enviados pelo candidato"}${c.consentimentoLgpd ? ` · consentimento LGPD em ${new Date(c.consentimentoLgpd.aceitoEm).toLocaleString("pt-BR", { dateStyle: "short", timeStyle: "short" })}` : ""}
                 ${(c.reinscricoes || []).length ? ` · reenviou ${c.reinscricoes.length}x` : ""}
                 ${c.mensagemCandidato ? `<div class="parecer-texto" style="margin-top:6px;"><strong>Mensagem do candidato:</strong> ${escapeHtml(c.mensagemCandidato)}</div>` : ""}
               </div>`

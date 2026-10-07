@@ -9,7 +9,7 @@ const { notify } = require("../utils/notify");
 const crypto = require("crypto");
 const { salvarCurriculo } = require("../utils/curriculos");
 const disc = require("../utils/disc");
-const { paginaPublica } = require("../utils/vagaPagina");
+const { paginaPublica, gerarTokenVaga } = require("../utils/vagaPagina");
 
 const router = express.Router();
 
@@ -25,6 +25,24 @@ const encerrada = (v) => /^1[12]\./.test(v.etapaAtual || "");
 const pedeDisc = (v) => v.exigirDisc !== false;
 const novoTokenDisc = () => crypto.randomBytes(12).toString("base64url");
 const aceitaInscricao = (v) => !!v.linkToken && v.inscricoesAbertas !== false && !encerrada(v);
+// Vaga que aparece na página "Vagas abertas": não encerrada e sem inscrições fechadas manualmente.
+const vagaAberta = (v) => v.inscricoesAbertas !== false && !encerrada(v);
+
+/** Garante o link público de toda vaga aberta (só acrescenta campos; nada é alterado). */
+function garantirLinks() {
+  const vagas = db.readCollection("vagas");
+  let novos = 0;
+  for (const v of vagas) {
+    if (vagaAberta(v) && !v.linkToken) {
+      v.linkToken = gerarTokenVaga(v.titulo);
+      v.linkCriadoEm = new Date().toISOString();
+      v.linkCriadoPor = "Automático (página de vagas)";
+      novos++;
+    }
+  }
+  if (novos) db.writeCollection("vagas", vagas);
+  return vagas;
+}
 
 function vagaPublica(v) {
   const empresa = v.mostrarEmpresa ? (db.findById("empresas", v.empresaId) || {}).nome || "" : "";
@@ -36,6 +54,8 @@ function vagaPublica(v) {
     pagina: paginaPublica(v.pagina),
     pedeDisc: pedeDisc(v),
     publicadaEm: v.linkCriadoEm || v.dataAbertura || null,
+    // "Nova": vaga aberta há até 7 dias (pela data de abertura da vaga, não pela criação do link).
+    nova: Date.now() - Date.parse(`${v.dataAbertura || "2000-01-01"}T12:00:00-03:00`) < 7 * 24 * 3600 * 1000,
     aberta: aceitaInscricao(v),
   };
 }
@@ -55,11 +75,12 @@ router.get("/termo", (req, res) => res.json({ versao: VERSAO_CONSENTIMENTO, text
 
 // Todas as vagas com inscrições abertas (página "Vagas abertas").
 router.get("/vagas", (req, res) => {
-  const lista = db
-    .readCollection("vagas")
+  // Ordem: novas primeiro, depois as com página preenchida, depois as abertas mais recentemente.
+  const peso = (v) => (vagaPublica(v).nova ? 2 : 0) + (v.pagina && v.pagina.missao ? 1 : 0);
+  const lista = garantirLinks()
     .filter(aceitaInscricao)
-    .map(vagaPublica)
-    .sort((a, b) => String(b.publicadaEm || "").localeCompare(String(a.publicadaEm || "")));
+    .sort((a, b) => peso(b) - peso(a) || String(b.dataAbertura || "").localeCompare(String(a.dataAbertura || "")))
+    .map(vagaPublica);
   res.json(lista);
 });
 
@@ -169,6 +190,77 @@ router.post("/vagas/:token/inscricao", (req, res) => {
     discUrl = `/disc/${candidato.discToken}`;
   }
   res.status(201).json({ ok: true, atualizada: !!existente, discUrl, discJaFeito: !!candidato.disc });
+});
+
+// ---------- Banco de talentos (candidatura espontânea, sem vaga) ----------
+router.post("/talentos", (req, res) => {
+  const b = req.body || {};
+  if (b.website) return res.status(201).json({ ok: true });
+  if (limiteExcedido(req.ip)) return res.status(429).json({ erro: "Muitos envios em pouco tempo. Aguarde alguns minutos e tente novamente." });
+  const texto = (v, max = 200) => String(v || "").trim().slice(0, max);
+  const nome = texto(b.nome, 120);
+  const email = texto(b.email, 120).toLowerCase();
+  const telefone = texto(b.telefone, 30);
+  const areaInteresse = texto(b.areaInteresse, 200);
+  if (nome.length < 3) return res.status(400).json({ erro: "Informe seu nome completo." });
+  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) return res.status(400).json({ erro: "Informe um e-mail válido." });
+  if (telefone.replace(/\D/g, "").length < 10) return res.status(400).json({ erro: "Informe um telefone/WhatsApp com DDD." });
+  if (!areaInteresse) return res.status(400).json({ erro: "Conte em que área ou cargo você tem interesse." });
+  if (!b.consentimento) return res.status(400).json({ erro: "Para se cadastrar, é preciso aceitar o termo de uso dos dados (LGPD)." });
+  if (!b.curriculo || !b.curriculo.conteudoBase64) return res.status(400).json({ erro: "Anexe seu currículo." });
+
+  const consentimento = { aceitoEm: new Date().toISOString(), versao: VERSAO_CONSENTIMENTO, texto: TEXTO_CONSENTIMENTO };
+  const dados = { nome, email, telefone, cidade: texto(b.cidade, 80), linkedin: texto(b.linkedin, 200), pretensaoSalarial: texto(b.pretensaoSalarial, 60), areaInteresse, mensagemCandidato: texto(b.mensagem, 2000) };
+  // Mesmo e-mail já no banco (sem vaga): não duplica — guarda o reenvio e a nova versão do currículo.
+  const existente = db.readCollection("candidatos").find((c) => !c.vagaId && (c.email || "").toLowerCase() === email);
+  let candidato;
+  try {
+    if (existente) {
+      const soVazios = Object.fromEntries(Object.entries(dados).filter(([k, v]) => v && !existente[k]));
+      candidato = db.update("candidatos", existente.id, {
+        ...soVazios,
+        ...salvarCurriculo(existente, b.curriculo.nomeArquivo, b.curriculo.conteudoBase64, "Candidato (banco de talentos)"),
+        consentimentoLgpd: consentimento,
+        reinscricoes: [...(existente.reinscricoes || []), { em: new Date().toISOString(), dados }],
+      });
+    } else {
+      candidato = db.insert("candidatos", {
+        ...dados,
+        vagaId: null,
+        origem: "Banco de talentos",
+        etapaCandidato: "Inscrito",
+        fase: "Recrutamento",
+        historicoFases: [{ fase: "Recrutamento", em: new Date().toISOString(), por: "Candidato (banco de talentos)" }],
+        jusbrasilOk: false,
+        obsReferencia: "",
+        parecerComportamental: "",
+        pareceres: [],
+        curriculo: null,
+        consentimentoLgpd: consentimento,
+        cadastroEspontaneo: true,
+      });
+      try {
+        candidato = db.update("candidatos", candidato.id, salvarCurriculo(candidato, b.curriculo.nomeArquivo, b.curriculo.conteudoBase64, "Candidato (banco de talentos)"));
+      } catch (err) {
+        db.remove("candidatos", candidato.id);
+        throw err;
+      }
+    }
+  } catch (err) {
+    return res.status(400).json({ erro: err.message });
+  }
+  db.readCollection("consultores")
+    .filter((c) => (c.perfil === "Gestor" || c.perfil === "Supervisora") && c.ativo !== false)
+    .forEach((c) =>
+      notify({
+        tipo: "Banco de talentos",
+        destinatarioId: c.id,
+        assunto: `Novo cadastro no banco de talentos: ${candidato.nome}`,
+        mensagem: `${candidato.nome} se cadastrou no banco de talentos (interesse: ${areaInteresse}).`,
+      })
+    );
+  if (!candidato.disc && !candidato.discToken) candidato = db.update("candidatos", candidato.id, { discToken: novoTokenDisc(), discSolicitadoEm: new Date().toISOString() });
+  res.status(201).json({ ok: true, atualizada: !!existente, discUrl: candidato.disc ? null : `/disc/${candidato.discToken}` });
 });
 
 // ---------- Teste DISC (link individual do candidato) ----------

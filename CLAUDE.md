@@ -47,6 +47,10 @@ Baseado no documento "Controle de Ponto Próprio" (Resolut). Construído por eta
 - Conteúdo da página: `vaga.pagina` (missão, objetivos, responsabilidades c/ frequência, requisitos, diferenciais,
   perfil comportamental, ferramentas, salário em TEXTO, benefícios, horário, bairro/cidade, contratação, modelo) —
   `server/utils/vagaPagina.js`; editor em `public/js/views/vagaPagina.js`. `vaga.salario` (número) é interno do Financeiro.
+- `/vagas` lista TODAS as vagas não encerradas e sem `inscricoesAbertas === false`; `garantirLinks()` cria o link que faltar
+  (só acrescenta campos). `/talentos` = banco de talentos (candidato com `vagaId: null`, `cadastroEspontaneo`).
+- SEO: `server/utils/paginaPublicaSeo.js` injeta título, Open Graph (imagem `public/img/og-vagas.png`) e JSON-LD JobPosting
+  (Google para Vagas) só com conteúdo público; `/disc/*` é noindex.
 - Inscrição cria candidato "Inscrito"/origem "Link da vaga" com `consentimentoLgpd`; mesmo e-mail na mesma vaga não duplica
   (só preenche campos vazios, guarda `reinscricoes` e nova versão do currículo). Currículos: `server/utils/curriculos.js`.
 
