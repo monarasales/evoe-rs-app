@@ -5,6 +5,7 @@
 
 import { api } from "../api.js";
 import { showToast, isGestor } from "../state.js";
+import { abrirModal, fecharModal } from "../modal.js";
 
 const esc = (s) => {
   const d = document.createElement("div");
@@ -34,12 +35,49 @@ export async function renderNps(root) {
         <h2>Satisfação dos clientes (NPS)</h2>
         <div class="sub">A pesquisa é criada quando a vaga vai para "11. Aprovado" (vaga fechada): e-mail automático ao cliente e envio por WhatsApp em 1 clique.</div>
       </div>
-      <select id="nps-periodo" class="input-toolbar"><option value="6">Últimos 6 meses</option><option value="12" selected>Últimos 12 meses</option><option value="24">Últimos 24 meses</option></select>
+      <div style="display:flex;gap:8px;flex-wrap:wrap;">
+        <button type="button" class="btn btn-outline btn-sm" id="nps-teste">📱 Enviar pesquisa de teste</button>
+        <select id="nps-periodo" class="input-toolbar"><option value="6">Últimos 6 meses</option><option value="12" selected>Últimos 12 meses</option><option value="24">Últimos 24 meses</option></select>
+      </div>
     </div>
     <div id="nps-conteudo"><div class="empty-state">Carregando...</div></div>
     <div id="nps-tip" class="nps-tip hidden" role="tooltip"></div>
   `;
   const alvo = root.querySelector("#nps-conteudo");
+  root.querySelector("#nps-teste").addEventListener("click", () => {
+    abrirModal(`
+      <h2>Enviar pesquisa de teste</h2>
+      <p class="sub">Cria uma pesquisa de teste e abre o WhatsApp com a mensagem pronta para o número abaixo. A resposta do teste não entra nos indicadores do NPS.</p>
+      <div class="form-row"><label>WhatsApp (com DDD)</label><input type="tel" id="nps-teste-tel" inputmode="numeric" placeholder="(85) 90000-0000" /></div>
+      <div id="nps-teste-erro" class="form-erro hidden"></div>
+      <div class="modal-close-row">
+        <button type="button" class="btn btn-outline" id="nps-teste-fechar">Fechar</button>
+        <button type="button" class="btn btn-primary" id="nps-teste-enviar">Abrir WhatsApp</button>
+      </div>`);
+    const tel = document.getElementById("nps-teste-tel");
+    tel.addEventListener("input", () => {
+      const d = tel.value.replace(/\D/g, "").slice(0, 11);
+      tel.value = d.length <= 2 ? (d ? `(${d}` : "") : d.length <= 7 ? `(${d.slice(0, 2)}) ${d.slice(2)}` : `(${d.slice(0, 2)}) ${d.slice(2, 7)}-${d.slice(7)}`;
+    });
+    document.getElementById("nps-teste-fechar").addEventListener("click", fecharModal);
+    document.getElementById("nps-teste-enviar").addEventListener("click", async () => {
+      // Abre a aba já no clique (o Safari bloqueia janelas abertas depois de uma espera).
+      const janela = window.open("", "_blank");
+      try {
+        const p = await api.post("/api/nps/teste", { telefone: tel.value });
+        if (janela) janela.location = p.linkWhatsapp;
+        else window.location.href = p.linkWhatsapp;
+        fecharModal();
+        showToast("Pesquisa de teste criada. Envie a mensagem no WhatsApp.", "sucesso");
+        carregar();
+      } catch (err) {
+        if (janela) janela.close();
+        const box = document.getElementById("nps-teste-erro");
+        box.textContent = err.message;
+        box.classList.remove("hidden");
+      }
+    });
+  });
   root.querySelector("#nps-periodo").addEventListener("change", (e) => {
     meses = Number(e.target.value);
     carregar();
@@ -198,7 +236,7 @@ function tabelaPesquisas(listaOriginal) {
       const r = p.respostas;
       const cat = r ? (r.nps >= 9 ? "promotor" : r.nps >= 7 ? "neutro" : "detrator") : null;
       return `<tr class="${i >= 15 ? "nps-oculta hidden" : ""}">
-        <td><strong>${esc(p.vagaTitulo)}</strong><div class="sub">${esc(p.empresaNome || "—")}${p.contatoNome ? ` · ${esc(p.contatoNome)}` : ""}</div></td>
+        <td><strong>${esc(p.vagaTitulo)}</strong>${p.teste ? ' <span class="tag tag-encerrada">teste</span>' : ""}<div class="sub">${esc(p.empresaNome || "—")}${p.contatoNome ? ` · ${esc(p.contatoNome)}` : ""}</div></td>
         <td>${esc(p.consultorNome || "—")}</td>
         <td class="sub">${new Date(p.criadaEm).toLocaleDateString("pt-BR")}<br>
           ${email ? (email.ok ? `✉️ e-mail enviado` : `✉️ <span class="saldo-neg">não enviado</span>`) : ""}${email && !email.ok ? `<div class="sub" title="${esc(email.erro || "")}">${esc((email.erro || "").slice(0, 60))}</div>` : ""}
@@ -214,7 +252,7 @@ function tabelaPesquisas(listaOriginal) {
           r
             ? ""
             : `<button class="btn btn-primary btn-sm" data-whats="${esc(p.id)}" data-link="${esc(p.linkWhatsapp)}">WhatsApp</button>
-               <button class="btn btn-outline btn-sm" data-reenviar="${esc(p.vagaId)}">Reenviar e-mail</button>
+               ${p.vagaId ? `<button class="btn btn-outline btn-sm" data-reenviar="${esc(p.vagaId)}">Reenviar e-mail</button>` : ""}
                <button class="btn btn-outline btn-sm" data-copiar="${esc(p.link)}">Copiar link</button>`
         }</td>
       </tr>`;

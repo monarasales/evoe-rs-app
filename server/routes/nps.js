@@ -6,6 +6,7 @@ const express = require("express");
 const db = require("../db");
 const { requireAuth, requireGestor } = require("../middleware/auth");
 const { CRITERIOS, resumir, zona } = require("../utils/nps");
+const crypto = require("crypto");
 const { COL, criarParaVaga, enviarPorEmail, registrarEnvio, linkWhatsapp, linkPesquisa, contatosDaVaga } = require("../utils/npsPesquisas");
 
 const router = express.Router();
@@ -19,6 +20,7 @@ function paraTela(p) {
   return {
     id: p.id,
     vagaId: p.vagaId,
+    teste: !!p.teste,
     vagaTitulo: p.vagaTitulo,
     empresaNome: p.empresaNome,
     consultorNome: p.consultorNome,
@@ -69,6 +71,33 @@ router.post("/:id/whatsapp", (req, res) => {
   res.json(paraTela(registrarEnvio(p, { canal: "whatsapp", para: p.whatsapp || "(número escolhido no WhatsApp)", por: req.consultor.nome, ok: true })));
 });
 
+// ---------- Pesquisa de TESTE (Gestor) ----------
+// Cria uma pesquisa marcada como teste (não entra nos indicadores) e devolve o link
+// do WhatsApp para o número informado — para conferir a experiência do cliente.
+router.post("/teste", requireGestor, (req, res) => {
+  const tel = String((req.body || {}).telefone || "").replace(/\D/g, "");
+  if (tel.length < 10) return res.status(400).json({ erro: "Informe o WhatsApp com DDD, ex.: (85) 98862-0412." });
+  const p = db.insert(COL, {
+    token: crypto.randomBytes(12).toString("base64url"),
+    teste: true,
+    vagaId: null,
+    vagaTitulo: "Vaga de teste (pesquisa NPS)",
+    empresaId: null,
+    empresaNome: "Teste Evoé",
+    consultorId: req.consultor.id,
+    consultorNome: req.consultor.nome,
+    contatoNome: req.consultor.nome,
+    emails: [],
+    whatsapp: tel,
+    base: baseUrl(req),
+    criadaPor: req.consultor.nome,
+    envios: [{ em: new Date().toISOString(), canal: "whatsapp", para: tel, ok: true, por: req.consultor.nome }],
+    respondidaEm: null,
+    respostas: null,
+  });
+  res.status(201).json(paraTela(p));
+});
+
 // ---------- Painel (Gestor) ----------
 const mesLocal = (iso) => new Date(iso).toLocaleDateString("en-CA", { timeZone: "America/Fortaleza" }).slice(0, 7);
 
@@ -81,7 +110,9 @@ router.get("/painel", requireGestor, (req, res) => {
     listaMeses.push(d.toISOString().slice(0, 7));
   }
   const inicio = listaMeses[0];
-  const todas = db.readCollection(COL);
+  // Pesquisas de teste ficam fora dos indicadores (aparecem só na lista, marcadas).
+  const todasComTeste = db.readCollection(COL);
+  const todas = todasComTeste.filter((p) => !p.teste);
   const doPeriodo = todas.filter((p) => mesLocal(p.createdAt) >= inicio);
   const respondidas = todas.filter((p) => p.respondidaEm && mesLocal(p.respondidaEm) >= inicio);
   const respostas = (lista) => lista.map((p) => p.respostas);
@@ -101,7 +132,7 @@ router.get("/painel", requireGestor, (req, res) => {
     geral: { ...geral, zona: zona(geral.nps), enviadas: doPeriodo.length, taxaResposta: doPeriodo.length ? Math.round((doPeriodo.filter((p) => p.respondidaEm).length / doPeriodo.length) * 100) : null },
     mensal,
     consultores,
-    pesquisas: todas.sort((a, b) => String(b.createdAt).localeCompare(String(a.createdAt))).slice(0, 200).map(paraTela),
+    pesquisas: todasComTeste.sort((a, b) => String(b.createdAt).localeCompare(String(a.createdAt))).slice(0, 200).map(paraTela),
   });
 });
 
