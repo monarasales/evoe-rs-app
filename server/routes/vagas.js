@@ -266,6 +266,7 @@ router.patch("/:id/link", requireAuth, (req, res) => {
   }
   if (b.inscricoesAbertas !== undefined) dados.inscricoesAbertas = !!b.inscricoesAbertas;
   if (b.mostrarEmpresa !== undefined) dados.mostrarEmpresa = !!b.mostrarEmpresa;
+  if (b.exigirDisc !== undefined) dados.exigirDisc = !!b.exigirDisc;
   if (b.descricaoPublica !== undefined) dados.descricaoPublica = String(b.descricaoPublica || "").slice(0, 8000);
   res.json(comCampos(db.update("vagas", vaga.id, dados)));
 });

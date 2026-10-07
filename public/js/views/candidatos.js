@@ -127,7 +127,7 @@ export async function renderCandidatos(root, params) {
     el.innerHTML = `
       <div class="tabela-rolavel"><table>
         <thead>
-          <tr><th>Candidato</th><th>Empresa · Vaga</th><th>Etapa</th><th>Currículo</th><th>Pareceres</th><th>Entrevista</th><th></th></tr>
+          <tr><th>Candidato</th><th>Empresa · Vaga</th><th>Etapa</th><th>DISC</th><th>Currículo</th><th>Pareceres</th><th>Entrevista</th><th></th></tr>
         </thead>
         <tbody>
           ${lista
@@ -139,6 +139,7 @@ export async function renderCandidatos(root, params) {
               <td><strong>${escapeHtml(c.nome)}</strong>${c.inscritoPeloLink ? ' <span class="tag tag-prospect-contato" title="Inscrito pelo link da vaga">link</span>' : ""}<div class="sub">${escapeHtml([c.telefone, c.email].filter(Boolean).join(" · "))}</div></td>
               <td>${v ? `${escapeHtml(empresaNome(v.empresaId))}<div class="sub">${escapeHtml(v.titulo)}</div>` : "—"}</td>
               <td>${escapeHtml(c.etapaCandidato)}</td>
+              <td>${c.disc ? `<span class="tag disc-tag disc-${c.disc.resultado.primario}" title="Perfil DISC">${escapeHtml(c.disc.resultado.perfil)}</span>` : c.discToken ? '<span class="sub" title="Link do teste enviado, aguardando resposta">⏳</span>' : '<span class="sub">—</span>'}</td>
               <td>${c.curriculo ? `<a href="/api/candidatos/${c.id}/curriculo" target="_blank" rel="noopener" title="${escapeHtml(c.curriculo.nomeOriginal)}">📄 abrir</a>` : '<span class="sub">—</span>'}</td>
               <td>${nPareceres ? `💬 ${nPareceres}` : '<span class="sub">—</span>'}${c.jusbrasilOk ? ' <span title="Referência/Jusbrasil OK">✅</span>' : ""}</td>
               <td>${c.dataEntrevista ? dataBr(c.dataEntrevista) : "—"}</td>
@@ -226,6 +227,8 @@ export async function renderCandidatos(root, params) {
           <div class="sub" style="margin-top:4px;">PDF, Word ou imagem, até 8 MB. Ao substituir, o anterior continua guardado.</div>
         </div>
 
+        ${editando ? `<div class="section-title">Teste DISC</div><div id="c-disc">${blocoDisc(c)}</div>` : ""}
+
         <div class="section-title">Avaliação</div>
         <div class="form-cols">
           <div class="form-row"><label>Data da entrevista</label><input type="text" id="c-data-entrevista" inputmode="numeric" maxlength="10" placeholder="dd/mm/aaaa" value="${c.dataEntrevista ? dataBr(c.dataEntrevista) : ""}" /></div>
@@ -289,6 +292,7 @@ export async function renderCandidatos(root, params) {
     }
 
     if (editando) {
+      ligarDisc(c);
       ligarPareceres(c);
       let vagaCopia = "";
       criarCombobox($("c-copiar-vaga"), {
@@ -320,6 +324,46 @@ export async function renderCandidatos(root, params) {
           }
         });
       }
+    }
+
+    function ligarDisc(cand) {
+      const area = $("c-disc");
+      const urlDisc = () => `${location.origin}/disc/${cand.discToken}`;
+      const pedir = async (refazer) => {
+        try {
+          Object.assign(cand, await api.post(`/api/candidatos/${cand.id}/disc/link`, { refazer }));
+          area.innerHTML = blocoDisc(cand);
+          ligarDisc(cand);
+          carregar();
+          showToast(refazer ? "Novo link gerado. O resultado anterior ficou guardado no histórico." : "Link do teste DISC gerado.", "sucesso");
+        } catch (err) {
+          mostrarErro(err.message);
+        }
+      };
+      const gerar = area.querySelector("#disc-gerar");
+      if (gerar) gerar.addEventListener("click", () => pedir(false));
+      const refazer = area.querySelector("#disc-refazer");
+      if (refazer)
+        refazer.addEventListener("click", () => {
+          if (confirm(`Gerar um novo teste para ${cand.nome}? O resultado atual não será apagado: fica no histórico.`)) pedir(true);
+        });
+      const copiar = area.querySelector("#disc-copiar");
+      if (copiar)
+        copiar.addEventListener("click", async () => {
+          try {
+            await navigator.clipboard.writeText(urlDisc());
+            showToast("Link do teste copiado.", "sucesso");
+          } catch (e) {
+            prompt("Copie o link:", urlDisc());
+          }
+        });
+      const whats = area.querySelector("#disc-whats");
+      if (whats)
+        whats.addEventListener("click", () => {
+          const tel = String(cand.telefone || "").replace(/\D/g, "");
+          const texto = `Olá, ${(cand.nome || "").split(" ")[0]}! Uma das etapas do processo seletivo da Evoé Gestão e RH é o teste de perfil comportamental (DISC), leva cerca de 8 minutos: ${urlDisc()}`;
+          window.open(`https://wa.me/${tel.length >= 10 ? "55" + tel : ""}?text=${encodeURIComponent(texto)}`, "_blank", "noopener");
+        });
     }
 
     function ligarPareceres(cand) {
@@ -471,4 +515,52 @@ function listaPareceres(c) {
       </div>`
     )
     .join("");
+}
+
+const NOMES_DISC = { D: "Dominância", I: "Influência", S: "Estabilidade", C: "Conformidade" };
+const TITULOS_DISC = { D: "Executor", I: "Comunicador", S: "Planejador", C: "Analista" };
+
+function blocoDisc(c) {
+  const anteriores = (c.discAnteriores || [])
+    .map(
+      (d, i) =>
+        `<li><a href="/api/candidatos/${c.id}/disc/relatorio?anterior=${i}" target="_blank" rel="noopener">${escapeHtml(d.resultado.perfil)} — ${new Date(d.concluidoEm).toLocaleDateString("pt-BR")}</a></li>`
+    )
+    .join("");
+  const historico = anteriores ? `<details style="margin-top:6px;"><summary class="sub">Resultados anteriores</summary><ul>${anteriores}</ul></details>` : "";
+  if (c.disc) {
+    const r = c.disc.resultado;
+    const barras = ["D", "I", "S", "C"]
+      .map(
+        (f) => `<div class="disc-barra"><span><strong>${f}</strong> ${NOMES_DISC[f]}</span>
+          <div class="bar-track"><div class="bar-fill disc-fill-${f}" style="width:${Math.max(3, r.intensidade[f])}%"></div></div><strong>${r.intensidade[f]}</strong></div>`
+      )
+      .join("");
+    return `<div class="disc-box">
+      <div class="disc-topo"><span class="tag disc-tag disc-${r.primario}">${escapeHtml(r.perfil)}</span>
+        <strong>${TITULOS_DISC[r.primario]}${r.secundario ? ` / ${TITULOS_DISC[r.secundario]}` : ""}</strong>
+        <span class="sub">respondido em ${new Date(c.disc.concluidoEm).toLocaleString("pt-BR", { dateStyle: "short", timeStyle: "short" })}</span></div>
+      ${barras}
+      <div class="link-acoes">
+        <a class="btn btn-primary btn-sm" href="/api/candidatos/${c.id}/disc/relatorio" target="_blank" rel="noopener">Ver relatório completo / salvar PDF</a>
+        <button type="button" class="btn btn-outline btn-sm" id="disc-refazer">Pedir novo teste</button>
+      </div>
+      ${historico}
+    </div>`;
+  }
+  if (c.discToken) {
+    return `<div class="disc-box">
+      <div class="sub" style="margin-bottom:8px;">⏳ Link enviado${c.discSolicitadoEm ? ` em ${new Date(c.discSolicitadoEm).toLocaleDateString("pt-BR")}` : ""} — aguardando o candidato responder.</div>
+      <div class="link-acoes">
+        <button type="button" class="btn btn-primary btn-sm" id="disc-copiar">Copiar link do teste</button>
+        <button type="button" class="btn btn-outline btn-sm" id="disc-whats">Enviar pelo WhatsApp</button>
+      </div>
+      ${historico}
+    </div>`;
+  }
+  return `<div class="disc-box">
+    <div class="sub" style="margin-bottom:8px;">Este candidato ainda não fez o teste DISC.</div>
+    <button type="button" class="btn btn-secondary btn-sm" id="disc-gerar">Gerar link do teste DISC</button>
+    ${historico}
+  </div>`;
 }

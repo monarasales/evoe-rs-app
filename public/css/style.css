@@ -416,6 +416,16 @@ table tr:hover td { background: #fafbfc; }
 .link-acoes { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 8px; }
 .link-acoes a.btn { text-decoration: none; display: inline-flex; align-items: center; }
 
+/* ---------- DISC ---------- */
+.disc-box { background: var(--bg); border-radius: 10px; padding: 12px 14px; }
+.disc-topo { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; margin-bottom: 8px; }
+.disc-tag { color: white; font-weight: 800; letter-spacing: .5px; }
+.disc-D, .disc-fill-D { background: #d9534f !important; }
+.disc-I, .disc-fill-I { background: #f0ad4e !important; }
+.disc-S, .disc-fill-S { background: #3fb37f !important; }
+.disc-C, .disc-fill-C { background: #3b7dd8 !important; }
+.disc-barra { display: grid; grid-template-columns: 130px 1fr 30px; gap: 8px; align-items: center; font-size: 13px; margin: 5px 0; }
+
 /* ---------- Candidatos ---------- */
 .cand-filtros { display: grid; grid-template-columns: 2fr 2fr 1fr; gap: 10px; margin-bottom: 10px; }
 .cand-filtros .input-toolbar { width: 100%; }

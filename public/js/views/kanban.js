@@ -490,6 +490,7 @@ function htmlLinkInscricao(vaga) {
     ${VAGA_ENCERRADA(vaga) ? '<div class="sub" style="margin-top:6px;">A vaga está encerrada, então o link não aceita mais inscrições.</div>' : ""}
     <div class="checkbox-row" style="margin-top:10px;"><input type="checkbox" id="link-abertas" ${vaga.inscricoesAbertas !== false ? "checked" : ""} /><label for="link-abertas" style="margin:0;font-weight:400;">Aceitar inscrições pelo link</label></div>
     <div class="checkbox-row" style="margin-top:6px;"><input type="checkbox" id="link-empresa" ${vaga.mostrarEmpresa ? "checked" : ""} /><label for="link-empresa" style="margin:0;font-weight:400;">Mostrar o nome da empresa (desmarcado = "Empresa confidencial")</label></div>
+    <div class="checkbox-row" style="margin-top:6px;"><input type="checkbox" id="link-disc" ${vaga.exigirDisc !== false ? "checked" : ""} /><label for="link-disc" style="margin:0;font-weight:400;">Pedir o teste DISC logo após a inscrição</label></div>
     <label style="margin-top:10px;">Texto que o candidato vê</label>
     <textarea id="link-descricao" rows="6" placeholder="Atividades, requisitos, benefícios, horário, local... (o perfil interno da vaga NÃO é mostrado ao candidato)">${escapeHtml(vaga.descricaoPublica || "")}</textarea>
     <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:6px;">
@@ -540,6 +541,7 @@ function ligarLinkInscricao(vaga) {
         await api.patch(`/api/vagas/${vaga.id}/link`, {
           inscricoesAbertas: $("link-abertas").checked,
           mostrarEmpresa: $("link-empresa").checked,
+          exigirDisc: $("link-disc").checked,
           descricaoPublica: $("link-descricao").value,
         })
       );

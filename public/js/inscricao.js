@@ -24,6 +24,7 @@
 
   const partes = location.pathname.split("/").filter(Boolean);
   if (partes[0] === "vaga" && partes[1]) paginaVaga(decodeURIComponent(partes[1]));
+  else if (partes[0] === "disc" && partes[1]) paginaDisc(decodeURIComponent(partes[1]));
   else listaVagas();
 
   // ---------- Lista ----------
@@ -161,7 +162,21 @@
             curriculo: { nomeArquivo: arquivo.name, conteudoBase64 },
           }),
         });
-        raiz.innerHTML = `
+        raiz.innerHTML = r.discUrl
+          ? `
+          <div class="cartao sucesso">
+            <div class="icone">✅</div>
+            <h1>Inscrição recebida!</h1>
+            <p>Obrigado, ${esc(nome.split(" ")[0])}! Recebemos seu currículo para a vaga <strong>${esc(vaga.titulo)}</strong>.</p>
+            <div class="proxima">
+              <div class="etapa">Próxima etapa</div>
+              <h2 style="margin:4px 0 6px;">Teste de perfil comportamental (DISC)</h2>
+              <p style="margin:0;">São 24 perguntas rápidas, cerca de 8 minutos. Não existe resposta certa ou errada — responda pensando em como você realmente é.</p>
+            </div>
+            <a class="botao" href="${esc(r.discUrl)}">Fazer o teste agora</a>
+            <p class="dica" style="margin-top:12px;">Prefere fazer depois? Guarde este link: <br><strong>${esc(location.origin + r.discUrl)}</strong></p>
+          </div>`
+          : `
           <div class="cartao sucesso">
             <div class="icone">🎉</div>
             <h1>${r.atualizada ? "Inscrição atualizada!" : "Inscrição enviada!"}</h1>
@@ -176,5 +191,162 @@
         botao.textContent = "Enviar inscrição";
       }
     });
+  }
+
+  // ---------- Teste DISC ----------
+  async function paginaDisc(token) {
+    document.title = "Teste de perfil comportamental — Evoé Gestão e RH";
+    let dados;
+    try {
+      dados = await api(`/api/publico/disc/${encodeURIComponent(token)}`);
+    } catch (err) {
+      raiz.innerHTML = `<div class="cartao vazio">${esc(err.message)}</div>`;
+      return;
+    }
+    if (dados.concluido) return telaFinal(dados.primeiroNome, dados.resumo, true);
+
+    const CHAVE = `evoe-disc-${token}`;
+    let estado = { atual: 0, respostas: {}, iniciadoEm: null };
+    try {
+      estado = { ...estado, ...JSON.parse(localStorage.getItem(CHAVE) || "{}") };
+    } catch (e) {
+      /* sem armazenamento: segue do zero */
+    }
+    const salvar = () => {
+      try {
+        localStorage.setItem(CHAVE, JSON.stringify(estado));
+      } catch (e) {
+        /* ignora */
+      }
+    };
+    const total = dados.perguntas.length;
+
+    function telaInicio() {
+      raiz.innerHTML = `
+        <div class="cartao">
+          <div class="etapa">Etapa do processo seletivo${dados.vaga ? ` · ${esc(dados.vaga)}` : ""}</div>
+          <h1>Olá, ${esc(dados.primeiroNome)}! 👋</h1>
+          <p>Este é um teste de <strong>perfil comportamental (DISC)</strong>. Ele ajuda a entender seu jeito de trabalhar e se relacionar.</p>
+          <div class="como">
+            <div><strong>Como funciona:</strong> são ${total} grupos de 4 palavras.</div>
+            <div>Em cada grupo, marque a palavra que <span class="tag-mais">MAIS</span> combina com você e a que <span class="tag-menos">MENOS</span> combina.</div>
+            <div>Não existe resposta certa ou errada. Responda rápido, pensando em como você é no dia a dia — e não em como gostaria de ser.</div>
+            <div>Leva cerca de 8 minutos. Se a página fechar, suas respostas ficam salvas neste aparelho.</div>
+          </div>
+          <button class="botao" id="comecar">${Object.keys(estado.respostas).length ? "Continuar o teste" : "Começar o teste"}</button>
+        </div>`;
+      document.getElementById("comecar").addEventListener("click", () => {
+        if (!estado.iniciadoEm) estado.iniciadoEm = new Date().toISOString();
+        salvar();
+        telaPergunta();
+      });
+    }
+
+    function telaPergunta() {
+      const p = dados.perguntas[estado.atual];
+      const r = estado.respostas[p.grupo] || {};
+      const pct = Math.round((Object.keys(estado.respostas).filter((g) => estado.respostas[g].mais && estado.respostas[g].menos).length / total) * 100);
+      raiz.innerHTML = `
+        <div class="progresso"><div class="progresso-barra" style="width:${pct}%"></div></div>
+        <div class="etapa" style="text-align:center;margin:8px 0 14px;">Grupo ${estado.atual + 1} de ${total}</div>
+        <div class="cartao">
+          <div class="disc-cabeca"><span></span><span class="tag-mais">MAIS</span><span class="tag-menos">MENOS</span></div>
+          ${p.opcoes
+            .map(
+              (o) => `<div class="disc-linha">
+                <div class="disc-palavra">${esc(o.texto)}</div>
+                <button type="button" class="disc-btn mais ${r.mais === o.id ? "on" : ""}" data-tipo="mais" data-id="${o.id}" aria-label="Mais: ${esc(o.texto)}">👍</button>
+                <button type="button" class="disc-btn menos ${r.menos === o.id ? "on" : ""}" data-tipo="menos" data-id="${o.id}" aria-label="Menos: ${esc(o.texto)}">👎</button>
+              </div>`
+            )
+            .join("")}
+          <div class="dica" style="text-align:center;margin-top:10px;">Marque 1 palavra em MAIS e 1 palavra diferente em MENOS.</div>
+        </div>
+        <div class="disc-nav">
+          <button type="button" class="botao secundario" id="voltar" ${estado.atual === 0 ? "disabled" : ""}>← Voltar</button>
+          <button type="button" class="botao" id="avancar" ${r.mais && r.menos ? "" : "disabled"}>${estado.atual === total - 1 ? "Concluir" : "Próximo →"}</button>
+        </div>
+        <div id="erro" class="erro hidden"></div>`;
+
+      raiz.querySelectorAll(".disc-btn").forEach((b) =>
+        b.addEventListener("click", () => {
+          const resp = (estado.respostas[p.grupo] = { ...(estado.respostas[p.grupo] || {}) });
+          const outro = b.dataset.tipo === "mais" ? "menos" : "mais";
+          resp[b.dataset.tipo] = b.dataset.id;
+          if (resp[outro] === b.dataset.id) delete resp[outro]; // mesma palavra não pode ser MAIS e MENOS
+          salvar();
+          const completo = resp.mais && resp.menos;
+          telaPergunta();
+          if (completo && estado.atual < total - 1) setTimeout(() => avancar(), 350);
+        })
+      );
+      document.getElementById("voltar").addEventListener("click", () => {
+        estado.atual = Math.max(0, estado.atual - 1);
+        salvar();
+        telaPergunta();
+      });
+      document.getElementById("avancar").addEventListener("click", avancar);
+    }
+
+    let avancando = false;
+    async function avancar() {
+      if (avancando) return;
+      const p = dados.perguntas[estado.atual];
+      const r = estado.respostas[p.grupo] || {};
+      if (!r.mais || !r.menos) return;
+      if (estado.atual < total - 1) {
+        estado.atual++;
+        salvar();
+        telaPergunta();
+        window.scrollTo(0, 0);
+        return;
+      }
+      avancando = true;
+      const botao = document.getElementById("avancar");
+      botao.disabled = true;
+      botao.textContent = "Enviando...";
+      try {
+        const resp = await api(`/api/publico/disc/${encodeURIComponent(token)}`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            iniciadoEm: estado.iniciadoEm,
+            respostas: dados.perguntas.map((q) => ({ grupo: q.grupo, ...estado.respostas[q.grupo] })),
+          }),
+        });
+        try {
+          localStorage.removeItem(CHAVE);
+        } catch (e) {
+          /* ignora */
+        }
+        telaFinal(dados.primeiroNome, resp.resumo, false);
+      } catch (err) {
+        avancando = false;
+        const e = document.getElementById("erro");
+        e.textContent = err.message;
+        e.classList.remove("hidden");
+        botao.disabled = false;
+        botao.textContent = "Concluir";
+      }
+    }
+
+    telaInicio();
+  }
+
+  function telaFinal(nome, resumo, jaFeito) {
+    raiz.innerHTML = `
+      <div class="cartao sucesso">
+        <div class="icone">🌟</div>
+        <h1>${jaFeito ? "Teste já concluído" : "Teste concluído!"}</h1>
+        <p>Obrigado, ${esc(nome)}! ${jaFeito ? "Já recebemos suas respostas." : "Suas respostas foram enviadas para a equipe da Evoé."}</p>
+        ${
+          resumo
+            ? `<div class="proxima"><div class="etapa">Seu perfil predominante</div><h2 style="margin:4px 0 6px;">${esc(resumo.titulo)}</h2><p style="margin:0;">${esc(resumo.texto)}</p></div>`
+            : ""
+        }
+        <p class="dica">Se o seu perfil seguir no processo, nossa equipe entra em contato.</p>
+        <a class="botao" href="/vagas">Ver vagas abertas</a>
+      </div>`;
+    window.scrollTo(0, 0);
   }
 })();

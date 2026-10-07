@@ -1,6 +1,8 @@
 const express = require("express");
 const db = require("../db");
+const crypto = require("crypto");
 const { salvarCurriculo, caminhoCurriculo } = require("../utils/curriculos");
+const { relatorioDisc } = require("../utils/discRelatorio");
 const { requireAuth } = require("../middleware/auth");
 const { notify } = require("../utils/notify");
 const { ETAPAS_CANDIDATO } = require("../utils/constants");
@@ -236,10 +238,45 @@ router.post("/:id/copiar", requireAuth, (req, res) => {
     pareceres: [],
     curriculo: origem.curriculo || null,
     curriculosAnteriores: origem.curriculosAnteriores || [],
+    // O DISC é da pessoa (não da vaga): acompanha o candidato para a nova vaga.
+    disc: origem.disc || null,
+    discAnteriores: origem.discAnteriores || [],
     origemCandidatoId: raiz,
     criadoPor: req.consultor.id,
   });
   res.status(201).json(copia);
+});
+
+// ---------- Teste DISC ----------
+// Gera (ou reaproveita) o link individual do teste. Com { refazer: true }, o resultado
+// atual vai para `discAnteriores` (nada se perde) e um novo link é criado.
+router.post("/:id/disc/link", requireAuth, (req, res) => {
+  const candidato = db.findById("candidatos", req.params.id);
+  if (!candidato) return res.status(404).json({ erro: "Candidato não encontrado." });
+  if (!podeEditar(req, db.findById("vagas", candidato.vagaId))) {
+    return res.status(403).json({ erro: "Você só pode enviar o teste para candidatos de vagas atribuídas a você." });
+  }
+  const dados = {};
+  if ((req.body || {}).refazer && candidato.disc) {
+    dados.discAnteriores = [...(candidato.discAnteriores || []), { ...candidato.disc, substituidoEm: new Date().toISOString(), substituidoPor: req.consultor.nome }];
+    dados.disc = null;
+    dados.discToken = crypto.randomBytes(12).toString("base64url");
+  } else if (!candidato.discToken) {
+    dados.discToken = crypto.randomBytes(12).toString("base64url");
+  }
+  if (dados.discToken) dados.discSolicitadoEm = new Date().toISOString();
+  res.json(Object.keys(dados).length ? db.update("candidatos", candidato.id, dados) : candidato);
+});
+
+// Relatório completo (HTML para imprimir/salvar em PDF). Com ?anterior=N abre um resultado antigo.
+router.get("/:id/disc/relatorio", requireAuth, (req, res) => {
+  const candidato = db.findById("candidatos", req.params.id);
+  if (!candidato) return res.status(404).send("Candidato não encontrado.");
+  const alvo = req.query.anterior !== undefined ? (candidato.discAnteriores || [])[Number(req.query.anterior)] : candidato.disc;
+  if (!alvo) return res.status(404).send("Este candidato ainda não fez o teste DISC.");
+  const vaga = db.findById("vagas", candidato.vagaId);
+  const empresa = vaga ? (db.findById("empresas", vaga.empresaId) || {}).nome : "";
+  res.type("html").send(relatorioDisc({ candidato: { ...candidato, disc: alvo }, vaga, empresa }));
 });
 
 module.exports = router;

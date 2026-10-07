@@ -6,7 +6,9 @@
 const express = require("express");
 const db = require("../db");
 const { notify } = require("../utils/notify");
+const crypto = require("crypto");
 const { salvarCurriculo } = require("../utils/curriculos");
+const disc = require("../utils/disc");
 
 const router = express.Router();
 
@@ -19,6 +21,8 @@ const TEXTO_CONSENTIMENTO =
   `dos meus dados a qualquer momento pelo e-mail ${EMAIL_LGPD}.`;
 
 const encerrada = (v) => /^1[12]\./.test(v.etapaAtual || "");
+const pedeDisc = (v) => v.exigirDisc !== false;
+const novoTokenDisc = () => crypto.randomBytes(12).toString("base64url");
 const aceitaInscricao = (v) => !!v.linkToken && v.inscricoesAbertas !== false && !encerrada(v);
 
 function vagaPublica(v) {
@@ -28,6 +32,7 @@ function vagaPublica(v) {
     titulo: v.titulo,
     empresa: empresa || null,
     descricao: v.descricaoPublica || "",
+    pedeDisc: pedeDisc(v),
     publicadaEm: v.linkCriadoEm || v.dataAbertura || null,
     aberta: aceitaInscricao(v),
   };
@@ -154,7 +159,67 @@ router.post("/vagas/:token/inscricao", (req, res) => {
     })
   );
 
-  res.status(201).json({ ok: true, atualizada: !!existente });
+  let discUrl = null;
+  if (pedeDisc(vaga) && !candidato.disc) {
+    if (!candidato.discToken) candidato = db.update("candidatos", candidato.id, { discToken: novoTokenDisc(), discSolicitadoEm: new Date().toISOString() });
+    discUrl = `/disc/${candidato.discToken}`;
+  }
+  res.status(201).json({ ok: true, atualizada: !!existente, discUrl, discJaFeito: !!candidato.disc });
+});
+
+// ---------- Teste DISC (link individual do candidato) ----------
+const acharPorTokenDisc = (token) => db.readCollection("candidatos").find((c) => c.discToken && c.discToken === token);
+
+router.get("/disc/:token", (req, res) => {
+  const c = acharPorTokenDisc(req.params.token);
+  if (!c) return res.status(404).json({ erro: "Link do teste não encontrado. Confira o link recebido." });
+  const vaga = db.findById("vagas", c.vagaId);
+  const base = { primeiroNome: (c.nome || "").split(" ")[0], vaga: vaga ? vaga.titulo : "", concluido: !!c.disc };
+  if (c.disc) {
+    const p = disc.PERFIS[c.disc.resultado.primario];
+    return res.json({ ...base, resumo: { titulo: `${p.nome} (${p.titulo})`, texto: p.candidato } });
+  }
+  res.json({ ...base, total: disc.GRUPOS.length, perguntas: disc.perguntas(c.discToken) });
+});
+
+router.post("/disc/:token", (req, res) => {
+  const c = acharPorTokenDisc(req.params.token);
+  if (!c) return res.status(404).json({ erro: "Link do teste não encontrado." });
+  if (c.disc) return res.status(400).json({ erro: "Você já concluiu este teste. Obrigado!" });
+  if (limiteExcedido(req.ip)) return res.status(429).json({ erro: "Muitos envios em pouco tempo. Aguarde alguns minutos e tente novamente." });
+  let resultado;
+  try {
+    resultado = disc.pontuar((req.body || {}).respostas, c.discToken);
+  } catch (err) {
+    return res.status(400).json({ erro: err.message });
+  }
+  const iniciadoEm = Date.parse((req.body || {}).iniciadoEm);
+  const registro = {
+    versao: disc.VERSAO,
+    concluidoEm: new Date().toISOString(),
+    duracaoSegundos: Number.isFinite(iniciadoEm) ? Math.max(0, Math.round((Date.now() - iniciadoEm) / 1000)) : null,
+    respostas: req.body.respostas.map((r) => ({ grupo: r.grupo, mais: r.mais, menos: r.menos })),
+    resultado,
+  };
+  db.update("candidatos", c.id, { disc: registro });
+
+  const vaga = db.findById("vagas", c.vagaId);
+  const destinatarios = new Set(vaga ? [vaga.consultorId] : []);
+  db.readCollection("consultores")
+    .filter((x) => (x.perfil === "Gestor" || x.perfil === "Supervisora") && x.ativo !== false)
+    .forEach((x) => destinatarios.add(x.id));
+  destinatarios.forEach((id) =>
+    notify({
+      tipo: "Teste DISC concluído",
+      vagaId: vaga ? vaga.id : null,
+      destinatarioId: id,
+      assunto: `DISC concluído: ${c.nome} — perfil ${resultado.perfil}`,
+      mensagem: `${c.nome} concluiu o teste DISC${vaga ? ` da vaga "${vaga.titulo}"` : ""}. Perfil: ${disc.nomePerfil(resultado)}.`,
+    })
+  );
+
+  const p = disc.PERFIS[resultado.primario];
+  res.status(201).json({ ok: true, resumo: { titulo: `${p.nome} (${p.titulo})`, texto: p.candidato } });
 });
 
 module.exports = router;

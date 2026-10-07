@@ -47,6 +47,15 @@ Baseado no documento "Controle de Ponto Próprio" (Resolut). Construído por eta
 - Inscrição cria candidato "Inscrito"/origem "Link da vaga" com `consentimentoLgpd`; mesmo e-mail na mesma vaga não duplica
   (só preenche campos vazios, guarda `reinscricoes` e nova versão do currículo). Currículos: `server/utils/curriculos.js`.
 
+## Teste DISC
+- `server/utils/disc.js`: questionário PRÓPRIO da Evoé (24 grupos "mais/menos", base Marston 1928) — não copiar
+  itens de testes comerciais (ex.: Mr.Coach é protegido por direitos autorais). Pontuação pura, testes em `test/disc.test.js`.
+- Códigos das palavras são opacos e diferentes por candidato (semente = `discToken`); a página nunca recebe o fator.
+- Fluxo: inscrição pelo link -> se `vaga.exigirDisc !== false`, gera `candidato.discToken` -> página `/disc/<token>`.
+  Resultado em `candidato.disc`; "pedir novo teste" move o atual para `discAnteriores` (nada se apaga).
+- Relatório interno: `GET /api/candidatos/:id/disc/relatorio` (HTML para salvar em PDF), `utils/discRelatorio.js`.
+- DISC não é teste psicológico do SATEPSI/CFP: sempre apresentar como informação complementar.
+
 ## Produção (Render)
 - Deploy via `render.yaml`; os dados reais ficam no disco persistente do Render
   (`DATA_DIR=/data`), **não** no repositório.

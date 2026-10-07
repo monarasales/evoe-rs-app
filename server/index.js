@@ -72,8 +72,9 @@ app.use("/api/ponto-gestao", require("./routes/pontoGestao"));
 app.use("/api/configuracao", require("./routes/configuracao"));
 app.use("/api/publico", require("./routes/publico"));
 
-// Páginas públicas de inscrição: /vagas (todas as abertas) e /vaga/<código>.
-app.get(["/vagas", "/vaga/:token"], (req, res) => {
+// Páginas públicas: /vagas (todas as abertas), /vaga/<código> (inscrição) e
+// /disc/<código> (teste DISC individual do candidato).
+app.get(["/vagas", "/vaga/:token", "/disc/:token"], (req, res) => {
   res.sendFile(path.join(__dirname, "..", "public", "inscricao.html"));
 });
 

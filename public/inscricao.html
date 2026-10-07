@@ -50,6 +50,24 @@
     .vazio { text-align: center; color: var(--suave); padding: 30px 10px; }
     footer { text-align: center; color: var(--suave); font-size: 12.5px; padding: 0 16px 30px; }
     .hidden { display: none !important; }
+    .etapa { font-size: 12px; font-weight: 700; text-transform: uppercase; letter-spacing: .5px; color: var(--purple); }
+    .proxima { background: #f1ecff; border-radius: 12px; padding: 14px 16px; margin: 18px 0 4px; text-align: left; }
+    .como { background: var(--bg); border-radius: 12px; padding: 14px 16px; display: grid; gap: 8px; font-size: 14.5px; line-height: 1.5; }
+    .tag-mais, .tag-menos { display: inline-block; font-size: 11.5px; font-weight: 800; padding: 2px 8px; border-radius: 6px; letter-spacing: .3px; }
+    .tag-mais { background: var(--ok-bg); color: var(--ok); }
+    .tag-menos { background: var(--erro-bg); color: var(--erro); }
+    .progresso { height: 8px; background: #e3e7ec; border-radius: 6px; overflow: hidden; }
+    .progresso-barra { height: 100%; background: var(--gradiente); transition: width .3s; }
+    .disc-cabeca, .disc-linha { display: grid; grid-template-columns: 1fr 64px 64px; gap: 8px; align-items: center; }
+    .disc-cabeca { margin-bottom: 6px; text-align: center; }
+    .disc-linha { padding: 8px 0; border-top: 1px solid #f1f3f6; }
+    .disc-palavra { font-size: 17px; font-weight: 600; }
+    .disc-btn { height: 52px; border-radius: 12px; border: 2px solid var(--borda); background: white; font-size: 22px; cursor: pointer; filter: grayscale(1); opacity: .55; }
+    .disc-btn.mais.on { border-color: var(--ok); background: var(--ok-bg); filter: none; opacity: 1; }
+    .disc-btn.menos.on { border-color: var(--erro); background: var(--erro-bg); filter: none; opacity: 1; }
+    .disc-nav { display: grid; grid-template-columns: 1fr 2fr; gap: 10px; }
+    .disc-nav .botao { margin-top: 0; }
+    .botao.secundario { background: white; color: var(--navy); border: 1px solid var(--borda); }
     @media (max-width: 520px) { .linha { grid-template-columns: 1fr; } h1 { font-size: 21px; } }
   </style>
 </head>
