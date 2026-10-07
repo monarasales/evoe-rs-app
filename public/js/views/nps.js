@@ -36,6 +36,8 @@ export async function renderNps(root) {
         <div class="sub">A pesquisa é criada quando a vaga vai para "11. Aprovado" (vaga fechada): e-mail automático ao cliente e envio por WhatsApp em 1 clique.</div>
       </div>
       <div style="display:flex;gap:8px;flex-wrap:wrap;">
+        <button type="button" class="btn btn-primary btn-sm" id="nps-campanha">📣 Disparar para vagas fechadas</button>
+        <button type="button" class="btn btn-outline btn-sm hidden" id="nps-fila">💬 Fila do WhatsApp</button>
         <button type="button" class="btn btn-outline btn-sm" id="nps-teste">📱 Enviar pesquisa de teste</button>
         <select id="nps-periodo" class="input-toolbar"><option value="6">Últimos 6 meses</option><option value="12" selected>Últimos 12 meses</option><option value="24">Últimos 24 meses</option></select>
       </div>
@@ -44,6 +46,9 @@ export async function renderNps(root) {
     <div id="nps-tip" class="nps-tip hidden" role="tooltip"></div>
   `;
   const alvo = root.querySelector("#nps-conteudo");
+  let ultimas = [];
+  root.querySelector("#nps-campanha").addEventListener("click", () => abrirCampanha(() => carregar()));
+  root.querySelector("#nps-fila").addEventListener("click", () => abrirFilaWhatsapp(pendentesWhatsapp(ultimas), () => carregar()));
   root.querySelector("#nps-teste").addEventListener("click", () => {
     abrirModal(`
       <h2>Enviar pesquisa de teste</h2>
@@ -111,6 +116,11 @@ export async function renderNps(root) {
       alvo.innerHTML = `<div class="empty-state">${esc(err.message)}</div>`;
       return;
     }
+    ultimas = d.pesquisas;
+    const nFila = pendentesWhatsapp(ultimas).length;
+    const btnFila = root.querySelector("#nps-fila");
+    btnFila.classList.toggle("hidden", !nFila);
+    btnFila.textContent = `💬 Fila do WhatsApp (${nFila})`;
     const g = d.geral;
     const z = ZONA[g.zona];
     alvo.innerHTML = `
@@ -302,4 +312,139 @@ export function ligarAcoes(raiz, aoMudar) {
       }
     })
   );
+}
+
+// ---------- Disparo para vagas já fechadas ----------
+/** Pesquisas sem resposta que ainda não foram abertas no WhatsApp (fila de envio). */
+function pendentesWhatsapp(pesquisas) {
+  return pesquisas.filter((p) => !p.respostas && !p.teste && !p.envios.some((e) => e.canal === "whatsapp"));
+}
+
+async function abrirCampanha(aoConcluir) {
+  abrirModal('<div class="empty-state">Carregando vagas fechadas...</div>');
+  let vagas;
+  try {
+    vagas = await api.get("/api/nps/campanha/candidatas");
+  } catch (err) {
+    abrirModal(`<div class="form-erro">${esc(err.message)}</div><div class="modal-close-row"><button class="btn btn-outline" id="camp-fechar">Fechar</button></div>`);
+    document.getElementById("camp-fechar").addEventListener("click", fecharModal);
+    return;
+  }
+  if (!vagas.length) {
+    abrirModal(`<h2>Disparar pesquisa para vagas fechadas</h2><div class="empty-state">Todas as vagas fechadas já têm pesquisa. 🎉</div><div class="modal-close-row"><button class="btn btn-outline" id="camp-fechar">Fechar</button></div>`);
+    document.getElementById("camp-fechar").addEventListener("click", fecharModal);
+    return;
+  }
+  const semContato = (v) => v.whatsapp.length < 10 && !v.emails.length;
+  abrirModal(`
+    <h2>Disparar pesquisa para vagas fechadas</h2>
+    <p class="sub">Valide a lista antes de disparar. Vêm marcadas a vaga fechada <strong>mais recente de cada empresa</strong> (para não enviar várias pesquisas ao mesmo cliente) e só quem tem contato no CRM.</p>
+    <div class="camp-acoes">
+      <button type="button" class="link-btn" data-marcar="sugeridas">Marcar sugeridas</button> ·
+      <button type="button" class="link-btn" data-marcar="todas">Marcar todas</button> ·
+      <button type="button" class="link-btn" data-marcar="nenhuma">Desmarcar todas</button>
+    </div>
+    <div class="tabela-rolavel camp-lista"><table>
+      <thead><tr><th></th><th>Vaga / cliente</th><th>Fechada em</th><th>WhatsApp</th><th>E-mail</th></tr></thead>
+      <tbody>${vagas
+        .map(
+          (v) => `<tr class="${semContato(v) ? "camp-sem" : ""}">
+            <td><input type="checkbox" class="camp-check" value="${esc(v.vagaId)}" ${v.sugerida ? "checked" : ""} ${semContato(v) ? "disabled" : ""} /></td>
+            <td><strong>${esc(v.vagaTitulo)}</strong><div class="sub">${esc(v.empresaNome)}${v.contatoNome ? ` · ${esc(v.contatoNome)}` : ""}${v.consultorNome ? ` · consultor(a): ${esc(v.consultorNome)}` : ""}</div></td>
+            <td class="sub">${v.dataFechamento ? new Date(v.dataFechamento + "T12:00:00").toLocaleDateString("pt-BR") : "—"}</td>
+            <td>${v.whatsapp.length >= 10 ? `✅ <span class="sub">${esc(v.whatsapp)}</span>` : '<span class="saldo-neg">sem WhatsApp</span>'}</td>
+            <td>${v.emails.length ? `✅ <span class="sub">${esc(v.emails.join(", "))}</span>` : '<span class="sub">—</span>'}</td>
+          </tr>`
+        )
+        .join("")}</tbody></table></div>
+    <div class="sub" style="margin-top:6px;">Clientes sem WhatsApp e sem e-mail ficam bloqueados — cadastre o contato no CRM e volte aqui.</div>
+    <label class="checkbox-row" style="margin-top:12px;"><input type="checkbox" id="camp-email" checked /> Enviar também por e-mail (automático) para quem tem e-mail</label>
+    <div id="camp-erro" class="form-erro hidden"></div>
+    <div class="modal-close-row">
+      <button type="button" class="btn btn-outline" id="camp-fechar">Cancelar</button>
+      <button type="button" class="btn btn-primary" id="camp-disparar">Validar e disparar</button>
+    </div>`);
+
+  const checks = () => [...document.querySelectorAll(".camp-check:not(:disabled)")];
+  const atualizar = () => {
+    const n = checks().filter((c) => c.checked).length;
+    document.getElementById("camp-disparar").textContent = n ? `Validar e disparar (${n})` : "Validar e disparar";
+    document.getElementById("camp-disparar").disabled = !n;
+  };
+  document.querySelectorAll("[data-marcar]").forEach((b) =>
+    b.addEventListener("click", () => {
+      checks().forEach((c) => {
+        const v = vagas.find((x) => x.vagaId === c.value);
+        c.checked = b.dataset.marcar === "todas" || (b.dataset.marcar === "sugeridas" && v.sugerida);
+      });
+      atualizar();
+    })
+  );
+  document.querySelectorAll(".camp-check").forEach((c) => c.addEventListener("change", atualizar));
+  atualizar();
+  document.getElementById("camp-fechar").addEventListener("click", fecharModal);
+  document.getElementById("camp-disparar").addEventListener("click", async () => {
+    const ids = checks().filter((c) => c.checked).map((c) => c.value);
+    if (!confirm(`Criar e disparar ${ids.length} pesquisa(s) de satisfação?`)) return;
+    const botao = document.getElementById("camp-disparar");
+    botao.disabled = true;
+    botao.textContent = "Disparando...";
+    try {
+      const r = await api.post("/api/nps/campanha", { vagaIds: ids, enviarEmail: document.getElementById("camp-email").checked });
+      const emails = r.pesquisas.filter((p) => p.envios.some((e) => e.canal === "email" && e.ok)).length;
+      showToast(`${r.pesquisas.length} pesquisa(s) criada(s)${emails ? `, ${emails} enviada(s) por e-mail` : ""}. Agora envie pelo WhatsApp.`, "sucesso");
+      if (aoConcluir) aoConcluir();
+      abrirFilaWhatsapp(r.pesquisas, aoConcluir);
+    } catch (err) {
+      const box = document.getElementById("camp-erro");
+      box.textContent = err.message;
+      box.classList.remove("hidden");
+      botao.disabled = false;
+      atualizar();
+    }
+  });
+}
+
+/** Fila de envio pelo WhatsApp: um clique por cliente, com progresso. */
+function abrirFilaWhatsapp(pesquisas, aoConcluir) {
+  const fila = pesquisas.map((p) => ({ ...p, enviado: p.envios.some((e) => e.canal === "whatsapp") }));
+  const desenhar = () => {
+    const comWhats = fila.filter((p) => p.whatsapp && p.whatsapp.length >= 10);
+    const feitos = comWhats.filter((p) => p.enviado).length;
+    const proximo = comWhats.find((p) => !p.enviado);
+    abrirModal(`
+      <h2>💬 Fila de envio pelo WhatsApp</h2>
+      <p class="sub">Clique em <strong>Enviar</strong>: o WhatsApp abre na conversa do cliente com a mensagem pronta — é só apertar enviar e voltar aqui para o próximo.</p>
+      <div class="camp-progresso"><div class="bar-track"><div class="bar-fill bar-fill-ok" style="width:${comWhats.length ? (feitos / comWhats.length) * 100 : 0}%"></div></div><strong>${feitos} de ${comWhats.length}</strong></div>
+      <div class="tabela-rolavel camp-lista"><table><tbody>${fila
+        .map(
+          (p) => `<tr class="${p === proximo ? "camp-proximo" : ""}">
+            <td><strong>${esc(p.empresaNome || p.vagaTitulo)}</strong><div class="sub">${esc(p.vagaTitulo)}${p.contatoNome ? ` · ${esc(p.contatoNome)}` : ""}</div></td>
+            <td style="white-space:nowrap;text-align:right;">${
+              !p.whatsapp || p.whatsapp.length < 10
+                ? `<span class="sub">sem WhatsApp${p.envios.some((e) => e.canal === "email" && e.ok) ? " · ✉️ e-mail enviado" : ""}</span>`
+                : p.enviado
+                ? '<span class="tag tag-nprazo">✓ aberto no WhatsApp</span>'
+                : `<button type="button" class="btn ${p === proximo ? "btn-primary" : "btn-outline"} btn-sm" data-enviar="${esc(p.id)}">Enviar</button>`
+            }</td>
+          </tr>`
+        )
+        .join("")}</tbody></table></div>
+      ${!proximo && comWhats.length ? '<div class="funil-final aprovado" style="margin-top:10px;">🎉 Todos os clientes com WhatsApp foram enviados!</div>' : ""}
+      <div class="modal-close-row"><button type="button" class="btn btn-outline" id="fila-fechar">${proximo ? "Continuar depois" : "Fechar"}</button></div>`);
+    document.getElementById("fila-fechar").addEventListener("click", () => {
+      fecharModal();
+      if (aoConcluir) aoConcluir();
+    });
+    document.querySelectorAll("[data-enviar]").forEach((b) =>
+      b.addEventListener("click", () => {
+        const p = fila.find((x) => x.id === b.dataset.enviar);
+        window.open(p.linkWhatsapp, "_blank", "noopener");
+        p.enviado = true;
+        api.post(`/api/nps/${p.id}/whatsapp`).catch(() => {});
+        desenhar();
+      })
+    );
+  };
+  desenhar();
 }

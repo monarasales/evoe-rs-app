@@ -71,7 +71,7 @@ function registrarEnvio(p, envio) {
  * Cria a pesquisa da vaga (se ainda não existir), envia o e-mail e avisa consultor e gestão
  * para enviar pelo WhatsApp. Nunca lança erro: falha no envio fica registrada na pesquisa.
  */
-async function criarParaVaga(vaga, { por = "Sistema", base }) {
+async function criarParaVaga(vaga, { por = "Sistema", base, enviarEmail = true, notificar = true, campanha = null }) {
   const existente = db.readCollection(COL).find((p) => p.vagaId === vaga.id);
   if (existente) return existente;
   const consultor = db.findById("consultores", vaga.consultorId) || {};
@@ -85,12 +85,14 @@ async function criarParaVaga(vaga, { por = "Sistema", base }) {
     ...contatosDaVaga(vaga),
     base,
     criadaPor: por,
+    ...(campanha ? { campanha } : {}),
     envios: [],
     respondidaEm: null,
     respostas: null,
   });
-  const email = await enviarPorEmail(p);
-  p = registrarEnvio(p, { canal: "email", para: p.emails.join(", "), ...email });
+  const email = enviarEmail ? await enviarPorEmail(p) : { ok: false, erro: "Envio por e-mail desmarcado no disparo." };
+  if (enviarEmail) p = registrarEnvio(p, { canal: "email", para: p.emails.join(", "), ...email });
+  if (!notificar) return p;
 
   const destinos = new Set([vaga.consultorId]);
   db.readCollection("consultores")

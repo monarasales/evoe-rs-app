@@ -70,6 +70,8 @@ Baseado no documento "Controle de Ponto Próprio" (Resolut). Construído por eta
 - WhatsApp é 1 clique (não há API oficial da Meta integrada). Página pública `/avaliacao/<token>` (noindex).
 - Cálculo puro em `utils/nps.js` (NPS 0–10 padrão de mercado; critérios 1–5), testes em `test/nps.test.js`.
 - Painel (só Gestor): menu Comercial › Satisfação (NPS), `GET /api/nps/painel`.
+- Disparo retroativo: `GET /api/nps/campanha/candidatas` (vagas fechadas sem pesquisa; sugere a mais recente por empresa)
+  e `POST /api/nps/campanha` (cria em lote, e-mail opcional, sem notificações); a tela abre a fila de WhatsApp (1 clique/cliente).
 
 ## Teste DISC
 - `server/utils/disc.js`: questionário PRÓPRIO da Evoé (24 grupos "mais/menos", base Marston 1928) — não copiar

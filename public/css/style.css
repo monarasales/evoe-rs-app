@@ -444,6 +444,13 @@ table tr:hover td { background: #fafbfc; }
 .nps-cat-neutro { background: #eceff1; color: var(--text-muted); }
 .nps-cat-detrator { background: var(--danger-bg); color: var(--danger); }
 .nps-box { background: #fff8e6; border-radius: 10px; padding: 12px 14px; }
+.modal-content:has(.camp-lista) { width: 820px; }
+.camp-lista { max-height: 50vh; overflow-y: auto; border: 1px solid var(--border); border-radius: 10px; }
+.camp-lista table { box-shadow: none; border: none; }
+.camp-acoes { margin: 8px 0; font-size: 13px; }
+.camp-sem td { opacity: .55; }
+.camp-proximo td { background: var(--teal-light) !important; }
+.camp-progresso { display: grid; grid-template-columns: 1fr auto; gap: 10px; align-items: center; margin: 10px 0; }
 @media (max-width: 860px) {
   .nps-kpis { grid-template-columns: 1fr 1fr; }
   .nps-kpis .nps-hero { grid-column: 1 / -1; }
