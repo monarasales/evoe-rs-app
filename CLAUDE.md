@@ -57,6 +57,9 @@ Baseado no documento "Controle de Ponto Próprio" (Resolut). Construído por eta
   (só acrescenta campos). `/talentos` = banco de talentos (candidato com `vagaId: null`, `cadastroEspontaneo`).
 - SEO: `server/utils/paginaPublicaSeo.js` injeta título, Open Graph (imagem `public/img/og-vagas.png`) e JSON-LD JobPosting
   (Google para Vagas) só com conteúdo público; `/disc/*` é noindex.
+- Inscrição pública (vaga e banco de talentos) EXIGE CPF válido, data de nascimento e endereço com CEP
+  (`utils/validacao.lerDadosPessoaisObrigatorios`); no cadastro interno esses campos são opcionais, mas validados.
+  Busca pública de CEP: `GET /api/publico/cep/:cep`.
 - Inscrição cria candidato "Inscrito"/origem "Link da vaga" com `consentimentoLgpd`; mesmo e-mail na mesma vaga não duplica
   (só preenche campos vazios, guarda `reinscricoes` e nova versão do currículo). Currículos: `server/utils/curriculos.js`.
 

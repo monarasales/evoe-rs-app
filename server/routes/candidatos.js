@@ -3,6 +3,7 @@ const db = require("../db");
 const crypto = require("crypto");
 const { salvarCurriculo, caminhoCurriculo } = require("../utils/curriculos");
 const { relatorioDisc } = require("../utils/discRelatorio");
+const { cpfValido, formatarCpf, dataIso, dataNascimentoValida } = require("../utils/validacao");
 const { requireAuth } = require("../middleware/auth");
 const { notify } = require("../utils/notify");
 const { ETAPAS_CANDIDATO, FASES_CANDIDATO, FASES_FINAIS, MOTIVOS_REPROVACAO } = require("../utils/constants");
@@ -16,6 +17,14 @@ const CAMPOS = [
   "email",
   "telefone",
   "cidade",
+  "cpf",
+  "dataNascimento",
+  "cep",
+  "endereco",
+  "numero",
+  "complemento",
+  "bairro",
+  "uf",
   "linkedin",
   "origem",
   "pretensaoSalarial",
@@ -31,7 +40,7 @@ const CAMPOS = [
   "parecerComportamental",
   "dataRetornoCliente",
 ];
-const CAMPOS_TEXTO = ["nome", "email", "telefone", "cidade", "linkedin", "origem", "pretensaoSalarial"];
+const CAMPOS_TEXTO = ["nome", "email", "telefone", "cidade", "cpf", "dataNascimento", "cep", "endereco", "numero", "complemento", "bairro", "uf", "linkedin", "origem", "pretensaoSalarial"];
 
 function podeEditar(req, vaga) {
   if (!vaga) return true;
@@ -47,6 +56,18 @@ function lerCampos(body) {
   for (const c of CAMPOS) if (body[c] !== undefined) dados[c] = body[c];
   for (const c of CAMPOS_TEXTO) if (dados[c] !== undefined) dados[c] = String(dados[c] || "").trim();
   if (dados.jusbrasilOk !== undefined) dados.jusbrasilOk = !!dados.jusbrasilOk;
+  // Dados pessoais são opcionais no cadastro interno (candidatos antigos não têm), mas,
+  // se preenchidos, precisam ser válidos.
+  if (dados.cpf) {
+    if (!cpfValido(dados.cpf)) dados.__erro = "CPF inválido. Confira os números.";
+    else dados.cpf = formatarCpf(dados.cpf);
+  }
+  if (dados.dataNascimento) {
+    const iso = dataIso(dados.dataNascimento);
+    if (!iso || !dataNascimentoValida(iso)) dados.__erro = "Data de nascimento inválida.";
+    else dados.dataNascimento = iso;
+  }
+  if (dados.uf) dados.uf = dados.uf.toUpperCase().slice(0, 2);
   for (const n of ["notaConsultoria", "notaEmpresa"]) {
     if (dados[n] !== undefined) dados[n] = [1, 2, 3, 4, 5].includes(Number(dados[n])) ? Number(dados[n]) : null;
   }
@@ -81,6 +102,7 @@ router.post("/", requireAuth, (req, res) => {
   const body = req.body || {};
   const { vagaId } = body;
   const dados = lerCampos(body);
+  if (dados.__erro) return res.status(400).json({ erro: dados.__erro });
   if (!dados.nome || !vagaId) return res.status(400).json({ erro: "Nome e vaga são obrigatórios." });
   const vaga = db.findById("vagas", vagaId);
   if (!vaga) return res.status(400).json({ erro: "Vaga inválida." });
@@ -118,6 +140,7 @@ router.patch("/:id", requireAuth, (req, res) => {
   if (!podeEditar(req, vaga)) return res.status(403).json({ erro: "Você só pode editar candidatos de vagas atribuídas a você." });
 
   const dados = lerCampos(req.body || {});
+  if (dados.__erro) return res.status(400).json({ erro: dados.__erro });
   const { etapaCandidato } = dados;
   if (etapaCandidato && !ETAPAS_CANDIDATO.includes(etapaCandidato)) {
     return res.status(400).json({ erro: "Etapa de candidato inválida." });
@@ -286,6 +309,7 @@ router.post("/:id/copiar", requireAuth, (req, res) => {
     email: origem.email || "",
     telefone: origem.telefone || "",
     cidade: origem.cidade || "",
+    ...Object.fromEntries(["cpf", "dataNascimento", "cep", "endereco", "numero", "complemento", "bairro", "uf", "areaInteresse"].filter((k) => origem[k]).map((k) => [k, origem[k]])),
     linkedin: origem.linkedin || "",
     origem: origem.origem || "",
     pretensaoSalarial: origem.pretensaoSalarial || "",

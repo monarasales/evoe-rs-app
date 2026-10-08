@@ -2,6 +2,7 @@ const express = require("express");
 const db = require("../db");
 const { requireGestor } = require("../middleware/auth");
 const { buscarCep, geocodificarEndereco, limparCep } = require("../utils/cep");
+const { cpfValido, dataNascimentoValida } = require("../utils/validacao");
 
 const router = express.Router();
 
@@ -35,26 +36,6 @@ async function obterLocalizacaoPorCEP(cep) {
     lat: coords ? coords.lat : null,
     long: coords ? coords.long : null,
   };
-}
-
-/** Confere os dígitos verificadores do CPF. */
-function cpfValido(cpf) {
-  const n = String(cpf).replace(/\D/g, "");
-  if (n.length !== 11 || /^(\d)\1{10}$/.test(n)) return false;
-  for (const tam of [9, 10]) {
-    let soma = 0;
-    for (let i = 0; i < tam; i++) soma += Number(n[i]) * (tam + 1 - i);
-    const digito = ((soma * 10) % 11) % 10;
-    if (digito !== Number(n[tam])) return false;
-  }
-  return true;
-}
-
-/** Data AAAA-MM-DD válida, não futura e depois de 1900. */
-function dataNascimentoValida(data) {
-  if (!/^\d{4}-\d{2}-\d{2}$/.test(data)) return false;
-  const d = new Date(data + "T00:00:00");
-  return !isNaN(d) && d.getFullYear() >= 1900 && d <= new Date();
 }
 
 const CAMPOS_TEXTO = [

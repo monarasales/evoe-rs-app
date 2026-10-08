@@ -10,6 +10,24 @@
     return d.innerHTML;
   };
 
+  function cpfValido(cpf) {
+    const n = String(cpf || "").replace(/\D/g, "");
+    if (n.length !== 11 || /^(\d)\1{10}$/.test(n)) return false;
+    for (const tam of [9, 10]) {
+      let soma = 0;
+      for (let i = 0; i < tam; i++) soma += Number(n[i]) * (tam + 1 - i);
+      if (((soma * 10) % 11) % 10 !== Number(n[tam])) return false;
+    }
+    return true;
+  }
+  function dataValida(texto) {
+    const m = /^(\d{2})\/(\d{2})\/(\d{4})$/.exec(String(texto || "").trim());
+    if (!m) return false;
+    const d = new Date(Date.UTC(+m[3], +m[2] - 1, +m[1]));
+    const anos = new Date().getFullYear() - +m[3];
+    return d.getUTCDate() === +m[1] && d.getUTCMonth() === +m[2] - 1 && anos >= 14 && anos <= 100;
+  }
+
   async function api(url, opcoes) {
     const r = await fetch(url, opcoes);
     let dados = null;
@@ -416,10 +434,31 @@
         </div>
         ${pedirArea ? '<label for="area">Área ou cargo de interesse</label><input type="text" id="area" placeholder="ex.: Administrativo, Financeiro, Vendas, Atendimento" />' : ""}
         <div class="linha">
-          <div><label for="cidade">Cidade <span class="opc">(opcional)</span></label><input type="text" id="cidade" autocomplete="address-level2" /></div>
-          <div><label for="pretensao">Pretensão salarial <span class="opc">(opcional)</span></label><input type="text" id="pretensao" placeholder="ex.: R$ 2.500" /></div>
+          <div><label for="cpf">CPF</label><input type="text" id="cpf" inputmode="numeric" maxlength="14" placeholder="000.000.000-00" autocomplete="off" /></div>
+          <div><label for="nascimento">Data de nascimento</label><input type="text" id="nascimento" inputmode="numeric" maxlength="10" placeholder="dd/mm/aaaa" autocomplete="bday" /></div>
         </div>
-        <label for="linkedin">LinkedIn <span class="opc">(opcional)</span></label><input type="text" id="linkedin" placeholder="linkedin.com/in/seu-perfil" />
+
+        <h3 class="form-secao">Endereço</h3>
+        <div class="linha">
+          <div><label for="cep">CEP</label><input type="text" id="cep" inputmode="numeric" maxlength="9" placeholder="00000-000" autocomplete="postal-code" /></div>
+          <div class="cep-status dica" id="cep-status">Digite o CEP para preencher o endereço.</div>
+        </div>
+        <label for="rua">Rua / Avenida</label><input type="text" id="rua" autocomplete="address-line1" />
+        <div class="linha">
+          <div><label for="numero">Número</label><input type="text" id="numero" placeholder='ex.: 425 ou "S/N"' /></div>
+          <div><label for="complemento">Complemento <span class="opc">(opcional)</span></label><input type="text" id="complemento" placeholder="apto, bloco..." autocomplete="address-line2" /></div>
+        </div>
+        <label for="bairro">Bairro</label><input type="text" id="bairro" />
+        <div class="linha linha-uf">
+          <div><label for="cidade">Cidade</label><input type="text" id="cidade" autocomplete="address-level2" /></div>
+          <div><label for="uf">UF</label><input type="text" id="uf" maxlength="2" placeholder="CE" style="text-transform:uppercase;" autocomplete="address-level1" /></div>
+        </div>
+
+        <h3 class="form-secao">Sobre você</h3>
+        <div class="linha">
+          <div><label for="pretensao">Pretensão salarial <span class="opc">(opcional)</span></label><input type="text" id="pretensao" placeholder="ex.: R$ 2.500" /></div>
+          <div><label for="linkedin">LinkedIn <span class="opc">(opcional)</span></label><input type="text" id="linkedin" placeholder="linkedin.com/in/seu-perfil" /></div>
+        </div>
         <label>Currículo</label>
         <label class="arquivo" id="caixa-arquivo" for="curriculo" style="margin:0;font-weight:400;">
           <input type="file" id="curriculo" accept=".pdf,.doc,.docx,.odt,.rtf,.txt,.jpg,.jpeg,.png" />
@@ -438,6 +477,30 @@
       e.target.value =
         d.length <= 2 ? (d ? `(${d}` : "") : d.length <= 6 ? `(${d.slice(0, 2)}) ${d.slice(2)}` : d.length <= 10 ? `(${d.slice(0, 2)}) ${d.slice(2, 6)}-${d.slice(6)}` : `(${d.slice(0, 2)}) ${d.slice(2, 7)}-${d.slice(7)}`;
     });
+    const mascara = (id, fn) => $(id).addEventListener("input", (e) => (e.target.value = fn(e.target.value.replace(/\D/g, ""))));
+    mascara("cpf", (d) => d.slice(0, 11).replace(/(\d{3})(\d)/, "$1.$2").replace(/(\d{3})(\d)/, "$1.$2").replace(/(\d{3})(\d{1,2})$/, "$1-$2"));
+    mascara("nascimento", (d) => (d = d.slice(0, 8)).length <= 2 ? d : d.length <= 4 ? `${d.slice(0, 2)}/${d.slice(2)}` : `${d.slice(0, 2)}/${d.slice(2, 4)}/${d.slice(4)}`);
+    mascara("cep", (d) => (d = d.slice(0, 8)).length > 5 ? `${d.slice(0, 5)}-${d.slice(5)}` : d);
+    let cepBuscado = "";
+    $("cep").addEventListener("input", async () => {
+      const cep = $("cep").value.replace(/\D/g, "");
+      if (cep.length !== 8 || cep === cepBuscado) return;
+      cepBuscado = cep;
+      $("cep-status").textContent = "⏳ Buscando endereço...";
+      try {
+        const r = await api(`/api/publico/cep/${cep}`);
+        $("rua").value = r.logradouro || $("rua").value;
+        $("bairro").value = r.bairro || $("bairro").value;
+        $("cidade").value = r.cidade || "";
+        $("uf").value = r.estado || "";
+        $("cep-status").textContent = "✅ Endereço encontrado. Complete o número.";
+        $(r.logradouro ? "numero" : "rua").focus();
+      } catch (err) {
+        $("cep-status").textContent = "⚠️ CEP não encontrado. Preencha o endereço abaixo.";
+        $("rua").focus();
+      }
+    });
+
     $("curriculo").addEventListener("change", () => {
       const f = $("curriculo").files[0];
       $("caixa-arquivo").classList.toggle("tem", !!f);
@@ -464,6 +527,13 @@
       if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) return mostrarErro("Informe um e-mail válido.");
       if ($("telefone").value.replace(/\D/g, "").length < 10) return mostrarErro("Informe um telefone/WhatsApp com DDD.");
       if (pedirArea && !$("area").value.trim()) return mostrarErro("Conte em que área ou cargo você tem interesse.");
+      if (!cpfValido($("cpf").value)) return mostrarErro("Informe um CPF válido.");
+      if (!dataValida($("nascimento").value)) return mostrarErro("Informe sua data de nascimento (dd/mm/aaaa).");
+      if ($("cep").value.replace(/\D/g, "").length !== 8) return mostrarErro("Informe o CEP com 8 dígitos.");
+      for (const [id, nomeCampo] of [["rua", "a rua / avenida"], ["numero", 'o número (ou "S/N")'], ["bairro", "o bairro"], ["cidade", "a cidade"]]) {
+        if (!$(id).value.trim()) return mostrarErro(`Informe ${nomeCampo} do endereço.`);
+      }
+      if (!/^[A-Za-z]{2}$/.test($("uf").value.trim())) return mostrarErro("Informe a UF (ex.: CE).");
       if (!arquivo) return mostrarErro("Anexe seu currículo.");
       if (arquivo.size > 8 * 1024 * 1024) return mostrarErro("O currículo passa de 8 MB. Envie um arquivo menor (um PDF costuma ser bem leve).");
       if (!$("consentimento").checked) return mostrarErro("Para continuar, marque a autorização de uso dos dados (LGPD).");
@@ -486,7 +556,15 @@
             email,
             telefone: $("telefone").value,
             areaInteresse: pedirArea ? $("area").value : undefined,
+            cpf: $("cpf").value,
+            dataNascimento: $("nascimento").value,
+            cep: $("cep").value,
+            endereco: $("rua").value,
+            numero: $("numero").value,
+            complemento: $("complemento").value,
+            bairro: $("bairro").value,
             cidade: $("cidade").value,
+            uf: $("uf").value,
             pretensaoSalarial: $("pretensao").value,
             linkedin: $("linkedin").value,
             mensagem: $("mensagem").value,

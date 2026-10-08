@@ -11,6 +11,8 @@ const { salvarCurriculo } = require("../utils/curriculos");
 const disc = require("../utils/disc");
 const { paginaPublica, gerarTokenVaga } = require("../utils/vagaPagina");
 const nps = require("../utils/nps");
+const { lerDadosPessoaisObrigatorios } = require("../utils/validacao");
+const { buscarCep } = require("../utils/cep");
 
 const router = express.Router();
 
@@ -72,6 +74,24 @@ function limiteExcedido(ip) {
   return recentes.length > 10;
 }
 
+// Busca de endereço pelo CEP para o formulário público (com o mesmo limite anti-abuso).
+router.get("/cep/:cep", async (req, res) => {
+  if (limiteCep(req.ip)) return res.status(429).json({ erro: "Muitas buscas seguidas. Aguarde um pouco." });
+  const end = await buscarCep(req.params.cep);
+  if (!end) return res.status(404).json({ erro: "CEP não encontrado. Preencha o endereço manualmente." });
+  res.json({ cep: end.cep, logradouro: end.logradouro, bairro: end.bairro, cidade: end.cidade, estado: end.estado });
+});
+
+const buscasCep = new Map();
+function limiteCep(ip) {
+  const agora = Date.now();
+  const r = (buscasCep.get(ip) || []).filter((t) => agora - t < 10 * 60 * 1000);
+  r.push(agora);
+  buscasCep.set(ip, r);
+  if (buscasCep.size > 5000) buscasCep.clear();
+  return r.length > 40;
+}
+
 router.get("/termo", (req, res) => res.json({ versao: VERSAO_CONSENTIMENTO, texto: TEXTO_CONSENTIMENTO }));
 
 // Todas as vagas com inscrições abertas (página "Vagas abertas").
@@ -110,6 +130,8 @@ router.post("/vagas/:token/inscricao", (req, res) => {
   if (telefone.replace(/\D/g, "").length < 10) return res.status(400).json({ erro: "Informe um telefone/WhatsApp com DDD." });
   if (!b.consentimento) return res.status(400).json({ erro: "Para se inscrever, é preciso aceitar o termo de uso dos dados (LGPD)." });
   if (!b.curriculo || !b.curriculo.conteudoBase64) return res.status(400).json({ erro: "Anexe seu currículo." });
+  const pessoais = lerDadosPessoaisObrigatorios(b);
+  if (pessoais.erro) return res.status(400).json({ erro: pessoais.erro });
 
   const consentimento = {
     aceitoEm: new Date().toISOString(),
@@ -120,7 +142,7 @@ router.post("/vagas/:token/inscricao", (req, res) => {
     nome,
     email,
     telefone,
-    cidade: texto(b.cidade, 80),
+    ...pessoais.dados,
     linkedin: texto(b.linkedin, 200),
     pretensaoSalarial: texto(b.pretensaoSalarial, 60),
     mensagemCandidato: texto(b.mensagem, 2000),
@@ -209,9 +231,11 @@ router.post("/talentos", (req, res) => {
   if (!areaInteresse) return res.status(400).json({ erro: "Conte em que área ou cargo você tem interesse." });
   if (!b.consentimento) return res.status(400).json({ erro: "Para se cadastrar, é preciso aceitar o termo de uso dos dados (LGPD)." });
   if (!b.curriculo || !b.curriculo.conteudoBase64) return res.status(400).json({ erro: "Anexe seu currículo." });
+  const pessoais = lerDadosPessoaisObrigatorios(b);
+  if (pessoais.erro) return res.status(400).json({ erro: pessoais.erro });
 
   const consentimento = { aceitoEm: new Date().toISOString(), versao: VERSAO_CONSENTIMENTO, texto: TEXTO_CONSENTIMENTO };
-  const dados = { nome, email, telefone, cidade: texto(b.cidade, 80), linkedin: texto(b.linkedin, 200), pretensaoSalarial: texto(b.pretensaoSalarial, 60), areaInteresse, mensagemCandidato: texto(b.mensagem, 2000) };
+  const dados = { nome, email, telefone, ...pessoais.dados, linkedin: texto(b.linkedin, 200), pretensaoSalarial: texto(b.pretensaoSalarial, 60), areaInteresse, mensagemCandidato: texto(b.mensagem, 2000) };
   // Mesmo e-mail já no banco (sem vaga): não duplica — guarda o reenvio e a nova versão do currículo.
   const existente = db.readCollection("candidatos").find((c) => !c.vagaId && (c.email || "").toLowerCase() === email);
   let candidato;

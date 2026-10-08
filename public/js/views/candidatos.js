@@ -222,8 +222,22 @@ export async function renderCandidatos(root, params) {
           <div class="form-row"><label>Telefone / WhatsApp</label><input type="tel" id="c-telefone" inputmode="numeric" maxlength="15" placeholder="(85) 90000-0000" value="${v("telefone")}" /></div>
         </div>
         <div class="form-cols">
-          <div class="form-row"><label>Cidade</label><input type="text" id="c-cidade" value="${v("cidade")}" /></div>
+          <div class="form-row"><label>CPF</label><input type="text" id="c-cpf" inputmode="numeric" maxlength="14" placeholder="000.000.000-00" value="${v("cpf")}" /></div>
+          <div class="form-row"><label>Data de nascimento ${c.dataNascimento ? `<span class="sub">(${idadeDe(c.dataNascimento)} anos)</span>` : ""}</label><input type="text" id="c-nascimento" inputmode="numeric" maxlength="10" placeholder="dd/mm/aaaa" value="${c.dataNascimento ? dataBr(c.dataNascimento) : ""}" /></div>
+        </div>
+        <div class="form-cols">
+          <div class="form-row"><label>CEP</label><input type="text" id="c-cep" inputmode="numeric" maxlength="9" placeholder="00000-000" value="${v("cep")}" /><div class="sub" id="c-cep-status"></div></div>
           <div class="form-row"><label>LinkedIn</label><input type="text" id="c-linkedin" placeholder="linkedin.com/in/..." value="${v("linkedin")}" /></div>
+        </div>
+        <div class="form-row"><label>Rua / Avenida</label><input type="text" id="c-endereco" value="${v("endereco")}" /></div>
+        <div class="form-cols tres">
+          <div class="form-row"><label>Número</label><input type="text" id="c-numero" value="${v("numero")}" /></div>
+          <div class="form-row"><label>Complemento</label><input type="text" id="c-complemento" value="${v("complemento")}" /></div>
+          <div class="form-row"><label>Bairro</label><input type="text" id="c-bairro" value="${v("bairro")}" /></div>
+        </div>
+        <div class="form-cols">
+          <div class="form-row"><label>Cidade</label><input type="text" id="c-cidade" value="${v("cidade")}" /></div>
+          <div class="form-row"><label>UF</label><input type="text" id="c-uf" maxlength="2" placeholder="CE" style="text-transform:uppercase;" value="${v("uf")}" /></div>
         </div>
         <div class="form-cols">
           <div class="form-row"><label>Como chegou</label>
@@ -312,6 +326,27 @@ export async function renderCandidatos(root, params) {
       erroBox.scrollIntoView({ block: "nearest" });
     };
     $("c-telefone").addEventListener("input", (e) => (e.target.value = telefoneMascara(e.target.value)));
+    $("c-cpf").addEventListener("input", (e) => {
+      const d = e.target.value.replace(/\D/g, "").slice(0, 11);
+      e.target.value = d.replace(/(\d{3})(\d)/, "$1.$2").replace(/(\d{3})(\d)/, "$1.$2").replace(/(\d{3})(\d{1,2})$/, "$1-$2");
+    });
+    campoData($("c-nascimento"));
+    $("c-cep").addEventListener("input", async (e) => {
+      const d = e.target.value.replace(/\D/g, "").slice(0, 8);
+      e.target.value = d.length > 5 ? `${d.slice(0, 5)}-${d.slice(5)}` : d;
+      if (d.length !== 8) return;
+      $("c-cep-status").textContent = "Buscando...";
+      try {
+        const r = await api.post("/api/configuracao/geocodificar-cep", { cep: d });
+        $("c-endereco").value = r.logradouro || $("c-endereco").value;
+        $("c-bairro").value = r.bairro || $("c-bairro").value;
+        $("c-cidade").value = r.cidade || $("c-cidade").value;
+        $("c-uf").value = r.estado || $("c-uf").value;
+        $("c-cep-status").textContent = "✅ endereço preenchido";
+      } catch (err) {
+        $("c-cep-status").textContent = "CEP não encontrado — preencha à mão";
+      }
+    });
     campoData($("c-data-entrevista"));
     campoData($("c-data-retorno"));
     campoData($("c-data-entrevista-cliente"));
@@ -491,6 +526,8 @@ export async function renderCandidatos(root, params) {
       const dataEntrevista = brParaIso($("c-data-entrevista").value);
       const dataRetornoCliente = brParaIso($("c-data-retorno").value);
       const dataEntrevistaCliente = brParaIso($("c-data-entrevista-cliente").value);
+      const dataNascimento = brParaIso($("c-nascimento").value);
+      if (dataNascimento === null) return mostrarErro("Data de nascimento inválida. Use dd/mm/aaaa.");
       const arquivo = $("c-curriculo").files[0];
       if (!editando && !vagaEscolhida) return mostrarErro("Escolha a vaga (digite a empresa ou o cargo).");
       if (!nome) return mostrarErro("Informe o nome do candidato.");
@@ -502,6 +539,14 @@ export async function renderCandidatos(root, params) {
         email: $("c-email").value.trim(),
         telefone: $("c-telefone").value.trim(),
         cidade: $("c-cidade").value.trim(),
+        cpf: $("c-cpf").value.trim(),
+        dataNascimento: dataNascimento || "",
+        cep: $("c-cep").value.trim(),
+        endereco: $("c-endereco").value.trim(),
+        numero: $("c-numero").value.trim(),
+        complemento: $("c-complemento").value.trim(),
+        bairro: $("c-bairro").value.trim(),
+        uf: $("c-uf").value.trim(),
         linkedin: $("c-linkedin").value.trim(),
         origem: $("c-origem").value,
         pretensaoSalarial: $("c-pretensao").value.trim(),
@@ -727,4 +772,10 @@ function blocoFunil(c) {
     ${c.faseMigradaDe ? `<div class="sub" style="margin-top:8px;">Etapa no modelo antigo: ${escapeHtml(c.faseMigradaDe)}</div>` : ""}
     ${historico ? `<details style="margin-top:6px;"><summary class="sub">Histórico do funil</summary><ul class="funil-historico">${historico}</ul></details>` : ""}
   </div>`;
+}
+
+function idadeDe(iso) {
+  const [a, m, d] = String(iso).split("-").map(Number);
+  const h = new Date();
+  return h.getFullYear() - a - (h.getMonth() + 1 < m || (h.getMonth() + 1 === m && h.getDate() < d) ? 1 : 0);
 }
