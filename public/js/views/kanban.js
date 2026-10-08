@@ -3,6 +3,7 @@ import { store, podeGerenciarVagas, showToast, nomeEmpresa, nomeConsultor, forma
 import { abrirModal, fecharModal } from "../modal.js";
 import { navegarPara } from "../router.js";
 import { abrirEditorPagina, progressoPagina } from "./vagaPagina.js";
+import { mensagemConvite, termosSensiveis } from "../mensagemVaga.js";
 import { ligarAcoes as ligarAcoesNps } from "./nps.js";
 
 const ETAPAS_ENCERRADAS_KANBAN = ["11. Aprovado", "12. Cancelada/Encerrada"];
@@ -507,8 +508,12 @@ function htmlLinkInscricao(vaga) {
     <div class="link-acoes">
       <button type="button" class="btn btn-primary btn-sm" id="link-copiar">Copiar link</button>
       <button type="button" class="btn btn-outline btn-sm" id="link-whats">Enviar pelo WhatsApp</button>
+      <button type="button" class="btn btn-outline btn-sm" id="link-copiar-msg">Copiar mensagem</button>
       <a class="btn btn-outline btn-sm" href="${escapeHtml(urlInscricao(vaga))}" target="_blank" rel="noopener">Ver página</a>
     </div>
+    ${alertaTermos(vaga)}
+    <details class="msg-previa"><summary class="sub">Ver a mensagem que vai para o candidato</summary><pre>${escapeHtml(mensagemConvite(vaga, urlInscricao(vaga)))}</pre>
+      <div class="sub">A frase de perfil usa só competências reconhecidas no "Perfil comportamental" e nos "Requisitos" da página da vaga — o texto livre nunca é copiado.</div></details>
     ${VAGA_ENCERRADA(vaga) ? '<div class="sub" style="margin-top:6px;">A vaga está encerrada, então o link não aceita mais inscrições.</div>' : ""}
     <div class="checkbox-row" style="margin-top:10px;"><input type="checkbox" id="link-abertas" ${vaga.inscricoesAbertas !== false ? "checked" : ""} /><label for="link-abertas" style="margin:0;font-weight:400;">Aceitar inscrições pelo link</label></div>
     <div class="checkbox-row" style="margin-top:6px;"><input type="checkbox" id="link-empresa" ${vaga.mostrarEmpresa ? "checked" : ""} /><label for="link-empresa" style="margin:0;font-weight:400;">Mostrar o nome da empresa (desmarcado = "Empresa confidencial")</label></div>
@@ -551,8 +556,17 @@ function ligarLinkInscricao(vaga) {
     }
     showToast("Link copiado.", "sucesso");
   });
+  $("link-copiar-msg").addEventListener("click", async () => {
+    const texto = mensagemConvite(vaga, urlInscricao(vaga));
+    try {
+      await navigator.clipboard.writeText(texto);
+      showToast("Mensagem copiada — cole no WhatsApp, Instagram ou LinkedIn.", "sucesso");
+    } catch (e) {
+      prompt("Copie a mensagem:", texto);
+    }
+  });
   $("link-whats").addEventListener("click", () => {
-    const texto = `Olá! A Evoé Gestão e RH está com uma vaga de *${vaga.titulo}*. Para se candidatar, acesse: ${urlInscricao(vaga)}`;
+    const texto = mensagemConvite(vaga, urlInscricao(vaga));
     window.open(`https://wa.me/?text=${encodeURIComponent(texto)}`, "_blank", "noopener");
   });
   const usarPerfil = $("link-usar-perfil");
@@ -620,4 +634,13 @@ async function carregarNpsDaVaga(vaga) {
           </div>`
     }`;
   ligarAcoesNps(caixa, () => carregarNpsDaVaga(vaga));
+}
+
+/** Aviso (não bloqueia) quando a página da vaga tem termos que podem ser discriminatórios. */
+function alertaTermos(vaga) {
+  const p = vaga.pagina || {};
+  const texto = [p.missao, p.perfilComportamental, p.horario, p.ferramentas, ...(p.objetivos || []), ...(p.requisitos || []), ...(p.diferenciais || []), ...(p.responsabilidades || []).map((r) => r.texto), vaga.titulo, vaga.descricaoPublica].filter(Boolean).join(" \n ");
+  const achados = termosSensiveis(texto);
+  if (!achados.length) return "";
+  return `<div class="ponto-aviso" style="margin-top:8px;">⚠️ A página desta vaga tem termo(s) que podem ser considerados discriminatórios em anúncio de vaga: ${achados.map((a) => `<strong>"${escapeHtml(a.termo)}"</strong> (${escapeHtml(a.tipo)})`).join(", ")}. Revise em "Editar página da vaga" — prefira descrever competências e comportamentos (CLT art. 373-A e Lei 9.029/95).</div>`;
 }

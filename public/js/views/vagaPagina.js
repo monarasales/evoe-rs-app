@@ -4,6 +4,7 @@
 import { api } from "../api.js";
 import { showToast } from "../state.js";
 import { abrirModal, fecharModal } from "../modal.js";
+import { termosSensiveis } from "../mensagemVaga.js";
 
 const esc = (s) => {
   const d = document.createElement("div");
@@ -67,7 +68,8 @@ export async function abrirEditorPagina(vaga, aoConcluir) {
 
   abrirModal(`
     <h2>Página da vaga — ${esc(vaga.titulo)}</h2>
-    <div class="ponto-aviso" style="margin-top:0;">Tudo o que estiver aqui aparece para o candidato no link da vaga. Não coloque dados internos ou do cliente confidencial.</div>
+    <div class="ponto-aviso" style="margin-top:0;">Tudo o que estiver aqui aparece para o candidato no link da vaga. Não coloque dados internos ou do cliente confidencial. Descreva <strong>competências e comportamentos</strong> — nunca exigências de idade, sexo, aparência, estado civil, religião ou origem (CLT art. 373-A e Lei 9.029/95).</div>
+    <div id="pg-alerta-termos" class="form-erro hidden"></div>
     <form id="form-pagina" class="form-pagina" novalidate>
       <div class="section-title">Visão rápida</div>
       <div class="form-cols">
@@ -120,6 +122,17 @@ export async function abrirEditorPagina(vaga, aoConcluir) {
 
   const $ = (id) => document.getElementById(id);
   const form = $("form-pagina");
+  // Alerta ao vivo de termos que podem ser discriminatórios (não bloqueia o salvamento).
+  const verificarTermos = () => {
+    const texto = [...form.querySelectorAll("input[type=text], textarea")].map((el) => el.value).join(" \n ");
+    const achados = termosSensiveis(texto);
+    const caixa = $("pg-alerta-termos");
+    caixa.classList.toggle("hidden", !achados.length);
+    caixa.innerHTML = achados.length
+      ? `⚠️ Atenção: ${achados.map((a) => `<strong>"${esc(a.termo)}"</strong> (${esc(a.tipo)})`).join(", ")} pode ser considerado discriminatório em anúncio de vaga. Troque por competências e comportamentos (ex.: "organização", "boa comunicação").`
+      : "";
+  };
+  form.addEventListener("input", verificarTermos);
 
   form.addEventListener("click", (e) => {
     const rem = e.target.closest(".lista-remover");
@@ -180,6 +193,7 @@ export async function abrirEditorPagina(vaga, aoConcluir) {
     }
   });
   desenharSugestoes();
+  verificarTermos();
 
   $("pg-fechar").addEventListener("click", () => {
     fecharModal();

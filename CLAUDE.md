@@ -60,6 +60,10 @@ Baseado no documento "Controle de Ponto Próprio" (Resolut). Construído por eta
 - Inscrição pública (vaga e banco de talentos) EXIGE CPF válido, data de nascimento e endereço com CEP
   (`utils/validacao.lerDadosPessoaisObrigatorios`); no cadastro interno esses campos são opcionais, mas validados.
   Busca pública de CEP: `GET /api/publico/cep/:cep`.
+- Convite ao candidato (WhatsApp/copiar): `public/js/mensagemVaga.js` — texto padrão da Evoé + frase com até 3
+  competências reconhecidas por LISTA APROVADA (o texto livre da vaga nunca é copiado → sem risco de viés). O mesmo
+  arquivo alerta termos discriminatórios (idade, gênero, aparência, estado civil, raça, religião, origem; CLT 373-A,
+  Lei 9.029/95) no editor da página e no cadastro da vaga — só alerta, não bloqueia.
 - Inscrição cria candidato "Inscrito"/origem "Link da vaga" com `consentimentoLgpd`; mesmo e-mail na mesma vaga não duplica
   (só preenche campos vazios, guarda `reinscricoes` e nova versão do currículo). Currículos: `server/utils/curriculos.js`.
 

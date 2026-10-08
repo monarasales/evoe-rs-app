@@ -532,6 +532,9 @@ table tr:hover td { background: #fafbfc; }
   .form-cols.tres, .avaliacoes { grid-template-columns: 1fr; }
 }
 
+.msg-previa { margin-top: 8px; }
+.msg-previa pre { white-space: pre-wrap; font-family: inherit; font-size: 13px; background: white; border: 1px solid var(--border); border-radius: 8px; padding: 10px 12px; margin: 6px 0; }
+
 /* ---------- Candidatos ---------- */
 .cand-filtros { display: grid; grid-template-columns: 2fr 2fr 1fr; gap: 10px; margin-bottom: 10px; }
 .cand-filtros .input-toolbar { width: 100%; }
