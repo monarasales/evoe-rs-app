@@ -41,3 +41,12 @@ test("alerta de termos sensíveis (CLT 373-A / Lei 9.029/95)", async () => {
   assert.deepEqual(tipos("Vaga de Jovem Aprendiz, organizado e comunicativo"), []);
   assert.deepEqual(tipos("Excel avançado, boa comunicação"), []);
 });
+
+test("modelo editado em Configurações e mensagem personalizada na vaga", async () => {
+  const { mensagemConvite } = await carregar();
+  const vaga = { titulo: "Vendedor", pagina: { perfilComportamental: "proativo" } };
+  assert.equal(mensagemConvite(vaga, "L", "Oi! {VAGA} — {PERFIL} {LINK}"), "Oi! Vendedor — Buscamos alguém com proatividade. Se você se identifica, vamos adorar conhecer você! L");
+  assert.equal(mensagemConvite({ ...vaga, mensagemConvite: "Texto próprio da vaga: {LINK}" }, "L", "ignorado {LINK}"), "Texto próprio da vaga: L");
+  // vaga sem detalhes: a linha {DETALHES} some sem deixar buraco
+  assert.doesNotMatch(mensagemConvite({ titulo: "X" }, "L"), /\n\n\n/);
+});

@@ -4,6 +4,9 @@ import { abrirModal, fecharModal } from "../modal.js";
 import { navegarPara } from "../router.js";
 import { abrirEditorPagina, progressoPagina } from "./vagaPagina.js";
 import { mensagemConvite, termosSensiveis } from "../mensagemVaga.js";
+
+// Modelo da mensagem de convite editado em Configurações (null = modelo de fábrica).
+let modeloConvite = null;
 import { ligarAcoes as ligarAcoesNps } from "./nps.js";
 
 const ETAPAS_ENCERRADAS_KANBAN = ["11. Aprovado", "12. Cancelada/Encerrada"];
@@ -299,13 +302,17 @@ export async function renderKanban(root) {
   await carregar();
 
   async function abrirVaga(id) {
-    const vaga = await api.get(`/api/vagas/${id}`);
+    const [vaga, cfg] = await Promise.all([api.get(`/api/vagas/${id}`), api.get("/api/config/mensagem-convite").catch(() => ({}))]);
+    modeloConvite = cfg.modelo || null;
     abrirFormularioVaga(vaga);
   }
 
   function abrirFormularioVaga(vaga) {
     const editando = !!vaga;
-    const podeEditar = !editando || podeGerenciarVagas() || vaga.consultorId === store.usuario.id;
+    // Todos os consultores editam qualquer vaga (alinham o perfil com o cliente).
+    // Excluir: só a gestão ou o responsável. Trocar o responsável: só a gestão.
+    const podeEditar = true;
+    const podeExcluir = editando && (podeGerenciarVagas() || vaga.consultorId === store.usuario.id);
 
     abrirModal(`
       <h2>${editando ? "Editar Vaga" : "Nova Vaga"}</h2>
@@ -387,9 +394,13 @@ export async function renderKanban(root) {
           <div class="sub" style="margin-bottom:8px;">Coloque a vaga em Stand By quando o processo ficar parado por motivo do cliente ou do candidato (ex: aguardando decisão interna). A contagem de prazo e SLA fica pausada até você retomar.</div>
           <button type="button" id="btn-toggle-standby" class="btn ${vaga.emStandBy ? "btn-primary" : "btn-outline"}">${vaga.emStandBy ? "Retomar vaga (sair do Stand By)" : "Colocar em Stand By"}</button>
         </div>` : ""}
+        ${editando && (vaga.historicoEdicoes || []).length ? `
+        <details class="form-row historico-edicoes"><summary class="sub">🕘 Histórico de edições (${vaga.historicoEdicoes.length})</summary>
+          <ul>${vaga.historicoEdicoes.slice().reverse().slice(0, 30).map((h) => `<li><strong>${escapeHtml(h.por)}</strong> · ${new Date(h.em).toLocaleString("pt-BR", { dateStyle: "short", timeStyle: "short" })} — ${escapeHtml(h.oQue)}</li>`).join("")}</ul>
+        </details>` : ""}
         <div id="vaga-form-erro" class="form-erro hidden"></div>
         <div class="modal-close-row">
-          ${editando && podeEditar ? '<button type="button" id="btn-excluir-vaga" class="btn btn-danger" style="margin-right:auto;">Excluir</button>' : ""}
+          ${podeExcluir ? '<button type="button" id="btn-excluir-vaga" class="btn btn-danger" style="margin-right:auto;">Excluir</button>' : ""}
           <button type="button" id="btn-cancelar" class="btn btn-outline">Fechar</button>
           ${podeEditar ? `<button type="submit" class="btn btn-primary">${editando ? "Salvar" : "Criar vaga"}</button>` : ""}
         </div>
@@ -512,8 +523,22 @@ function htmlLinkInscricao(vaga) {
       <a class="btn btn-outline btn-sm" href="${escapeHtml(urlInscricao(vaga))}" target="_blank" rel="noopener">Ver página</a>
     </div>
     ${alertaTermos(vaga)}
-    <details class="msg-previa"><summary class="sub">Ver a mensagem que vai para o candidato</summary><pre>${escapeHtml(mensagemConvite(vaga, urlInscricao(vaga)))}</pre>
-      <div class="sub">A frase de perfil usa só competências reconhecidas no "Perfil comportamental" e nos "Requisitos" da página da vaga — o texto livre nunca é copiado.</div></details>
+    <details class="msg-previa" id="msg-previa"><summary class="sub">Ver / personalizar a mensagem que vai para o candidato ${vaga.mensagemConvite ? '<span class="tag tag-standby">personalizada</span>' : ""}</summary>
+      <div id="msg-ver"><pre>${escapeHtml(mensagemConvite(vaga, urlInscricao(vaga), modeloConvite))}</pre>
+        <div class="sub">${vaga.mensagemConvite ? "Esta vaga usa uma mensagem personalizada." : 'Esta vaga usa a mensagem padrão (a gestão pode mudar o padrão em Configurações). A frase de perfil usa só competências reconhecidas no "Perfil comportamental" e nos "Requisitos" da página — o texto livre nunca é copiado.'}</div>
+        <div class="link-acoes" style="margin-top:6px;">
+          <button type="button" class="btn btn-outline btn-sm" id="msg-personalizar">✏️ Personalizar mensagem desta vaga</button>
+          ${vaga.mensagemConvite ? '<button type="button" class="btn btn-outline btn-sm" id="msg-padrao">↩️ Voltar à mensagem padrão</button>' : ""}
+        </div></div>
+      <div id="msg-editar" hidden>
+        <textarea id="msg-texto" rows="12"></textarea>
+        <div class="sub">Use <strong>{LINK}</strong> onde deve entrar o link de inscrição. Negrito no WhatsApp: *texto*.</div>
+        <div id="msg-alerta"></div>
+        <div class="link-acoes" style="margin-top:6px;">
+          <button type="button" class="btn btn-outline btn-sm" id="msg-cancelar">Cancelar</button>
+          <button type="button" class="btn btn-primary btn-sm" id="msg-salvar">Salvar mensagem desta vaga</button>
+        </div>
+      </div></details>
     ${VAGA_ENCERRADA(vaga) ? '<div class="sub" style="margin-top:6px;">A vaga está encerrada, então o link não aceita mais inscrições.</div>' : ""}
     <div class="checkbox-row" style="margin-top:10px;"><input type="checkbox" id="link-abertas" ${vaga.inscricoesAbertas !== false ? "checked" : ""} /><label for="link-abertas" style="margin:0;font-weight:400;">Aceitar inscrições pelo link</label></div>
     <div class="checkbox-row" style="margin-top:6px;"><input type="checkbox" id="link-empresa" ${vaga.mostrarEmpresa ? "checked" : ""} /><label for="link-empresa" style="margin:0;font-weight:400;">Mostrar o nome da empresa (desmarcado = "Empresa confidencial")</label></div>
@@ -557,7 +582,7 @@ function ligarLinkInscricao(vaga) {
     showToast("Link copiado.", "sucesso");
   });
   $("link-copiar-msg").addEventListener("click", async () => {
-    const texto = mensagemConvite(vaga, urlInscricao(vaga));
+    const texto = mensagemConvite(vaga, urlInscricao(vaga), modeloConvite);
     try {
       await navigator.clipboard.writeText(texto);
       showToast("Mensagem copiada — cole no WhatsApp, Instagram ou LinkedIn.", "sucesso");
@@ -566,9 +591,10 @@ function ligarLinkInscricao(vaga) {
     }
   });
   $("link-whats").addEventListener("click", () => {
-    const texto = mensagemConvite(vaga, urlInscricao(vaga));
+    const texto = mensagemConvite(vaga, urlInscricao(vaga), modeloConvite);
     window.open(`https://wa.me/?text=${encodeURIComponent(texto)}`, "_blank", "noopener");
   });
+  ligarMensagemPersonalizada(vaga, redesenhar);
   const usarPerfil = $("link-usar-perfil");
   if (usarPerfil) usarPerfil.addEventListener("click", () => ($("link-descricao").value = vaga.perfilVaga || ""));
   $("link-salvar").addEventListener("click", async () => {
@@ -586,6 +612,46 @@ function ligarLinkInscricao(vaga) {
       showToast(err.message, "erro");
     }
   });
+}
+
+/** Edição da mensagem de convite só desta vaga (vazio = volta ao modelo padrão). */
+function ligarMensagemPersonalizada(vaga, redesenhar) {
+  const $ = (id) => document.getElementById(id);
+  const ver = $("msg-ver");
+  const editar = $("msg-editar");
+  const texto = $("msg-texto");
+  const atualizarAlerta = () => {
+    const achados = termosSensiveis(texto.value);
+    $("msg-alerta").innerHTML = achados.length
+      ? `<div class="ponto-aviso" style="margin-top:6px;">⚠️ Termo(s) que podem ser considerados discriminatórios: ${achados.map((a) => `<strong>"${escapeHtml(a.termo)}"</strong> (${escapeHtml(a.tipo)})`).join(", ")}. Prefira descrever competências e comportamentos (CLT art. 373-A e Lei 9.029/95).</div>`
+      : "";
+  };
+  texto.addEventListener("input", atualizarAlerta);
+  $("msg-personalizar").addEventListener("click", () => {
+    // Começa do texto atual, com o link trocado pelo marcador para ficar portátil.
+    texto.value = vaga.mensagemConvite || mensagemConvite(vaga, "{LINK}", modeloConvite);
+    ver.hidden = true;
+    editar.hidden = false;
+    atualizarAlerta();
+    texto.focus();
+  });
+  $("msg-cancelar").addEventListener("click", () => {
+    editar.hidden = true;
+    ver.hidden = false;
+  });
+  const salvar = async (msg, aviso) => {
+    try {
+      redesenhar(await api.patch(`/api/vagas/${vaga.id}/link`, { mensagemConvite: msg }));
+      const det = $("msg-previa");
+      if (det) det.open = true;
+      showToast(aviso, "sucesso");
+    } catch (err) {
+      showToast(err.message, "erro");
+    }
+  };
+  $("msg-salvar").addEventListener("click", () => salvar(texto.value, "Mensagem desta vaga salva."));
+  const padrao = $("msg-padrao");
+  if (padrao) padrao.addEventListener("click", () => salvar("", "A vaga voltou a usar a mensagem padrão."));
 }
 
 // ---------- Pesquisa de satisfação (NPS) da vaga fechada ----------

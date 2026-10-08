@@ -1,7 +1,7 @@
 const express = require("express");
 const db = require("../db");
 const { requireAuth } = require("../middleware/auth");
-const { notifyMudancaVaga } = require("../utils/notify");
+const { notify, notifyMudancaVaga } = require("../utils/notify");
 const { computeVagaFields, hojeStr } = require("../utils/vagaCompute");
 const { ETAPAS_VAGA, PRIORIDADES } = require("../utils/constants");
 const { criarParaVaga: criarPesquisaNps } = require("../utils/npsPesquisas");
@@ -9,12 +9,44 @@ const { normalizarPagina, TIPOS_CONTRATACAO, MODELOS_TRABALHO, FREQUENCIAS, gera
 
 const router = express.Router();
 
-function podeEditar(req, vaga) {
-  return (
-    req.consultor.perfil === "Gestor" ||
-    req.consultor.perfil === "Supervisora" ||
-    vaga.consultorId === req.consultor.id
-  );
+// Todos os consultores editam as vagas (fazem o alinhamento de perfil com o cliente e
+// atualizam a divulgação). Só a gestão ou o responsável pela vaga podem EXCLUÍ-LA, e só a
+// gestão troca o consultor responsável. Toda edição fica em vaga.historicoEdicoes.
+function podeEditar(req) {
+  return !!req.consultor;
+}
+function podeGerir(req, vaga) {
+  return ["Gestor", "Supervisora"].includes(req.consultor.perfil) || vaga.consultorId === req.consultor.id;
+}
+const ehGestao = (req) => ["Gestor", "Supervisora"].includes(req.consultor.perfil);
+
+const NOMES_CAMPOS = {
+  titulo: "título",
+  perfilVaga: "perfil da vaga",
+  empresaId: "empresa",
+  consultorId: "consultor responsável",
+  dataAbertura: "data de abertura",
+  prazoFechamento: "prazo",
+  prioridade: "prioridade",
+  observacoes: "observações",
+  salario: "salário",
+};
+/** Acrescenta uma entrada ao histórico de edições (quem, quando, o quê). */
+function registrarEdicao(vaga, req, oQue) {
+  if (!oQue) return {};
+  return { historicoEdicoes: [...(vaga.historicoEdicoes || []), { em: new Date().toISOString(), por: req.consultor.nome, porId: req.consultor.id, oQue }].slice(-200) };
+}
+
+/** Avisa o consultor responsável quando outra pessoa altera a vaga dele. */
+function avisarResponsavel(vaga, req, oQue) {
+  if (!vaga.consultorId || vaga.consultorId === req.consultor.id) return;
+  notify({
+    tipo: "Vaga editada",
+    vagaId: vaga.id,
+    destinatarioId: vaga.consultorId,
+    assunto: `${req.consultor.nome} editou a vaga ${vaga.titulo}`,
+    mensagem: `${req.consultor.nome} alterou: ${oQue}.`,
+  });
 }
 
 function comCampos(vaga) {
@@ -95,11 +127,18 @@ router.post("/", requireAuth, (req, res) => {
 router.patch("/:id", requireAuth, (req, res) => {
   const vaga = db.findById("vagas", req.params.id);
   if (!vaga) return res.status(404).json({ erro: "Vaga não encontrada." });
-  if (!podeEditar(req, vaga)) {
+  if (!podeEditar(req)) {
     return res.status(403).json({ erro: "Você só pode editar vagas atribuídas a você." });
   }
   const { titulo, perfilVaga, empresaId, consultorId, dataAbertura, prazoFechamento, prioridade, observacoes, salario } = req.body || {};
   if (prioridade && !PRIORIDADES.includes(prioridade)) return res.status(400).json({ erro: "Prioridade inválida." });
+  if (consultorId && consultorId !== vaga.consultorId && !ehGestao(req)) {
+    return res.status(403).json({ erro: "Só a gestão pode trocar o consultor responsável pela vaga." });
+  }
+  const mudou = Object.keys(NOMES_CAMPOS).filter((k) => {
+    const novo = k === "salario" ? (salario !== undefined ? Number(salario) || 0 : undefined) : (req.body || {})[k];
+    return novo !== undefined && String(novo ?? "") !== String(vaga[k] ?? "");
+  });
 
   const atualizado = db.update("vagas", vaga.id, {
     titulo,
@@ -119,6 +158,7 @@ router.patch("/:id", requireAuth, (req, res) => {
     ...(dataAbertura && dataAbertura !== vaga.dataAbertura
       ? { alertaSlaProximoEnviado: false, alertaSlaEstouradoEnviado: false }
       : {}),
+    ...registrarEdicao(vaga, req, mudou.map((k) => NOMES_CAMPOS[k]).join(", ")),
   });
 
   notifyMudancaVaga({
@@ -137,7 +177,7 @@ router.patch("/:id", requireAuth, (req, res) => {
 router.patch("/:id/etapa", requireAuth, (req, res) => {
   const vaga = db.findById("vagas", req.params.id);
   if (!vaga) return res.status(404).json({ erro: "Vaga não encontrada." });
-  if (!podeEditar(req, vaga)) {
+  if (!podeEditar(req)) {
     return res.status(403).json({ erro: "Você só pode mover vagas atribuídas a você." });
   }
   const { etapa } = req.body || {};
@@ -194,7 +234,7 @@ router.patch("/:id/etapa", requireAuth, (req, res) => {
 router.patch("/:id/standby", requireAuth, (req, res) => {
   const vaga = db.findById("vagas", req.params.id);
   if (!vaga) return res.status(404).json({ erro: "Vaga não encontrada." });
-  if (!podeEditar(req, vaga)) {
+  if (!podeEditar(req)) {
     return res.status(403).json({ erro: "Você só pode alterar o Stand By de vagas atribuídas a você." });
   }
   if (["11. Aprovado", "12. Cancelada/Encerrada"].includes(vaga.etapaAtual)) {
@@ -254,7 +294,7 @@ router.patch("/:id/standby", requireAuth, (req, res) => {
 router.patch("/:id/link", requireAuth, (req, res) => {
   const vaga = db.findById("vagas", req.params.id);
   if (!vaga) return res.status(404).json({ erro: "Vaga não encontrada." });
-  if (!podeEditar(req, vaga)) return res.status(403).json({ erro: "Você só pode configurar o link de vagas atribuídas a você." });
+  if (!podeEditar(req)) return res.status(403).json({ erro: "Você só pode configurar o link de vagas atribuídas a você." });
   const b = req.body || {};
   const dados = {};
   if (!vaga.linkToken) {
@@ -266,6 +306,14 @@ router.patch("/:id/link", requireAuth, (req, res) => {
   if (b.mostrarEmpresa !== undefined) dados.mostrarEmpresa = !!b.mostrarEmpresa;
   if (b.exigirDisc !== undefined) dados.exigirDisc = !!b.exigirDisc;
   if (b.descricaoPublica !== undefined) dados.descricaoPublica = String(b.descricaoPublica || "").slice(0, 8000);
+  if (b.mensagemConvite !== undefined) {
+    const msg = String(b.mensagemConvite || "").trim().slice(0, 3000);
+    if (msg && !/\{LINK\}|\/vaga\//i.test(msg)) return res.status(400).json({ erro: "A mensagem precisa ter o link da vaga (use {LINK} ou o próprio link)." });
+    dados.mensagemConvite = msg; // vazio = volta a usar o modelo padrão
+  }
+  const oQue = b.mensagemConvite !== undefined ? "mensagem de convite" : "configurações do link";
+  Object.assign(dados, registrarEdicao(vaga, req, oQue));
+  avisarResponsavel(vaga, req, oQue);
   res.json(comCampos(db.update("vagas", vaga.id, dados)));
 });
 
@@ -275,17 +323,18 @@ router.get("/pagina/opcoes", (req, res) => res.json({ tiposContratacao: TIPOS_CO
 router.put("/:id/pagina", requireAuth, (req, res) => {
   const vaga = db.findById("vagas", req.params.id);
   if (!vaga) return res.status(404).json({ erro: "Vaga não encontrada." });
-  if (!podeEditar(req, vaga)) return res.status(403).json({ erro: "Você só pode editar a página de vagas atribuídas a você." });
+  if (!podeEditar(req)) return res.status(403).json({ erro: "Você só pode editar a página de vagas atribuídas a você." });
   // Merge com o que já existia: campos desconhecidos/antigos dentro de "pagina" são preservados.
   const pagina = { ...(vaga.pagina || {}), ...normalizarPagina(req.body || {}) };
-  res.json(comCampos(db.update("vagas", vaga.id, { pagina, paginaAtualizadaEm: new Date().toISOString(), paginaAtualizadaPor: req.consultor.nome })));
+  avisarResponsavel(vaga, req, "página da vaga (divulgação)");
+  res.json(comCampos(db.update("vagas", vaga.id, { pagina, paginaAtualizadaEm: new Date().toISOString(), paginaAtualizadaPor: req.consultor.nome, ...registrarEdicao(vaga, req, "página da vaga (divulgação)") })));
 });
 
 router.delete("/:id", requireAuth, (req, res) => {
   const vaga = db.findById("vagas", req.params.id);
   if (!vaga) return res.status(404).json({ erro: "Vaga não encontrada." });
-  if (!podeEditar(req, vaga)) {
-    return res.status(403).json({ erro: "Você só pode excluir vagas atribuídas a você." });
+  if (!podeGerir(req, vaga)) {
+    return res.status(403).json({ erro: "Só a gestão ou o consultor responsável podem excluir esta vaga." });
   }
   db.remove("vagas", req.params.id);
   res.json({ ok: true });

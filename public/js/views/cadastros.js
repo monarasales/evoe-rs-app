@@ -1,6 +1,7 @@
 import { api } from "../api.js";
 import { store, isGestor, showToast } from "../state.js";
 import { abrirModal, fecharModal } from "../modal.js";
+import { MODELO_PADRAO, MARCADORES, mensagemConvite, termosSensiveis } from "../mensagemVaga.js";
 
 function escapeHtml(str) {
   const div = document.createElement("div");
@@ -258,6 +259,24 @@ export async function renderConfiguracoes(root) {
         <div id="pn-erro" class="form-erro hidden"></div>
       </div>
 
+      <div class="section-title" style="margin-top:22px;">Mensagem padrão de convite ao candidato</div>
+      <div class="card" style="max-width:720px;">
+        <div class="sub" style="margin-bottom:10px;">
+          Texto usado em "Enviar pelo WhatsApp" e "Copiar mensagem" de todas as vagas. Cada consultor
+          ainda pode personalizar a mensagem de uma vaga específica. Marcadores que o sistema preenche:
+        </div>
+        <ul class="sub" style="margin:0 0 10px 18px;">${MARCADORES.map(([m, d]) => `<li><strong>${m}</strong> — ${d}</li>`).join("")}</ul>
+        <div class="form-row" style="margin-bottom:0;"><textarea id="mc-modelo" rows="14"></textarea></div>
+        <div id="mc-alerta"></div>
+        <details style="margin-top:8px;"><summary class="sub">Pré-visualizar com uma vaga de exemplo</summary><pre id="mc-previa" style="white-space:pre-wrap;"></pre></details>
+        <div id="mc-info" class="sub" style="margin-top:6px;"></div>
+        <div style="display:flex; gap:8px; flex-wrap:wrap; margin-top:8px;">
+          <button type="button" id="mc-salvar" class="btn btn-primary btn-sm">Salvar mensagem padrão</button>
+          <button type="button" id="mc-restaurar" class="btn btn-outline btn-sm">Restaurar texto original</button>
+        </div>
+        <div id="mc-erro" class="form-erro hidden" style="margin-top:8px;"></div>
+      </div>
+
       <div class="section-title" style="margin-top:22px;">Endereço do Escritório</div>
       <div class="card" style="max-width:560px;">
         <div class="sub" style="margin-bottom:10px;">
@@ -325,6 +344,7 @@ export async function renderConfiguracoes(root) {
       });
 
       configurarEscritorio(conteudo);
+      configurarMensagemConvite(conteudo);
 
       const statusEl = conteudo.querySelector("#backup-status");
       const erroBackup = conteudo.querySelector("#backup-erro");
@@ -366,6 +386,52 @@ export async function renderConfiguracoes(root) {
   }
 
   renderizarAba();
+}
+
+// ---------- Mensagem padrão de convite ao candidato ----------
+function configurarMensagemConvite(conteudo) {
+  const $ = (id) => conteudo.querySelector(`#${id}`);
+  const caixa = $("mc-modelo");
+  const exemplo = {
+    titulo: "Assistente Administrativo",
+    pagina: { bairro: "Aldeota", cidade: "Fortaleza/CE", modeloTrabalho: "Presencial", tipoContratacao: "CLT", perfilComportamental: "organizado, comunicativo e proativo" },
+  };
+  const atualizar = () => {
+    $("mc-previa").textContent = mensagemConvite(exemplo, `${location.origin}/vaga/exemplo`, caixa.value);
+    const achados = termosSensiveis(caixa.value);
+    $("mc-alerta").innerHTML = achados.length
+      ? `<div class="ponto-aviso" style="margin-top:6px;">⚠️ Termo(s) que podem ser considerados discriminatórios: ${achados.map((x) => `<strong>"${x.termo}"</strong> (${x.tipo})`).join(", ")}. Prefira descrever competências e comportamentos (CLT art. 373-A e Lei 9.029/95).</div>`
+      : "";
+  };
+  const info = (r) => {
+    $("mc-info").textContent = r.modelo
+      ? `Mensagem personalizada${r.atualizadoPor ? ` — alterada por ${r.atualizadoPor}` : ""}${r.atualizadoEm ? ` em ${new Date(r.atualizadoEm).toLocaleString("pt-BR", { dateStyle: "short", timeStyle: "short" })}` : ""}.`
+      : "Usando o texto original do sistema.";
+  };
+  caixa.addEventListener("input", atualizar);
+  api.get("/api/config/mensagem-convite").then((r) => {
+    caixa.value = r.modelo || MODELO_PADRAO;
+    info(r);
+    atualizar();
+  });
+  const salvar = async (modelo, aviso) => {
+    const erro = $("mc-erro");
+    erro.classList.add("hidden");
+    try {
+      await api.put("/api/config/mensagem-convite", { modelo });
+      const r = await api.get("/api/config/mensagem-convite");
+      caixa.value = r.modelo || MODELO_PADRAO;
+      info(r);
+      atualizar();
+      showToast(aviso, "sucesso");
+    } catch (err) {
+      erro.textContent = err.message;
+      erro.classList.remove("hidden");
+    }
+  };
+  // Salvar exatamente o texto original equivale a "não personalizado".
+  $("mc-salvar").addEventListener("click", () => salvar(caixa.value.trim() === MODELO_PADRAO ? "" : caixa.value, "Mensagem padrão salva."));
+  $("mc-restaurar").addEventListener("click", () => salvar("", "Texto original restaurado."));
 }
 
 // ---------- Endereço do escritório (validação do ponto presencial) ----------

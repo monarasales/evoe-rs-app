@@ -44,24 +44,46 @@ export function competenciasDaVaga(pagina = {}, max = 3) {
 
 const juntar = (lista) => (lista.length <= 1 ? lista.join("") : `${lista.slice(0, -1).join(", ")} e ${lista[lista.length - 1]}`);
 
-/** Convite para o WhatsApp (negrito do WhatsApp = *texto*). */
-export function mensagemConvite(vaga, link) {
+/** Modelo de fábrica. Marcadores: {VAGA}, {DETALHES}, {PERFIL}, {LINK}. Negrito do WhatsApp = *texto*. */
+export const MODELO_PADRAO = [
+  "Olá! Tudo bem? 😊",
+  "A *Evoé Gestão & RH* está com uma nova oportunidade profissional que pode combinar com o seu perfil!",
+  "💼 *Vaga: {VAGA}*\n{DETALHES}",
+  "{PERFIL}",
+  "Convidamos você a conhecer os detalhes da oportunidade e realizar sua candidatura pelo link:\n{LINK}",
+  "A inscrição é simples e leva poucos minutos. 💜",
+  "*Evoé Gestão & RH | Conectando talentos às oportunidades certas.*",
+].join("\n\n");
+
+export const MARCADORES = [
+  ["{VAGA}", "nome da vaga"],
+  ["{DETALHES}", "local, modelo e contratação (some se a vaga não tiver)"],
+  ["{PERFIL}", "frase com até 3 competências do perfil da vaga"],
+  ["{LINK}", "link de inscrição (obrigatório)"],
+];
+
+/**
+ * Convite para o WhatsApp.
+ *  - vaga.mensagemConvite (personalizada na vaga) tem prioridade;
+ *  - senão usa `modelo` (padrão editado em Configurações) ou o MODELO_PADRAO.
+ */
+export function mensagemConvite(vaga, link, modelo = null) {
   const p = vaga.pagina || {};
+  if (vaga.mensagemConvite) return vaga.mensagemConvite.replace(/\{LINK\}/g, link);
   const local = [p.bairro, p.cidade].filter(Boolean).join(", ");
   const detalhes = [local && `📍 ${local}`, p.modeloTrabalho, p.tipoContratacao].filter(Boolean).join(" · ");
   const comp = competenciasDaVaga(p);
-  const gancho = comp.length
+  const perfil = comp.length
     ? `Buscamos alguém com ${juntar(comp)}. Se você se identifica, vamos adorar conhecer você!`
     : "Se você busca um novo desafio para crescer profissionalmente, vamos adorar conhecer você!";
-  return [
-    "Olá! Tudo bem? 😊",
-    "A *Evoé Gestão & RH* está com uma nova oportunidade profissional que pode combinar com o seu perfil!",
-    `💼 *Vaga: ${vaga.titulo}*${detalhes ? `\n${detalhes}` : ""}`,
-    gancho,
-    `Convidamos você a conhecer os detalhes da oportunidade e realizar sua candidatura pelo link:\n${link}`,
-    "A inscrição é simples e leva poucos minutos. 💜",
-    "*Evoé Gestão & RH | Conectando talentos às oportunidades certas.*",
-  ].join("\n\n");
+  return (modelo || MODELO_PADRAO)
+    .replace(/\{VAGA\}/g, vaga.titulo)
+    .replace(/\{DETALHES\}/g, detalhes)
+    .replace(/\{PERFIL\}/g, perfil)
+    .replace(/\{LINK\}/g, link)
+    .replace(/[ \t]+\n/g, "\n")
+    .replace(/\n{3,}/g, "\n\n")
+    .trim();
 }
 
 // ---------- Alerta de termos que podem ser discriminatórios em anúncio de vaga ----------

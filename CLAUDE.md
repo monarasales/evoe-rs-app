@@ -27,7 +27,10 @@ explicar tudo em português simples, sem jargão.
 - `server/index.js` — entrada; registra todas as rotas `/api/*`
 - `server/routes/` — uma rota REST por módulo (vagas, candidatos, contratos, ponto...)
 - `server/utils/` — regras de negócio (prazos, notificações, contratos PDF/DOCX, e-mail)
-- `server/middleware/auth.js` — sessão e perfis (Gestor vê tudo; Recrutador só as próprias vagas)
+- `server/middleware/auth.js` — sessão e perfis (Gestor vê tudo)
+- VAGAS: qualquer consultor edita qualquer vaga (dados, etapa, página, link, mensagem) — eles alinham o perfil
+  com o cliente. Excluir: só gestão (Gestor/Supervisora) ou o responsável. Trocar o responsável: só gestão.
+  Toda edição vai para `vaga.historicoEdicoes` (quem/quando/o quê) e avisa o responsável quando é outra pessoa.
 - `public/js/views/` — uma tela por arquivo; `public/js/api.js` faz as chamadas à API
 
 ## Módulo de Ponto
@@ -64,6 +67,9 @@ Baseado no documento "Controle de Ponto Próprio" (Resolut). Construído por eta
   competências reconhecidas por LISTA APROVADA (o texto livre da vaga nunca é copiado → sem risco de viés). O mesmo
   arquivo alerta termos discriminatórios (idade, gênero, aparência, estado civil, raça, religião, origem; CLT 373-A,
   Lei 9.029/95) no editor da página e no cadastro da vaga — só alerta, não bloqueia.
+  Mensagem editável em 2 níveis: modelo padrão (Configurações › Parâmetros, Gestor; `parametros` chave
+  "mensagemConvite", `GET/PUT /api/config/mensagem-convite`, marcadores {VAGA} {DETALHES} {PERFIL} {LINK}) e
+  personalizada por vaga (`vaga.mensagemConvite` via `PATCH /api/vagas/:id/link`; vazio = volta ao padrão).
 - Inscrição cria candidato "Inscrito"/origem "Link da vaga" com `consentimentoLgpd`; mesmo e-mail na mesma vaga não duplica
   (só preenche campos vazios, guarda `reinscricoes` e nova versão do currículo). Currículos: `server/utils/curriculos.js`.
 

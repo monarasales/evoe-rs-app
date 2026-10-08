@@ -67,5 +67,23 @@ router.post("/backup/enviar", requireAuth, requireGestor, async (req, res) => {
   }
 });
 
+// ---------- Modelo padrão da mensagem de convite ao candidato ----------
+// Marcadores: {VAGA}, {DETALHES}, {PERFIL}, {LINK}. Vazio = modelo de fábrica do sistema.
+const paramMensagem = () => db.readCollection("parametros").find((p) => p.chave === "mensagemConvite");
+
+router.get("/mensagem-convite", requireAuth, (req, res) => {
+  const p = paramMensagem();
+  res.json({ modelo: (p && p.modelo) || null, atualizadoPor: p ? p.atualizadoPor : null, atualizadoEm: p ? p.updatedAt : null });
+});
+
+router.put("/mensagem-convite", requireAuth, requireGestor, (req, res) => {
+  const modelo = String((req.body || {}).modelo || "").trim().slice(0, 3000);
+  if (modelo && !modelo.includes("{LINK}")) return res.status(400).json({ erro: "O modelo precisa ter o marcador {LINK} (onde entra o link da vaga)." });
+  const p = paramMensagem();
+  const dados = { modelo: modelo || null, atualizadoPor: req.consultor.nome };
+  const salvo = p ? db.update("parametros", p.id, dados) : db.insert("parametros", { chave: "mensagemConvite", ...dados });
+  res.json({ modelo: salvo.modelo });
+});
+
 module.exports = router;
 module.exports.getParamContratos = getParamContratos;
