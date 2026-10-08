@@ -10,6 +10,12 @@ explicar tudo em português simples, sem jargão.
 - "Banco": um arquivo JSON por tabela, acessado só via `server/db.js`
   (`findAll`, `findById`, `insert`, `update`, `remove`)
 
+## ANTES DE CADA PUBLICAÇÃO (obrigatório)
+1. `npm run verificar` — sintaxe de TODOS os arquivos (navegador e servidor) + testes. Se falhar, não publique.
+   (Em 08/10/2026 uma variável declarada duas vezes em public/js/views/nps.js deixou o app inteiro em branco.)
+2. Depois do deploy, abrir a página de produção num navegador (puppeteer) e confirmar: tela de login visível e
+   nenhum erro de JavaScript no console.
+
 ## Comandos
 - `npm install` — dependências
 - `npm run dev` — servidor com recarga automática em http://localhost:3000
