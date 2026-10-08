@@ -179,8 +179,8 @@ export async function renderNps(root) {
         }
         carregar();
       });
-    const btnFila = alvo.querySelector("#nps-abrir-fila");
-    if (btnFila) btnFila.addEventListener("click", () => abrirFilaWhatsapp(pendentesWhatsapp(ultimas), () => carregar()));
+    const btnAbrirFila = alvo.querySelector("#nps-abrir-fila");
+    if (btnAbrirFila) btnAbrirFila.addEventListener("click", () => abrirFilaWhatsapp(pendentesWhatsapp(ultimas), () => carregar()));
   }
   carregar();
 }
