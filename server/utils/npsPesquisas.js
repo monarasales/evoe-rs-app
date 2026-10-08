@@ -120,14 +120,43 @@ async function criarParaVaga(vaga, { por = "Sistema", base, enviarEmail = true, 
 }
 
 /** Lembrete único por e-mail 3 dias após o envio, se o cliente ainda não respondeu. */
+const emailJaEntregue = (p) => (p.envios || []).some((e) => e.canal.startsWith("email") && e.ok);
+
+/**
+ * 3 dias após a criação, se o cliente não respondeu: manda por e-mail. Se o primeiro
+ * e-mail nunca saiu (ex.: senha do Gmail recusada), este vira o PRIMEIRO envio — sem
+ * a palavra "Lembrete". Só marca como feito quando o e-mail realmente sai; enquanto o
+ * e-mail estiver com problema, tenta de novo na hora seguinte (sem poluir o histórico).
+ */
 async function checarLembretes() {
   const limite = Date.now() - 3 * 24 * 3600 * 1000;
   for (const p of db.readCollection(COL)) {
-    if (p.respondidaEm || p.lembreteEm || Date.parse(p.createdAt) > limite) continue;
-    const r = await enviarPorEmail(p, true);
-    registrarEnvio(p, { canal: "email-lembrete", para: p.emails.join(", "), ...r });
+    if (p.teste || p.respondidaEm || p.lembreteEm || !(p.emails || []).length || Date.parse(p.createdAt) > limite) continue;
+    const lembrete = emailJaEntregue(p);
+    const r = await enviarPorEmail(p, lembrete);
+    if (!r.ok) {
+      console.warn(`[nps] Lembrete não enviado (${p.empresaNome}): ${r.erro}`);
+      continue;
+    }
+    registrarEnvio(p, { canal: lembrete ? "email-lembrete" : "email", para: p.emails.join(", "), ...r });
     db.update(COL, p.id, { lembreteEm: new Date().toISOString() });
   }
+}
+
+/** Reenvia o e-mail das pesquisas sem resposta cujo e-mail nunca foi entregue. */
+async function reenviarFalhas(por) {
+  const resultado = { enviados: 0, falhas: 0, ultimoErro: null };
+  for (const p of db.readCollection(COL)) {
+    if (p.teste || p.respondidaEm || !(p.emails || []).length || emailJaEntregue(p)) continue;
+    const r = await enviarPorEmail(p);
+    registrarEnvio(p, { canal: "email", para: p.emails.join(", "), por, ...r });
+    if (r.ok) resultado.enviados++;
+    else {
+      resultado.falhas++;
+      resultado.ultimoErro = r.erro;
+    }
+  }
+  return resultado;
 }
 
 function startLembretesNps(intervaloMin = 60) {
@@ -135,4 +164,4 @@ function startLembretesNps(intervaloMin = 60) {
   setInterval(() => checarLembretes().catch((e) => console.error("[nps]", e.message)), intervaloMin * 60 * 1000);
 }
 
-module.exports = { mensagemPadrao, COL, contatosDaVaga, criarParaVaga, enviarPorEmail, registrarEnvio, linkWhatsapp, linkPesquisa, startLembretesNps };
+module.exports = { mensagemPadrao, reenviarFalhas, emailJaEntregue, COL, contatosDaVaga, criarParaVaga, enviarPorEmail, registrarEnvio, linkWhatsapp, linkPesquisa, startLembretesNps };

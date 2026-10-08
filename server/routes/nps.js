@@ -7,6 +7,7 @@ const db = require("../db");
 const { requireAuth, requireGestor } = require("../middleware/auth");
 const { CRITERIOS, resumir, zona } = require("../utils/nps");
 const crypto = require("crypto");
+const { reenviarFalhas, emailJaEntregue } = require("../utils/npsPesquisas");
 const { COL, criarParaVaga, enviarPorEmail, registrarEnvio, linkWhatsapp, linkPesquisa, contatosDaVaga } = require("../utils/npsPesquisas");
 
 const router = express.Router();
@@ -121,6 +122,11 @@ router.post("/campanha", requireGestor, async (req, res) => {
   res.status(201).json({ campanha, pesquisas: criadas });
 });
 
+// Reenvia, de uma vez, os e-mails que nunca foram entregues (ex.: depois de corrigir a senha do Gmail).
+router.post("/reenviar-falhas", requireGestor, async (req, res) => {
+  res.json(await reenviarFalhas(req.consultor.nome));
+});
+
 // ---------- Pesquisa de TESTE (Gestor) ----------
 // Cria uma pesquisa marcada como teste (não entra nos indicadores) e devolve o link
 // do WhatsApp para o número informado — para conferir a experiência do cliente.
@@ -176,7 +182,20 @@ router.get("/painel", requireGestor, (req, res) => {
     .map((nome) => ({ nome, ...resumir(respostas(respondidas.filter((p) => (p.consultorNome || "—") === nome))) }))
     .sort((a, b) => b.respostas - a.respostas);
 
+  // Diagnóstico de envio para o painel: e-mails que não saíram e o último erro.
+  const semResposta = todas.filter((p) => !p.respondidaEm);
+  const ultimoErroEmail = todas
+    .flatMap((p) => (p.envios || []).filter((e) => e.canal.startsWith("email") && !e.ok && e.para))
+    .sort((a, b) => String(b.em).localeCompare(String(a.em)))[0];
+  const diagnostico = {
+    emailsComFalha: semResposta.filter((p) => (p.emails || []).length && !emailJaEntregue(p)).length,
+    semEmail: semResposta.filter((p) => !(p.emails || []).length).length,
+    erroEmail: ultimoErroEmail ? ultimoErroEmail.erro : null,
+    senhaRecusada: !!(ultimoErroEmail && /535|BadCredentials|Username and Password/i.test(ultimoErroEmail.erro || "")),
+  };
+
   res.json({
+    diagnostico,
     meses: listaMeses,
     criterios: CRITERIOS,
     geral: { ...geral, zona: zona(geral.nps), enviadas: doPeriodo.length, taxaResposta: doPeriodo.length ? Math.round((doPeriodo.filter((p) => p.respondidaEm).length / doPeriodo.length) * 100) : null },

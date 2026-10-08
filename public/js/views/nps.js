@@ -123,7 +123,20 @@ export async function renderNps(root) {
     btnFila.textContent = `💬 Fila do WhatsApp (${nFila})`;
     const g = d.geral;
     const z = ZONA[g.zona];
+    const dg = d.diagnostico || {};
+    const filaPendente = pendentesWhatsapp(d.pesquisas).length;
+    const alertas = [
+      dg.senhaRecusada
+        ? `<div class="ponto-aviso">⚠️ <strong>Os e-mails não estão saindo:</strong> o Gmail recusou o usuário/senha configurados no servidor. ${dg.emailsComFalha} pesquisa(s) ficaram sem e-mail. Depois de corrigir a senha, clique em <button type="button" class="link-btn" id="nps-reenviar-falhas">Reenviar e-mails que falharam</button>.</div>`
+        : dg.emailsComFalha
+        ? `<div class="ponto-aviso">⚠️ ${dg.emailsComFalha} pesquisa(s) sem e-mail entregue${dg.erroEmail ? ` (último erro: ${esc(dg.erroEmail.slice(0, 90))})` : ""}. <button type="button" class="link-btn" id="nps-reenviar-falhas">Reenviar e-mails que falharam</button></div>`
+        : "",
+      filaPendente
+        ? `<div class="ponto-aviso">💬 <strong>${filaPendente} cliente(s) ainda não receberam pelo WhatsApp</strong> — a mensagem só sai quando você clica em Enviar e confirma no WhatsApp. <button type="button" class="link-btn" id="nps-abrir-fila">Abrir a fila do WhatsApp</button></div>`
+        : "",
+    ].join("");
     alvo.innerHTML = `
+      ${alertas}
       <div class="nps-kpis">
         <div class="card nps-hero">
           <div class="kpi-label">NPS do período</div>
@@ -153,6 +166,21 @@ export async function renderNps(root) {
       ${tabelaPesquisas(d.pesquisas)}
     `;
     ligarAcoes(alvo, carregar);
+    const btnFalhas = alvo.querySelector("#nps-reenviar-falhas");
+    if (btnFalhas)
+      btnFalhas.addEventListener("click", async () => {
+        btnFalhas.disabled = true;
+        btnFalhas.textContent = "Reenviando...";
+        try {
+          const r = await api.post("/api/nps/reenviar-falhas");
+          showToast(r.enviados ? `${r.enviados} e-mail(s) enviado(s)${r.falhas ? `, ${r.falhas} ainda com erro` : ""}.` : `Nenhum e-mail saiu: ${r.ultimoErro || "sem e-mails para reenviar"}`, r.enviados ? "sucesso" : "erro");
+        } catch (err) {
+          showToast(err.message, "erro");
+        }
+        carregar();
+      });
+    const btnFila = alvo.querySelector("#nps-abrir-fila");
+    if (btnFila) btnFila.addEventListener("click", () => abrirFilaWhatsapp(pendentesWhatsapp(ultimas), () => carregar()));
   }
   carregar();
 }
