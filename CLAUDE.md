@@ -70,6 +70,12 @@ Baseado no documento "Controle de Ponto Próprio" (Resolut). Construído por eta
   Mensagem editável em 2 níveis: modelo padrão (Configurações › Parâmetros, Gestor; `parametros` chave
   "mensagemConvite", `GET/PUT /api/config/mensagem-convite`, marcadores {VAGA} {DETALHES} {PERFIL} {LINK}) e
   personalizada por vaga (`vaga.mensagemConvite` via `PATCH /api/vagas/:id/link`; vazio = volta ao padrão).
+- Retorno ao candidato (botão "💬 Retorno ao candidato" no funil): `public/js/retornoCandidato.js` — 5 situações
+  (convite entrevista Evoé, passou na Evoé → entrevista com gestor, aprovado pelo gestor, não seguiu na Evoé, não seguiu
+  com o gestor). Linguagem neutra; devolutiva NUNCA traz o motivo. Envio por WhatsApp/e-mail/copiar; cada envio fica em
+  `candidato.retornos` (+ `ultimoRetorno`) via `POST /api/candidatos/:id/retornos`; convites gravam a data em
+  dataEntrevista/dataEntrevistaCliente (data anterior guardada no registro); opcionalmente move a fase.
+  Modelos editáveis pelo Gestor: `parametros` chave "modelosRetorno", `GET /api/config/modelos-retorno`, `PUT .../:tipo`.
 - Inscrição cria candidato "Inscrito"/origem "Link da vaga" com `consentimentoLgpd`; mesmo e-mail na mesma vaga não duplica
   (só preenche campos vazios, guarda `reinscricoes` e nova versão do currículo). Currículos: `server/utils/curriculos.js`.
 

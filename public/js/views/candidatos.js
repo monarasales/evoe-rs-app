@@ -10,6 +10,14 @@ import { store, showToast, podeGerenciarVagas } from "../state.js";
 import { abrirModal, fecharModal } from "../modal.js";
 import { criarCombobox } from "../combobox.js";
 import { campoData, brParaIso, dataBr } from "../pontoUtil.js";
+import { TIPOS_RETORNO, montarRetorno, tipoSugerido, telefoneWhatsapp } from "../retornoCandidato.js";
+
+// Modelos de retorno editados em Configurações (carregados uma vez por sessão).
+let modelosRetorno = null;
+const carregarModelosRetorno = async () => {
+  if (!modelosRetorno) modelosRetorno = await api.get("/api/config/modelos-retorno").then((r) => r.modelos || {}).catch(() => ({}));
+  return modelosRetorno;
+};
 
 function escapeHtml(str) {
   const div = document.createElement("div");
@@ -430,17 +438,166 @@ export async function renderCandidatos(root, params) {
           if (!motivo) return mostrarErro("Escolha o motivo da reprovação.");
           mover("Reprovado", { motivo, observacao: area.querySelector("#funil-obs").value });
         });
-      const devolutiva = area.querySelector("#funil-devolutiva");
-      if (devolutiva)
-        devolutiva.addEventListener("click", () => {
-          const vaga = vagaPorId(cand.vagaId);
-          const tel = String(cand.telefone || "").replace(/\D/g, "");
-          const texto =
-            `Olá, ${(cand.nome || "").split(" ")[0]}! Agradecemos muito seu interesse e participação no processo seletivo` +
-            `${vaga ? ` para a vaga de ${vaga.titulo}` : ""}. Neste momento, seguiremos com outros perfis mais aderentes aos requisitos da vaga. ` +
-            `Seu currículo continuará em nosso banco de talentos para futuras oportunidades. Desejamos sucesso! — Evoé Gestão e RH`;
-          window.open(`https://wa.me/${tel.length >= 10 ? "55" + tel : ""}?text=${encodeURIComponent(texto)}`, "_blank", "noopener");
-        });
+      area.querySelector("#funil-retorno").addEventListener("click", () => abrirRetorno(cand));
+    }
+
+    /** Painel "Retorno ao candidato": escolhe a situação, ajusta a mensagem e envia. */
+    async function abrirRetorno(cand) {
+      const painel = $("retorno-painel");
+      if (!painel.hidden) return (painel.hidden = true);
+      const modelos = await carregarModelosRetorno();
+      const vaga = vagaPorId(cand.vagaId) || {};
+      const tel = telefoneWhatsapp(cand.telefone);
+      let tipo = tipoSugerido(cand);
+      let editado = false;
+      const info = (id) => TIPOS_RETORNO.find((t) => t.id === id);
+      // Dados da entrevista: o que já está no candidato + horário/local do último convite do mesmo tipo.
+      const entrevistaInicial = (id) => {
+        const ultimo = (cand.retornos || []).filter((x) => x.tipo === id && x.entrevista).slice(-1)[0];
+        const e = (ultimo && ultimo.entrevista) || {};
+        const data = id === "convite_evoe" ? cand.dataEntrevista : cand.dataEntrevistaCliente;
+        return { data: data ? dataBr(data) : "", horario: e.horario || "", formato: e.formato || "Online", local: e.local || "" };
+      };
+      const ordem = ORDEM_FUNIL.indexOf(cand.fase || "Recrutamento");
+      const sugereMover = (t) =>
+        t.fase === "Reprovado" ? cand.fase !== "Reprovado" : ORDEM_FUNIL.indexOf(t.fase) > ordem || ["Reprovado", "Desistiu"].includes(cand.fase);
+
+      const desenhar = () => {
+        const t = info(tipo);
+        const e = entrevistaInicial(tipo);
+        painel.innerHTML = `
+          <div class="form-row" style="margin-bottom:0;"><label>Situação do retorno</label></div>
+          <div class="retorno-tipos">${TIPOS_RETORNO.map(
+            (x) => `<button type="button" class="retorno-tipo ${x.positivo ? "pos" : "neg"} ${x.id === tipo ? "ativo" : ""}" data-tipo="${x.id}">${x.positivo ? "✅" : "❌"} ${escapeHtml(x.rotulo)}</button>`
+          ).join("")}</div>
+          ${
+            t.entrevista
+              ? `<div class="form-cols">
+                  <div class="form-row"><label>Data da entrevista</label><input type="text" id="ret-data" inputmode="numeric" maxlength="10" placeholder="dd/mm/aaaa" value="${e.data}" /></div>
+                  <div class="form-row"><label>Horário</label><input type="time" id="ret-hora" value="${escapeHtml(e.horario)}" /></div>
+                </div>
+                <div class="form-cols">
+                  <div class="form-row"><label>Formato</label><select id="ret-formato">${["Online", "Presencial"].map((f) => `<option ${f === e.formato ? "selected" : ""}>${f}</option>`).join("")}</select></div>
+                  <div class="form-row"><label id="ret-local-rotulo">${e.formato === "Presencial" ? "Endereço" : "Link da reunião (Meet, Zoom, Teams)"}</label><input type="text" id="ret-local" value="${escapeHtml(e.local)}" placeholder="${e.formato === "Presencial" ? "Rua, número, bairro" : "https://meet.google.com/..."}" /></div>
+                </div>`
+              : ""
+          }
+          <div class="form-row" style="margin-bottom:4px;"><label>Mensagem <span class="sub">(pode ajustar antes de enviar)</span></label>
+          <textarea id="ret-texto" rows="14"></textarea></div>
+          <div class="sub" id="ret-refazer-box" hidden><button type="button" class="link-btn" id="ret-refazer">↻ Refazer a mensagem com os dados acima</button></div>
+          ${
+            !t.positivo
+              ? '<div class="sub" style="margin-top:4px;">🔒 O motivo da reprovação não vai na mensagem: fica só no registro interno (boa prática e segurança jurídica).</div>'
+              : ""
+          }
+          ${
+            sugereMover(t)
+              ? `<div class="checkbox-row" style="margin-top:10px;"><input type="checkbox" id="ret-mover" checked /><label for="ret-mover" style="margin:0;font-weight:400;">Também mover o candidato para <strong>${escapeHtml(t.fase)}</strong></label></div>
+                ${t.fase === "Reprovado" ? `<div class="form-row" id="ret-motivo-box" style="margin-top:6px;"><label>Motivo da reprovação <span class="sub">(interno)</span></label><select id="ret-motivo"><option value="">Escolha...</option>${motivosReprovacao.map((m) => `<option>${escapeHtml(m)}</option>`).join("")}</select></div>` : ""}`
+              : ""
+          }
+          <div id="ret-erro" class="form-erro hidden"></div>
+          <div class="link-acoes" style="margin-top:10px;">
+            <button type="button" class="btn btn-primary btn-sm" data-canal="whatsapp">Enviar pelo WhatsApp</button>
+            ${cand.email ? '<button type="button" class="btn btn-outline btn-sm" data-canal="email">Enviar por e-mail</button>' : ""}
+            <button type="button" class="btn btn-outline btn-sm" data-canal="copiado">Copiar mensagem</button>
+            <button type="button" class="btn btn-outline btn-sm" id="ret-fechar">Fechar</button>
+          </div>
+          ${tel ? "" : '<div class="sub" style="margin-top:6px;">⚠️ Candidato sem WhatsApp válido no cadastro: o WhatsApp abre para você escolher o contato.</div>'}`;
+        ligar();
+        refazer();
+      };
+      const p$ = (sel) => painel.querySelector(sel);
+      const entrevista = () => {
+        if (!p$("#ret-data")) return null;
+        return { data: brParaIso(p$("#ret-data").value) || "", horario: p$("#ret-hora").value, formato: p$("#ret-formato").value, local: p$("#ret-local").value.trim() };
+      };
+      const refazer = () => {
+        p$("#ret-texto").value = montarRetorno(
+          tipo,
+          { nome: cand.nome, vaga: vaga.titulo || "", consultor: store.usuario.nome, linkVagas: `${location.origin}/vagas`, entrevista: entrevista() || {} },
+          modelos
+        );
+        editado = false;
+        p$("#ret-refazer-box").hidden = true;
+      };
+      const erro = (msg) => {
+        const box = p$("#ret-erro");
+        box.textContent = msg;
+        box.classList.toggle("hidden", !msg);
+      };
+      const ligar = () => {
+        painel.querySelectorAll("[data-tipo]").forEach((b) =>
+          b.addEventListener("click", () => {
+            tipo = b.dataset.tipo;
+            desenhar();
+          })
+        );
+        p$("#ret-texto").addEventListener("input", () => (editado = true));
+        p$("#ret-refazer").addEventListener("click", refazer);
+        p$("#ret-fechar").addEventListener("click", () => (painel.hidden = true));
+        // Mudou um dado da entrevista: refaz a mensagem (ou oferece refazer, se já foi editada à mão).
+        const aoMudar = () => (editado ? (p$("#ret-refazer-box").hidden = false) : refazer());
+        if (p$("#ret-data")) {
+          campoData(p$("#ret-data"));
+          ["#ret-data", "#ret-hora", "#ret-local"].forEach((sel) => p$(sel).addEventListener("input", aoMudar));
+          p$("#ret-formato").addEventListener("change", () => {
+            const presencial = p$("#ret-formato").value === "Presencial";
+            p$("#ret-local-rotulo").textContent = presencial ? "Endereço" : "Link da reunião (Meet, Zoom, Teams)";
+            p$("#ret-local").placeholder = presencial ? "Rua, número, bairro" : "https://meet.google.com/...";
+            aoMudar();
+          });
+        }
+        painel.querySelectorAll("[data-canal]").forEach((b) => b.addEventListener("click", () => enviar(b.dataset.canal)));
+      };
+
+      async function enviar(canal) {
+        erro("");
+        const t = info(tipo);
+        const texto = p$("#ret-texto").value.trim();
+        const e = entrevista();
+        if (!texto) return erro("A mensagem está vazia.");
+        if (e) {
+          if (!e.data) return erro("Informe a data da entrevista (dd/mm/aaaa).");
+          if (!e.horario) return erro("Informe o horário da entrevista.");
+        }
+        if (/\{[A-Z]+\}/.test(texto)) return erro("A mensagem ainda tem um marcador entre chaves (ex.: {ENTREVISTA}). Ajuste antes de enviar.");
+        const mover = p$("#ret-mover") && p$("#ret-mover").checked;
+        const motivo = p$("#ret-motivo") ? p$("#ret-motivo").value : "";
+        if (mover && t.fase === "Reprovado" && !motivo) return erro("Escolha o motivo da reprovação (fica só no registro interno).");
+
+        // Abre o WhatsApp/e-mail ANTES de gravar: navegadores bloqueiam janelas abertas depois de uma espera.
+        if (canal === "whatsapp") window.open(`https://wa.me/${tel}?text=${encodeURIComponent(texto)}`, "_blank", "noopener");
+        else if (canal === "email")
+          window.open(`mailto:${encodeURIComponent(cand.email)}?subject=${encodeURIComponent(`Processo seletivo — ${vaga.titulo || "Evoé Gestão & RH"}`)}&body=${encodeURIComponent(texto.replace(/\*/g, ""))}`, "_blank");
+        else {
+          try {
+            await navigator.clipboard.writeText(texto);
+          } catch (err) {
+            prompt("Copie a mensagem:", texto);
+          }
+        }
+        try {
+          Object.assign(cand, await api.post(`/api/candidatos/${cand.id}/retornos`, { tipo, canal, texto, entrevista: e }));
+          if (mover) Object.assign(cand, await api.post(`/api/candidatos/${cand.id}/fase`, { fase: t.fase, ...(motivo ? { motivo } : {}) }));
+          // As datas do formulário acompanham o que foi agendado (senão o "Salvar" voltaria a data antiga).
+          if ($("c-data-entrevista")) $("c-data-entrevista").value = cand.dataEntrevista ? dataBr(cand.dataEntrevista) : "";
+          if ($("c-data-entrevista-cliente")) $("c-data-entrevista-cliente").value = cand.dataEntrevistaCliente ? dataBr(cand.dataEntrevistaCliente) : "";
+          $("c-funil").innerHTML = blocoFunil(cand);
+          ligarFunil(cand);
+          carregar();
+          showToast(
+            `Retorno registrado${canal === "copiado" ? " e mensagem copiada" : ""}${mover ? ` · ${cand.nome} agora em "${cand.fase}"` : ""}.`,
+            "sucesso"
+          );
+        } catch (err) {
+          erro(`A mensagem foi aberta, mas o registro falhou: ${err.message}`);
+        }
+      }
+
+      painel.hidden = false;
+      desenhar();
+      painel.scrollIntoView({ block: "nearest" });
     }
 
     function ligarDisc(cand) {
@@ -712,7 +869,7 @@ function tagFase(c) {
   const titulo = fase === "Reprovado" && c.reprovacao ? `${c.reprovacao.motivo}${c.reprovacao.fase ? ` (na ${c.reprovacao.fase})` : ""}` : "";
   return `<span class="tag fase-tag fase-${classeFase(fase)}" title="${escapeHtml(titulo)}">${escapeHtml(fase)}</span>${
     fase === "Reprovado" && c.reprovacao ? `<div class="sub">${escapeHtml(c.reprovacao.motivo)}</div>` : ""
-  }`;
+  }${c.ultimoRetorno ? `<div class="sub" title="${escapeHtml(c.ultimoRetorno.rotulo)} — ${escapeHtml(c.ultimoRetorno.por)}">💬 retorno ${new Date(c.ultimoRetorno.em).toLocaleDateString("pt-BR")}</div>` : ""}`;
 }
 
 function seletorNota(id, valor) {
@@ -760,8 +917,9 @@ function blocoFunil(c) {
       ${!final ? `<button type="button" class="btn btn-danger btn-sm" id="funil-reprovar">❌ Reprovar${fase === "Recrutamento" || fase === "Triagem" ? " na triagem" : ""}</button>` : ""}
       ${!final ? '<button type="button" class="btn btn-outline btn-sm" data-ir="Desistiu" data-confirmar="1">Desistiu</button>' : ""}
       ${final ? `<button type="button" class="btn btn-outline btn-sm" data-ir="${escapeHtml((c.reprovacao && c.reprovacao.fase) || "Triagem")}" data-confirmar="1">↩ Reativar candidato</button>` : ""}
-      ${fase === "Reprovado" ? '<button type="button" class="btn btn-outline btn-sm" id="funil-devolutiva">Enviar devolutiva pelo WhatsApp</button>' : ""}
+      <button type="button" class="btn btn-secondary btn-sm" id="funil-retorno">💬 Retorno ao candidato</button>
     </div>
+    <div id="retorno-painel" class="retorno-painel" hidden></div>
     <div class="funil-reprovar hidden" id="funil-painel-reprovar">
       <div class="form-cols">
         <div class="form-row"><label>Motivo da reprovação</label><select id="funil-motivo"><option value="">Escolha...</option>${motivos.map((m) => `<option>${m}</option>`).join("")}</select></div>
@@ -770,6 +928,11 @@ function blocoFunil(c) {
       <button type="button" class="btn btn-danger btn-sm" id="funil-confirmar-reprovar">Confirmar reprovação</button>
     </div>
     ${c.faseMigradaDe ? `<div class="sub" style="margin-top:8px;">Etapa no modelo antigo: ${escapeHtml(c.faseMigradaDe)}</div>` : ""}
+    ${(c.retornos || []).length ? `<details style="margin-top:6px;"><summary class="sub">💬 Retornos enviados ao candidato (${c.retornos.length})</summary><ul class="funil-historico">${c.retornos
+      .slice()
+      .reverse()
+      .map((x) => `<li title="${escapeHtml(x.texto)}"><strong>${escapeHtml(x.rotulo)}</strong> · ${new Date(x.em).toLocaleString("pt-BR", { dateStyle: "short", timeStyle: "short" })} · ${escapeHtml(x.por)} · ${{ whatsapp: "WhatsApp", email: "e-mail", copiado: "mensagem copiada" }[x.canal] || ""}</li>`)
+      .join("")}</ul></details>` : ""}
     ${historico ? `<details style="margin-top:6px;"><summary class="sub">Histórico do funil</summary><ul class="funil-historico">${historico}</ul></details>` : ""}
   </div>`;
 }

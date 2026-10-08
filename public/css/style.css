@@ -691,3 +691,11 @@ table tr:hover td { background: #fafbfc; }
 @media (max-width: 420px) {
   .resumo-row, .kpi-row { grid-template-columns: 1fr; }
 }
+
+/* Retorno ao candidato (painel dentro do funil) */
+.retorno-painel { margin-top: 10px; background: white; border: 1px solid var(--border, #e3e6ee); border-radius: 10px; padding: 12px 14px; }
+.retorno-painel textarea { width: 100%; font-family: inherit; }
+.retorno-tipos { display: flex; flex-wrap: wrap; gap: 6px; margin: 4px 0 12px; }
+.retorno-tipo { border: 1px solid var(--border, #e3e6ee); background: var(--bg); border-radius: 999px; padding: 6px 12px; font-size: 13px; cursor: pointer; color: inherit; }
+.retorno-tipo.pos.ativo { background: var(--success-bg); border-color: var(--success); color: var(--success); font-weight: 600; }
+.retorno-tipo.neg.ativo { background: var(--danger-bg); border-color: var(--danger); color: var(--danger); font-weight: 600; }

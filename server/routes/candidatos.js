@@ -226,6 +226,48 @@ router.post("/:id/fase", requireAuth, (req, res) => {
   res.json(atualizado);
 });
 
+// ---------- Retorno ao candidato (convites, aprovação, devolutivas) ----------
+// Cada envio fica em "retornos" (quem, quando, canal, texto). Nos convites, a data da
+// entrevista vai para o campo da fase (Evoé ou cliente); a data anterior fica no registro.
+const TIPOS_RETORNO = {
+  convite_evoe: { rotulo: "Convite: entrevista com a Evoé", campoData: "dataEntrevista" },
+  convite_gestor: { rotulo: "Convite: entrevista com o gestor", campoData: "dataEntrevistaCliente" },
+  aprovado: { rotulo: "Aprovação pelo gestor" },
+  reprovado_evoe: { rotulo: "Devolutiva: não seguiu na Evoé" },
+  reprovado_gestor: { rotulo: "Devolutiva: não seguiu com o gestor" },
+};
+const CANAIS_RETORNO = ["whatsapp", "email", "copiado"];
+
+router.post("/:id/retornos", requireAuth, (req, res) => {
+  const candidato = db.findById("candidatos", req.params.id);
+  if (!candidato) return res.status(404).json({ erro: "Candidato não encontrado." });
+  if (!podeEditar(req, db.findById("vagas", candidato.vagaId))) {
+    return res.status(403).json({ erro: "Você só pode dar retorno a candidatos de vagas atribuídas a você." });
+  }
+  const b = req.body || {};
+  const tipo = TIPOS_RETORNO[b.tipo];
+  if (!tipo) return res.status(400).json({ erro: "Escolha a situação do retorno." });
+  const canal = CANAIS_RETORNO.includes(b.canal) ? b.canal : "copiado";
+  const texto = String(b.texto || "").trim().slice(0, 4000);
+  if (!texto) return res.status(400).json({ erro: "A mensagem está vazia." });
+
+  const registro = { id: db.newId(), tipo: b.tipo, rotulo: tipo.rotulo, canal, texto, em: new Date().toISOString(), por: req.consultor.nome, porId: req.consultor.id };
+  const dados = {};
+  if (tipo.campoData && b.entrevista && typeof b.entrevista === "object") {
+    const data = dataIso(b.entrevista.data);
+    if (b.entrevista.data && !data) return res.status(400).json({ erro: "Data da entrevista inválida (dd/mm/aaaa)." });
+    const t = (v, max) => String(v == null ? "" : v).trim().slice(0, max);
+    registro.entrevista = { data, horario: t(b.entrevista.horario, 5), formato: t(b.entrevista.formato, 20), local: t(b.entrevista.local, 300) };
+    if (data && data !== candidato[tipo.campoData]) {
+      registro.entrevista.dataAnterior = candidato[tipo.campoData] || null;
+      dados[tipo.campoData] = data;
+    }
+  }
+  dados.retornos = [...(candidato.retornos || []), registro].slice(-100);
+  dados.ultimoRetorno = { tipo: b.tipo, rotulo: tipo.rotulo, em: registro.em, por: registro.por };
+  res.json(db.update("candidatos", candidato.id, dados));
+});
+
 // ---------- Pareceres dos consultores (histórico com autor e data) ----------
 router.post("/:id/pareceres", requireAuth, (req, res) => {
   const candidato = db.findById("candidatos", req.params.id);

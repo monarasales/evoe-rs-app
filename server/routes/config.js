@@ -85,5 +85,31 @@ router.put("/mensagem-convite", requireAuth, requireGestor, (req, res) => {
   res.json({ modelo: salvo.modelo });
 });
 
+// Modelos do "Retorno ao candidato" (convites, aprovação, devolutivas). Só os tipos
+// alterados ficam salvos; os demais usam o texto padrão de public/js/retornoCandidato.js.
+const TIPOS_RETORNO = ["convite_evoe", "convite_gestor", "aprovado", "reprovado_evoe", "reprovado_gestor"];
+const paramRetorno = () => db.readCollection("parametros").find((p) => p.chave === "modelosRetorno");
+
+router.get("/modelos-retorno", requireAuth, (req, res) => {
+  const p = paramRetorno();
+  res.json({ modelos: (p && p.modelos) || {}, atualizadoPor: p ? p.atualizadoPor : null, atualizadoEm: p ? p.updatedAt : null });
+});
+
+router.put("/modelos-retorno/:tipo", requireAuth, requireGestor, (req, res) => {
+  const { tipo } = req.params;
+  if (!TIPOS_RETORNO.includes(tipo)) return res.status(400).json({ erro: "Tipo de retorno inválido." });
+  const modelo = String((req.body || {}).modelo || "").trim().slice(0, 3000);
+  if (modelo && tipo.startsWith("convite") && !modelo.includes("{ENTREVISTA}")) {
+    return res.status(400).json({ erro: "O convite precisa ter o marcador {ENTREVISTA} (data, horário e local)." });
+  }
+  const p = paramRetorno();
+  const modelos = { ...((p && p.modelos) || {}) };
+  if (modelo) modelos[tipo] = modelo;
+  else delete modelos[tipo]; // vazio = volta ao texto padrão
+  const dados = { modelos, atualizadoPor: req.consultor.nome };
+  const salvo = p ? db.update("parametros", p.id, dados) : db.insert("parametros", { chave: "modelosRetorno", ...dados });
+  res.json({ modelos: salvo.modelos });
+});
+
 module.exports = router;
 module.exports.getParamContratos = getParamContratos;

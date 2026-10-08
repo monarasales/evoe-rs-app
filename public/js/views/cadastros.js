@@ -2,6 +2,7 @@ import { api } from "../api.js";
 import { store, isGestor, showToast } from "../state.js";
 import { abrirModal, fecharModal } from "../modal.js";
 import { MODELO_PADRAO, MARCADORES, mensagemConvite, termosSensiveis } from "../mensagemVaga.js";
+import { TIPOS_RETORNO, MODELOS_RETORNO, MARCADORES_RETORNO, montarRetorno } from "../retornoCandidato.js";
 
 function escapeHtml(str) {
   const div = document.createElement("div");
@@ -277,6 +278,24 @@ export async function renderConfiguracoes(root) {
         <div id="mc-erro" class="form-erro hidden" style="margin-top:8px;"></div>
       </div>
 
+      <div class="section-title" style="margin-top:22px;">Mensagens de retorno ao candidato</div>
+      <div class="card" style="max-width:720px;">
+        <div class="sub" style="margin-bottom:10px;">
+          Textos usados no botão "💬 Retorno ao candidato" (tela do candidato). O consultor ainda pode ajustar
+          a mensagem antes de enviar. Marcadores que o sistema preenche:
+        </div>
+        <ul class="sub" style="margin:0 0 10px 18px;">${MARCADORES_RETORNO.map(([m, d]) => `<li><strong>${m}</strong> — ${d}</li>`).join("")}</ul>
+        <div class="form-row"><label>Situação</label><select id="mr-tipo">${TIPOS_RETORNO.map((t) => `<option value="${t.id}">${t.positivo ? "✅" : "❌"} ${t.rotulo}</option>`).join("")}</select></div>
+        <div class="form-row" style="margin-bottom:0;"><textarea id="mr-modelo" rows="14"></textarea></div>
+        <details style="margin-top:8px;"><summary class="sub">Pré-visualizar com um candidato de exemplo</summary><pre id="mr-previa" style="white-space:pre-wrap;"></pre></details>
+        <div id="mr-info" class="sub" style="margin-top:6px;"></div>
+        <div style="display:flex; gap:8px; flex-wrap:wrap; margin-top:8px;">
+          <button type="button" id="mr-salvar" class="btn btn-primary btn-sm">Salvar este modelo</button>
+          <button type="button" id="mr-restaurar" class="btn btn-outline btn-sm">Restaurar texto original</button>
+        </div>
+        <div id="mr-erro" class="form-erro hidden" style="margin-top:8px;"></div>
+      </div>
+
       <div class="section-title" style="margin-top:22px;">Endereço do Escritório</div>
       <div class="card" style="max-width:560px;">
         <div class="sub" style="margin-bottom:10px;">
@@ -345,6 +364,7 @@ export async function renderConfiguracoes(root) {
 
       configurarEscritorio(conteudo);
       configurarMensagemConvite(conteudo);
+      configurarModelosRetorno(conteudo);
 
       const statusEl = conteudo.querySelector("#backup-status");
       const erroBackup = conteudo.querySelector("#backup-erro");
@@ -386,6 +406,47 @@ export async function renderConfiguracoes(root) {
   }
 
   renderizarAba();
+}
+
+// ---------- Modelos de retorno ao candidato ----------
+function configurarModelosRetorno(conteudo) {
+  const $ = (id) => conteudo.querySelector(`#${id}`);
+  const caixa = $("mr-modelo");
+  let modelos = {};
+  const exemplo = {
+    nome: "Marcelo Souza",
+    vaga: "Assistente Administrativo",
+    consultor: (store.usuario && store.usuario.nome) || "",
+    linkVagas: `${location.origin}/vagas`,
+    entrevista: { data: new Date(Date.now() + 2 * 864e5).toISOString().slice(0, 10), horario: "15:00", formato: "Online", local: "https://meet.google.com/abc-defg-hij" },
+  };
+  const tipo = () => $("mr-tipo").value;
+  const previa = () => ($("mr-previa").textContent = montarRetorno(tipo(), exemplo, { [tipo()]: caixa.value }));
+  const mostrar = () => {
+    caixa.value = modelos[tipo()] || MODELOS_RETORNO[tipo()];
+    $("mr-info").textContent = modelos[tipo()] ? "Este modelo foi personalizado." : "Usando o texto original do sistema.";
+    previa();
+  };
+  caixa.addEventListener("input", previa);
+  $("mr-tipo").addEventListener("change", mostrar);
+  api.get("/api/config/modelos-retorno").then((r) => {
+    modelos = r.modelos || {};
+    mostrar();
+  });
+  const salvar = async (modelo, aviso) => {
+    const erro = $("mr-erro");
+    erro.classList.add("hidden");
+    try {
+      modelos = (await api.put(`/api/config/modelos-retorno/${tipo()}`, { modelo })).modelos || {};
+      mostrar();
+      showToast(aviso, "sucesso");
+    } catch (err) {
+      erro.textContent = err.message;
+      erro.classList.remove("hidden");
+    }
+  };
+  $("mr-salvar").addEventListener("click", () => salvar(caixa.value.trim() === MODELOS_RETORNO[tipo()] ? "" : caixa.value, "Modelo salvo."));
+  $("mr-restaurar").addEventListener("click", () => salvar("", "Texto original restaurado."));
 }
 
 // ---------- Mensagem padrão de convite ao candidato ----------
