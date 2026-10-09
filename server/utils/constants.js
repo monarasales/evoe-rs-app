@@ -91,7 +91,19 @@ const SERVICOS_PROSPECT = [
   "Pesquisa de Clima",
   "Outro",
 ];
-const ETAPAS_PROSPECT = ["Novo", "Em Contato", "Proposta Enviada", "Fechado", "Perdido"];
+// Funil comercial. "Negociação" foi acrescentada depois; as etapas antigas continuam válidas.
+const ETAPAS_PROSPECT = ["Novo", "Em Contato", "Proposta Enviada", "Negociação", "Fechado", "Perdido"];
+const ORIGENS_PROSPECT = ["WhatsApp", "Indicação", "Instagram", "Site", "LinkedIn", "Google", "Evento", "Cliente antigo", "Outro"];
+const TEMPERATURAS_PROSPECT = ["Quente", "Morno", "Frio"];
+const MOTIVOS_PERDA_PROSPECT = [
+  "Preço / orçamento",
+  "Fechou com outra consultoria",
+  "Vai contratar por conta própria",
+  "Desistiu / adiou a contratação",
+  "Sem retorno do contato",
+  "Prazo não atendia",
+  "Outro",
+];
 
 // Supervisora: mesmo nível de acesso do Gestor para o Funil de Vagas (criar, editar,
 // mover, atribuir a qualquer consultor, colocar em Stand By, excluir) e para o Dashboard
@@ -158,6 +170,9 @@ module.exports = {
   PERFIS_ACESSO,
   SERVICOS_PROSPECT,
   ETAPAS_PROSPECT,
+  ORIGENS_PROSPECT,
+  TEMPERATURAS_PROSPECT,
+  MOTIVOS_PERDA_PROSPECT,
   DIAS_ALERTA_PRAZO,
   SLA_DIAS_IDEAL,
   SLA_DIAS_LIMITE,

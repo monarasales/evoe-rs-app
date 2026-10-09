@@ -103,6 +103,7 @@ app.use((err, req, res, next) => {
 
 startDeadlineChecker(60);
 startContratoChecker(60);
+require("./utils/prospectChecker").startProspectChecker(60);
 startBackupDiario(60);
 require("./utils/npsPesquisas").startLembretesNps(60);
 

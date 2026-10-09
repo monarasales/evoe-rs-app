@@ -28,6 +28,11 @@ explicar tudo em português simples, sem jargão.
 - `server/routes/` — uma rota REST por módulo (vagas, candidatos, contratos, ponto...)
 - `server/utils/` — regras de negócio (prazos, notificações, contratos PDF/DOCX, e-mail)
 - `server/middleware/auth.js` — sessão e perfis (Gestor vê tudo)
+- CRM › Prospects (`public/js/views/crmProspects.js`, `server/routes/prospects.js`): funil por etapa (arrastar muda a
+  etapa; "Negociação" acrescentada), indicadores, origem, cargos, valor da proposta, temperatura, motivo de perda,
+  `interacoes` (histórico de contatos), `historicoEtapas`, "virar cliente" (`POST /:id/converter` cria/usa empresa),
+  importação em lote (`POST /importar`, não duplica telefone: só preenche vazios + interação) e lembrete diário de
+  follow-up ao Gestor (`utils/prospectChecker.js`, parametros chave "avisoFollowUp").
 - DADOS SENSÍVEIS só do Gestor: Contratos (rota inteira `router.use(requireGestor)` + menu + tela), Financeiro, CRM, NPS.
   Para os demais perfis, `/api/empresas` devolve só nome/segmento/contato (sem CNPJ, endereço, representante legal)
   e `/api/vagas` omite os campos de comissão (`comissaoPaga*`). Os dados continuam intactos no banco.
