@@ -430,7 +430,7 @@
         <label for="nome">Nome completo</label><input type="text" id="nome" autocomplete="name" required />
         <div class="linha">
           <div><label for="email">E-mail</label><input type="email" id="email" autocomplete="email" required /></div>
-          <div><label for="telefone">Telefone / WhatsApp</label><input type="tel" id="telefone" autocomplete="tel" inputmode="numeric" maxlength="15" placeholder="(85) 90000-0000" required /></div>
+          <div><label for="telefone">Telefone / WhatsApp</label><input type="tel" id="telefone" autocomplete="tel-national" inputmode="numeric" maxlength="20" placeholder="(85) 90000-0000" required /></div>
         </div>
         ${pedirArea ? '<label for="area">Área ou cargo de interesse</label><input type="text" id="area" placeholder="ex.: Administrativo, Financeiro, Vendas, Atendimento" />' : ""}
         <div class="linha">
@@ -473,7 +473,10 @@
 
     const $ = (id) => document.getElementById(id);
     $("telefone").addEventListener("input", (e) => {
-      const d = e.target.value.replace(/\D/g, "").slice(0, 11);
+      // +55 digitado (ou preenchido pelo navegador) não pode cortar o final do número.
+      let d = e.target.value.replace(/\D/g, "").replace(/^0+/, "");
+      if (d.length > 11 && d.startsWith("55")) d = d.slice(2);
+      d = d.slice(0, 11);
       e.target.value =
         d.length <= 2 ? (d ? `(${d}` : "") : d.length <= 6 ? `(${d.slice(0, 2)}) ${d.slice(2)}` : d.length <= 10 ? `(${d.slice(0, 2)}) ${d.slice(2, 6)}-${d.slice(6)}` : `(${d.slice(0, 2)}) ${d.slice(2, 7)}-${d.slice(7)}`;
     });

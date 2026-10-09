@@ -117,9 +117,26 @@ export function tipoSugerido(c = {}) {
   return "convite_evoe";
 }
 
+/**
+ * Lê o telefone como foi gravado (com ou sem +55, zero na frente, dois números colados)
+ * e devolve { numero: DDD+número (10/11 dígitos) ou "", problema: texto ou "" }.
+ * "incompleto" = 11 dígitos começando com 55 mas sem o 9 do celular: o candidato digitou
+ * +55 e o formulário antigo cortou os últimos dígitos (não dá para recuperar).
+ */
+export function lerTelefone(tel) {
+  let d = String(tel || "").replace(/\D/g, "").replace(/^0+/, "");
+  if (!d) return { numero: "", problema: "" };
+  if (d.length >= 12 && d.startsWith("55")) d = d.slice(2);
+  if (d.length > 11) d = d.slice(0, d[2] === "9" ? 11 : 10); // dois números colados: usa o primeiro
+  if (d.length === 11 && d[2] !== "9") {
+    return { numero: "", problema: d.startsWith("55") ? "Número incompleto (o +55 entrou no lugar do DDD e o final foi cortado). Fale por e-mail e peça o número correto." : "Número inválido." };
+  }
+  if (d.length < 10) return { numero: "", problema: "Número sem DDD ou incompleto." };
+  return { numero: d, problema: "" };
+}
+
 /** Telefone para o wa.me (com DDI 55) ou "" se inválido. */
 export function telefoneWhatsapp(tel) {
-  const d = String(tel || "").replace(/\D/g, "");
-  if (d.length < 10) return "";
-  return d.startsWith("55") && d.length >= 12 ? d : `55${d}`;
+  const { numero } = lerTelefone(tel);
+  return numero ? `55${numero}` : "";
 }

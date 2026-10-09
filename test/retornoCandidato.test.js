@@ -49,3 +49,15 @@ test("situação sugerida pela fase e telefone do WhatsApp", async () => {
   assert.equal(telefoneWhatsapp("5585988620412"), "5585988620412");
   assert.equal(telefoneWhatsapp("85"), "");
 });
+
+test("telefone: +55, zero na frente, números colados e número cortado pelo +55", async () => {
+  const { lerTelefone, telefoneWhatsapp } = await carregar();
+  assert.equal(telefoneWhatsapp("+55 (85) 99247-0160"), "5585992470160");
+  assert.equal(telefoneWhatsapp("558596314223"), "558596314223"); // fixo/antigo com 55
+  assert.equal(telefoneWhatsapp("085 99247-0160"), "5585992470160");
+  assert.equal(telefoneWhatsapp("8598410646585996774779"), "5585984106465");
+  assert.equal(telefoneWhatsapp("(55) 99123-4567"), "5555991234567"); // DDD 55 (RS) de verdade
+  assert.equal(telefoneWhatsapp("(55) 75998-7021"), "");
+  assert.match(lerTelefone("(55) 85987-2338").problema, /incompleto/);
+  assert.equal(lerTelefone("").problema, "");
+});

@@ -10,7 +10,18 @@ import { store, showToast, podeGerenciarVagas } from "../state.js";
 import { abrirModal, fecharModal } from "../modal.js";
 import { criarCombobox } from "../combobox.js";
 import { campoData, brParaIso, dataBr } from "../pontoUtil.js";
-import { TIPOS_RETORNO, montarRetorno, tipoSugerido, telefoneWhatsapp } from "../retornoCandidato.js";
+import { TIPOS_RETORNO, montarRetorno, tipoSugerido, telefoneWhatsapp, lerTelefone, primeiroNome } from "../retornoCandidato.js";
+
+/** Botão "conversar no WhatsApp" ao lado do telefone (já com uma saudação; o recrutador completa). */
+function botaoWhatsapp(c, vaga) {
+  const { numero, problema } = lerTelefone(c.telefone);
+  if (problema) return ` <span class="tel-alerta" title="${escapeHtml(problema)}">⚠️ número incompleto</span>`;
+  if (!numero) return "";
+  const eu = primeiroNome(store.usuario && store.usuario.nome);
+  const texto = `Olá, ${primeiroNome(c.nome)}! Tudo bem? ${eu ? `Aqui é ${eu}, da` : "Aqui é da"} Evoé Gestão & RH${vaga ? `, sobre a vaga de ${vaga.titulo}` : ""}.`;
+  return ` <a class="btn-whats" href="https://wa.me/55${numero}?text=${encodeURIComponent(texto)}" target="_blank" rel="noopener" title="Conversar no WhatsApp">${ICONE_WHATS} WhatsApp</a>`;
+}
+const ICONE_WHATS = '<svg viewBox="0 0 24 24" width="14" height="14" aria-hidden="true"><path fill="currentColor" d="M12 2a10 10 0 0 0-8.6 15.1L2 22l5-1.3A10 10 0 1 0 12 2Zm0 18.2a8.2 8.2 0 0 1-4.2-1.2l-.3-.2-3 .8.8-2.9-.2-.3A8.2 8.2 0 1 1 12 20.2Zm4.5-6.1c-.2-.1-1.5-.7-1.7-.8s-.4-.1-.6.1-.7.8-.8 1-.3.2-.5.1a6.7 6.7 0 0 1-3.3-2.9c-.3-.4.2-.4.7-1.3a.4.4 0 0 0 0-.4l-.8-1.8c-.2-.5-.4-.4-.6-.4h-.5a1 1 0 0 0-.7.3 3 3 0 0 0-.9 2.2 5.2 5.2 0 0 0 1.1 2.7 11.8 11.8 0 0 0 4.5 4c1.7.7 2.3.8 3.2.6a2.7 2.7 0 0 0 1.8-1.2 2.2 2.2 0 0 0 .1-1.2c0-.1-.2-.2-.4-.3Z"/></svg>';
 
 // Modelos de retorno editados em Configurações (carregados uma vez por sessão).
 let modelosRetorno = null;
@@ -35,7 +46,10 @@ const ENCERRADA = (v) => /^1[12]\./.test(v.etapaAtual || "");
 const ORIGENS = ["", "Link da vaga", "LinkedIn", "Indicação", "Banco de talentos", "Site / formulário", "Instagram", "WhatsApp", "Outra"];
 
 function telefoneMascara(valor) {
-  const d = String(valor || "").replace(/\D/g, "").slice(0, 11);
+  // Quem digita +55 (ou o navegador preenche assim) não perde o final do número.
+  let d = String(valor || "").replace(/\D/g, "").replace(/^0+/, "");
+  if (d.length > 11 && d.startsWith("55")) d = d.slice(2);
+  d = d.slice(0, 11);
   if (d.length <= 2) return d.length ? `(${d}` : "";
   if (d.length <= 6) return `(${d.slice(0, 2)}) ${d.slice(2)}`;
   if (d.length <= 10) return `(${d.slice(0, 2)}) ${d.slice(2, 6)}-${d.slice(6)}`;
@@ -166,7 +180,7 @@ export async function renderCandidatos(root, params) {
               const nPareceres = (c.pareceres || []).length + ((c.parecerComportamental || "").trim() ? 1 : 0);
               return `
             <tr data-id="${c.id}">
-              <td><strong>${escapeHtml(c.nome)}</strong>${c.inscritoPeloLink ? ' <span class="tag tag-prospect-contato" title="Inscrito pelo link da vaga">link</span>' : ""}<div class="sub">${escapeHtml([c.telefone, c.email].filter(Boolean).join(" · "))}</div></td>
+              <td><strong>${escapeHtml(c.nome)}</strong>${c.inscritoPeloLink ? ' <span class="tag tag-prospect-contato" title="Inscrito pelo link da vaga">link</span>' : ""}<div class="sub">${c.telefone ? `${escapeHtml(c.telefone)}${botaoWhatsapp(c, v)}` : ""}${c.telefone && c.email ? " · " : ""}${escapeHtml(c.email || "")}</div></td>
               <td>${v ? `${escapeHtml(empresaNome(v.empresaId))}<div class="sub">${escapeHtml(v.titulo)}</div>` : !c.vagaId ? `<span class="tag tag-standby">Banco de talentos</span>${c.areaInteresse ? `<div class="sub">${escapeHtml(c.areaInteresse)}</div>` : ""}` : "—"}</td>
               <td>${tagFase(c)}</td>
               <td>${c.disc ? `<span class="tag disc-tag disc-${c.disc.resultado.primario}" title="Perfil DISC">${escapeHtml(c.disc.resultado.perfil)}</span>` : c.discToken ? '<span class="sub" title="Link do teste enviado, aguardando resposta">⏳</span>' : '<span class="sub">—</span>'}</td>
@@ -227,7 +241,7 @@ export async function renderCandidatos(root, params) {
         <div class="form-row"><label>Nome completo *</label><input type="text" id="c-nome" value="${v("nome")}" /></div>
         <div class="form-cols">
           <div class="form-row"><label>E-mail</label><input type="email" id="c-email" value="${v("email")}" /></div>
-          <div class="form-row"><label>Telefone / WhatsApp</label><input type="tel" id="c-telefone" inputmode="numeric" maxlength="15" placeholder="(85) 90000-0000" value="${v("telefone")}" /></div>
+          <div class="form-row"><label>Telefone / WhatsApp</label><input type="tel" id="c-telefone" inputmode="numeric" maxlength="20" placeholder="(85) 90000-0000" value="${v("telefone")}" /><div class="sub" id="c-tel-whats" style="margin-top:4px;"></div></div>
         </div>
         <div class="form-cols">
           <div class="form-row"><label>CPF</label><input type="text" id="c-cpf" inputmode="numeric" maxlength="14" placeholder="000.000.000-00" value="${v("cpf")}" /></div>
@@ -333,7 +347,12 @@ export async function renderCandidatos(root, params) {
       erroBox.classList.remove("hidden");
       erroBox.scrollIntoView({ block: "nearest" });
     };
-    $("c-telefone").addEventListener("input", (e) => (e.target.value = telefoneMascara(e.target.value)));
+    const atualizarWhats = () => ($("c-tel-whats").innerHTML = botaoWhatsapp({ ...c, telefone: $("c-telefone").value }, vagaPorId(c.vagaId)).trim());
+    $("c-telefone").addEventListener("input", (e) => {
+      e.target.value = telefoneMascara(e.target.value);
+      atualizarWhats();
+    });
+    atualizarWhats();
     $("c-cpf").addEventListener("input", (e) => {
       const d = e.target.value.replace(/\D/g, "").slice(0, 11);
       e.target.value = d.replace(/(\d{3})(\d)/, "$1.$2").replace(/(\d{3})(\d)/, "$1.$2").replace(/(\d{3})(\d{1,2})$/, "$1-$2");
