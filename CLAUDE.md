@@ -28,6 +28,9 @@ explicar tudo em português simples, sem jargão.
 - `server/routes/` — uma rota REST por módulo (vagas, candidatos, contratos, ponto...)
 - `server/utils/` — regras de negócio (prazos, notificações, contratos PDF/DOCX, e-mail)
 - `server/middleware/auth.js` — sessão e perfis (Gestor vê tudo)
+- DADOS SENSÍVEIS só do Gestor: Contratos (rota inteira `router.use(requireGestor)` + menu + tela), Financeiro, CRM, NPS.
+  Para os demais perfis, `/api/empresas` devolve só nome/segmento/contato (sem CNPJ, endereço, representante legal)
+  e `/api/vagas` omite os campos de comissão (`comissaoPaga*`). Os dados continuam intactos no banco.
 - VAGAS: qualquer consultor edita qualquer vaga (dados, etapa, página, link, mensagem) — eles alinham o perfil
   com o cliente. Excluir: só gestão (Gestor/Supervisora) ou o responsável. Trocar o responsável: só gestão.
   Qualquer consultor CRIA vaga; cliente novo pelo "＋ Cliente novo" do formulário (`POST /api/empresas/rapido`:

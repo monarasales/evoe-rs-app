@@ -8,14 +8,20 @@ const router = express.Router();
 // Consultar empresas: todos com login (o Funil e os Candidatos precisam do nome da
 // empresa de cada vaga). Criar, editar e excluir: só o Gestor (área Comercial/CRM).
 
+// Consultores veem só o necessário para conduzir a vaga (nome e contato). CNPJ, endereço
+// e representante legal são dados de contrato: só o Gestor recebe.
+const CAMPOS_CONSULTOR = ["id", "nome", "segmento", "contatoResponsavel", "emailContato", "whatsappContato", "cadastroRapido"];
+const paraPerfil = (req, e) =>
+  req.consultor.perfil === "Gestor" ? e : Object.fromEntries(CAMPOS_CONSULTOR.filter((k) => e[k] !== undefined).map((k) => [k, e[k]]));
+
 router.get("/", (req, res) => {
-  res.json(db.readCollection("empresas"));
+  res.json(db.readCollection("empresas").map((e) => paraPerfil(req, e)));
 });
 
 router.get("/:id", (req, res) => {
   const empresa = db.findById("empresas", req.params.id);
   if (!empresa) return res.status(404).json({ erro: "Empresa não encontrada." });
-  res.json(empresa);
+  res.json(paraPerfil(req, empresa));
 });
 
 // Cadastro rápido de cliente pelo consultor, direto na tela da vaga (o CRM continua só
@@ -36,7 +42,7 @@ router.post("/rapido", (req, res) => {
   const nome = t(b.nome, 150);
   if (nome.length < 2) return res.status(400).json({ erro: "Informe o nome da empresa." });
   const existente = db.readCollection("empresas").find((e) => normalizarNome(e.nome) === normalizarNome(nome));
-  if (existente) return res.json({ ...existente, jaExistia: true });
+  if (existente) return res.json({ ...paraPerfil(req, existente), jaExistia: true });
   const empresa = db.insert("empresas", {
     nome,
     cnpj: "",
@@ -59,7 +65,7 @@ router.post("/rapido", (req, res) => {
         mensagem: `${req.consultor.nome} cadastrou o cliente "${nome}" ao abrir uma vaga. Complete os dados comerciais (CNPJ, endereço, representante legal) no CRM.`,
       })
     );
-  res.status(201).json(empresa);
+  res.status(201).json(paraPerfil(req, empresa));
 });
 
 router.post("/", requireGestor, (req, res) => {

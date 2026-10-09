@@ -9,6 +9,23 @@ const { normalizarPagina, TIPOS_CONTRATACAO, MODELOS_TRABALHO, FREQUENCIAS, gera
 
 const router = express.Router();
 
+// Comissão paga ao consultor é dado do Financeiro: não sai nas respostas para quem não é Gestor.
+const CAMPOS_FINANCEIROS = ["comissaoPaga", "comissaoPagaEm", "comissaoPagaPorId"];
+const semFinanceiro = (v) => {
+  if (!v || typeof v !== "object") return v;
+  if (Array.isArray(v)) return v.map(semFinanceiro);
+  const copia = { ...v };
+  CAMPOS_FINANCEIROS.forEach((k) => delete copia[k]);
+  return copia;
+};
+router.use((req, res, next) => {
+  if (req.consultor && req.consultor.perfil !== "Gestor") {
+    const json = res.json.bind(res);
+    res.json = (corpo) => json(semFinanceiro(corpo));
+  }
+  next();
+});
+
 // Todos os consultores editam as vagas (fazem o alinhamento de perfil com o cliente e
 // atualizam a divulgação). Só a gestão ou o responsável pela vaga podem EXCLUÍ-LA, e só a
 // gestão troca o consultor responsável. Toda edição fica em vaga.historicoEdicoes.

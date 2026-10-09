@@ -10,6 +10,9 @@ const { getParamContratos } = require("./config");
 
 const router = express.Router();
 
+// Contratos são dados sensíveis (valores, CPF/CNPJ, cobranças): toda a área é só do Gestor.
+router.use(requireAuth, requireGestor);
+
 function comDetalhes(contrato) {
   const empresa = db.findById("empresas", contrato.empresaId);
   const vaga = db.findById("vagas", contrato.vagaId);

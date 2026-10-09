@@ -60,7 +60,7 @@ const NAV_SECOES = [
   {
     titulo: "Administração",
     itens: [
-      { href: "#/contratos", label: "Contratos", icone: "📝" },
+      { href: "#/contratos", label: "Contratos", icone: "📝", somenteGestor: true },
       { href: "#/configuracoes", label: "Configurações", icone: "⚙️" },
     ],
   },

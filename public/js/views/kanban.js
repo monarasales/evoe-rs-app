@@ -374,7 +374,7 @@ export async function renderKanban(root) {
             <input type="number" id="v-salario" min="0" step="0.01" value="${editando ? (vaga.salario || "") : ""}" ${podeEditar ? "" : "disabled"} />
           </div>
         </div>
-        <div class="sub" style="margin-top:-6px;">Usado para calcular o valor do contrato quando os honorários forem cobrados em % sobre o salário (tela Financeiro).</div>
+        ${isGestor() ? '<div class="sub" style="margin-top:-6px;">Usado para calcular o valor do contrato quando os honorários forem cobrados em % sobre o salário (tela Financeiro).</div>' : ""}
         <div class="form-row">
           <label>Perfil da vaga (requisitos e cultura)</label>
           <textarea id="v-perfil" ${podeEditar ? "" : "disabled"}>${editando ? escapeHtml(vaga.perfilVaga || "") : ""}</textarea>

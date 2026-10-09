@@ -37,6 +37,10 @@ function formatarReal(valor) {
 }
 
 export async function renderContratos(root) {
+  if (!isGestor()) {
+    root.innerHTML = '<div class="empty-state">Contratos são dados sensíveis e ficam disponíveis apenas para o perfil Gestor.</div>';
+    return;
+  }
   root.innerHTML = `
     <div class="view-header">
       <div>
