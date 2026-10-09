@@ -90,7 +90,7 @@ export async function renderCrm(root) {
             .map(
               (e) => `
             <tr data-id="${e.id}">
-              <td>${escapeHtml(e.nome)}</td>
+              <td>${escapeHtml(e.nome)}${e.cadastroRapido && !e.cnpj ? `<div class="sub" title="Cadastrada na tela da vaga">⚡ cadastro rápido por ${escapeHtml(e.cadastroRapido.por)} — completar dados</div>` : ""}</td>
               <td>${escapeHtml(e.segmento)}</td>
               <td>${escapeHtml(e.contatoResponsavel)}</td>
               <td>${escapeHtml(e.emailContato)}</td>

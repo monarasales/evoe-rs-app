@@ -331,6 +331,7 @@ export async function renderDashboard(root) {
     const temFechamento = dados.tempoMedioFechamentoDias > 0;
     const resumo = dados.resumoOperacional || {};
 
+    if (!document.getElementById("resumo-row")) return; // saiu da tela antes de carregar
     document.getElementById("resumo-row").innerHTML = `
       <div class="resumo-card resumo-aberto clicavel" data-indicador="aberto" title="Clique para ver a lista">
         <div class="resumo-icone">🗂️</div>

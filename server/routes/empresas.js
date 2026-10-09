@@ -1,6 +1,7 @@
 const express = require("express");
 const db = require("../db");
 const { requireGestor } = require("../middleware/auth");
+const { notify } = require("../utils/notify");
 
 const router = express.Router();
 
@@ -15,6 +16,50 @@ router.get("/:id", (req, res) => {
   const empresa = db.findById("empresas", req.params.id);
   if (!empresa) return res.status(404).json({ erro: "Empresa não encontrada." });
   res.json(empresa);
+});
+
+// Cadastro rápido de cliente pelo consultor, direto na tela da vaga (o CRM continua só
+// do Gestor). Só nome e contato — nada comercial. Nome já existente não duplica: devolve
+// a empresa cadastrada. A gestão é avisada para completar os dados no CRM.
+const normalizarNome = (s) =>
+  String(s || "")
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase()
+    .replace(/\b(ltda|me|epp|eireli|s\/?a)\b/g, "")
+    .replace(/[^a-z0-9]+/g, " ")
+    .trim();
+
+router.post("/rapido", (req, res) => {
+  const b = req.body || {};
+  const t = (v, max) => String(v == null ? "" : v).trim().slice(0, max);
+  const nome = t(b.nome, 150);
+  if (nome.length < 2) return res.status(400).json({ erro: "Informe o nome da empresa." });
+  const existente = db.readCollection("empresas").find((e) => normalizarNome(e.nome) === normalizarNome(nome));
+  if (existente) return res.json({ ...existente, jaExistia: true });
+  const empresa = db.insert("empresas", {
+    nome,
+    cnpj: "",
+    endereco: "",
+    segmento: "",
+    contatoResponsavel: t(b.contatoResponsavel, 120),
+    emailContato: t(b.emailContato, 160).toLowerCase(),
+    whatsappContato: t(b.whatsappContato, 20),
+    representanteLegalNome: "",
+    representanteLegalCpf: "",
+    cadastroRapido: { por: req.consultor.nome, porId: req.consultor.id, em: new Date().toISOString() },
+  });
+  db.readCollection("consultores")
+    .filter((c) => c.perfil === "Gestor" && c.ativo !== false && c.id !== req.consultor.id)
+    .forEach((g) =>
+      notify({
+        tipo: "Novo cliente",
+        destinatarioId: g.id,
+        assunto: `Novo cliente cadastrado: ${nome}`,
+        mensagem: `${req.consultor.nome} cadastrou o cliente "${nome}" ao abrir uma vaga. Complete os dados comerciais (CNPJ, endereço, representante legal) no CRM.`,
+      })
+    );
+  res.status(201).json(empresa);
 });
 
 router.post("/", requireGestor, (req, res) => {

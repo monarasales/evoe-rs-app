@@ -30,6 +30,8 @@ explicar tudo em português simples, sem jargão.
 - `server/middleware/auth.js` — sessão e perfis (Gestor vê tudo)
 - VAGAS: qualquer consultor edita qualquer vaga (dados, etapa, página, link, mensagem) — eles alinham o perfil
   com o cliente. Excluir: só gestão (Gestor/Supervisora) ou o responsável. Trocar o responsável: só gestão.
+  Qualquer consultor CRIA vaga; cliente novo pelo "＋ Cliente novo" do formulário (`POST /api/empresas/rapido`:
+  só nome/contato, não duplica nome, marca `cadastroRapido` e avisa o Gestor). O CRM completo segue só do Gestor.
   Toda edição vai para `vaga.historicoEdicoes` (quem/quando/o quê) e avisa o responsável quando é outra pessoa.
 - `public/js/views/` — uma tela por arquivo; `public/js/api.js` faz as chamadas à API
 

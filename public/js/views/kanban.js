@@ -2,6 +2,7 @@ import { api } from "../api.js";
 import { store, podeGerenciarVagas, showToast, nomeEmpresa, nomeConsultor, formatarData, consultoresDeVagas, isGestor } from "../state.js";
 import { abrirModal, fecharModal } from "../modal.js";
 import { navegarPara } from "../router.js";
+import { criarCombobox } from "../combobox.js";
 import { abrirEditorPagina, progressoPagina } from "./vagaPagina.js";
 import { mensagemConvite, termosSensiveis } from "../mensagemVaga.js";
 
@@ -331,9 +332,18 @@ export async function renderKanban(root) {
         <div class="form-cols">
           <div class="form-row">
             <label>Empresa</label>
-            <select id="v-empresa" required ${podeEditar ? "" : "disabled"}>
-              ${store.empresas.map((e) => `<option value="${e.id}" ${editando && vaga.empresaId === e.id ? "selected" : ""}>${e.nome}</option>`).join("")}
-            </select>
+            <div id="v-empresa"></div>
+            <button type="button" class="link-btn" id="v-empresa-nova" style="margin-top:4px;">＋ Cliente novo? Cadastrar aqui</button>
+            <div id="v-empresa-form" class="empresa-rapida" hidden>
+              <div class="form-row"><label>Nome da empresa *</label><input type="text" id="er-nome" maxlength="150" /></div>
+              <div class="form-row"><label>Contato responsável</label><input type="text" id="er-contato" maxlength="120" /></div>
+              <div class="form-cols">
+                <div class="form-row"><label>WhatsApp</label><input type="tel" id="er-whats" maxlength="20" placeholder="(85) 90000-0000" /></div>
+                <div class="form-row"><label>E-mail</label><input type="email" id="er-email" maxlength="160" /></div>
+              </div>
+              <div class="sub" style="margin-bottom:8px;">Os dados comerciais (CNPJ, endereço, contrato) a gestão completa depois no CRM.</div>
+              <div class="link-acoes"><button type="button" class="btn btn-secondary btn-sm" id="er-salvar">Cadastrar cliente</button><button type="button" class="btn btn-outline btn-sm" id="er-cancelar">Cancelar</button></div>
+            </div>
           </div>
           <div class="form-row">
             <label>Consultor responsável</label>
@@ -409,6 +419,50 @@ export async function renderKanban(root) {
 
     document.getElementById("btn-cancelar").addEventListener("click", fecharModal);
 
+    // Empresa: busca por nome (lista grande) + cadastro rápido de cliente novo por qualquer consultor.
+    let empresaId = editando ? vaga.empresaId : "";
+    const montarEmpresas = () =>
+      criarCombobox(document.getElementById("v-empresa"), {
+        opcoes: store.empresas.map((e) => ({ valor: e.id, rotulo: e.nome })),
+        valor: empresaId,
+        placeholder: "Digite o nome da empresa...",
+        aoEscolher: (v) => (empresaId = v),
+      });
+    montarEmpresas();
+    const formEmpresa = document.getElementById("v-empresa-form");
+    document.getElementById("v-empresa-nova").addEventListener("click", () => {
+      formEmpresa.hidden = !formEmpresa.hidden;
+      if (!formEmpresa.hidden) {
+        const digitado = document.querySelector("#v-empresa .combo-input").value.trim();
+        if (digitado && !store.empresas.some((e) => e.nome === digitado)) document.getElementById("er-nome").value = digitado;
+        document.getElementById("er-nome").focus();
+      }
+    });
+    document.getElementById("er-cancelar").addEventListener("click", () => (formEmpresa.hidden = true));
+    formEmpresa.addEventListener("keydown", (ev) => {
+      if (ev.key === "Enter") {
+        ev.preventDefault(); // Enter aqui cadastra o cliente, não salva a vaga
+        document.getElementById("er-salvar").click();
+      }
+    });
+    document.getElementById("er-salvar").addEventListener("click", async () => {
+      try {
+        const nova = await api.post("/api/empresas/rapido", {
+          nome: document.getElementById("er-nome").value,
+          contatoResponsavel: document.getElementById("er-contato").value,
+          whatsappContato: document.getElementById("er-whats").value,
+          emailContato: document.getElementById("er-email").value,
+        });
+        if (!store.empresas.some((e) => e.id === nova.id)) store.empresas.push(nova);
+        empresaId = nova.id;
+        montarEmpresas();
+        formEmpresa.hidden = true;
+        showToast(nova.jaExistia ? `"${nova.nome}" já estava cadastrada — selecionada na vaga.` : `Cliente "${nova.nome}" cadastrado e selecionado.`, "sucesso");
+      } catch (err) {
+        showToast(err.message, "erro");
+      }
+    });
+
     if (editando && podeEditar) {
       ligarLinkInscricao(vaga);
       if (vaga.etapaAtual === "11. Aprovado") carregarNpsDaVaga(vaga);
@@ -461,7 +515,7 @@ export async function renderKanban(root) {
       e.preventDefault();
       const payload = {
         titulo: document.getElementById("v-titulo").value.trim(),
-        empresaId: document.getElementById("v-empresa").value,
+        empresaId,
         consultorId: document.getElementById("v-consultor").value,
         dataAbertura: document.getElementById("v-abertura").value,
         prazoFechamento: document.getElementById("v-prazo").value,
@@ -472,6 +526,11 @@ export async function renderKanban(root) {
       };
       const erroBox = document.getElementById("vaga-form-erro");
       erroBox.classList.add("hidden");
+      if (!empresaId) {
+        erroBox.textContent = 'Escolha a empresa da vaga (ou cadastre em "＋ Cliente novo").';
+        erroBox.classList.remove("hidden");
+        return;
+      }
       try {
         if (editando) {
           await api.patch(`/api/vagas/${vaga.id}`, payload);

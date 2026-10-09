@@ -699,3 +699,6 @@ table tr:hover td { background: #fafbfc; }
 .retorno-tipo { border: 1px solid var(--border, #e3e6ee); background: var(--bg); border-radius: 999px; padding: 6px 12px; font-size: 13px; cursor: pointer; color: inherit; }
 .retorno-tipo.pos.ativo { background: var(--success-bg); border-color: var(--success); color: var(--success); font-weight: 600; }
 .retorno-tipo.neg.ativo { background: var(--danger-bg); border-color: var(--danger); color: var(--danger); font-weight: 600; }
+
+/* Cadastro rápido de cliente na tela da vaga */
+.empresa-rapida { margin-top: 8px; background: var(--bg); border: 1px solid var(--border); border-radius: 8px; padding: 10px 12px; }
