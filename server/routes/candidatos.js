@@ -1,7 +1,7 @@
 const express = require("express");
 const db = require("../db");
 const crypto = require("crypto");
-const { salvarCurriculo, caminhoCurriculo } = require("../utils/curriculos");
+const { salvarCurriculo, salvarDocumento, caminhoCurriculo } = require("../utils/curriculos");
 const { relatorioDisc } = require("../utils/discRelatorio");
 const { cpfValido, formatarCpf, dataIso, dataNascimentoValida } = require("../utils/validacao");
 const { requireAuth } = require("../middleware/auth");
@@ -90,6 +90,19 @@ router.get("/etapas", (req, res) => {
 
 router.get("/fases", (req, res) => {
   res.json({ fases: FASES_CANDIDATO, finais: FASES_FINAIS, motivos: MOTIVOS_REPROVACAO });
+});
+
+// ---------- Inscrição nova ("🆕") ----------
+// Inscrição pelo link (ou banco de talentos) fica marcada como nova até alguém da equipe
+// abrir o cadastro. Quem viu e quando fica registrado.
+const ehNovo = (c) => !!c.novaInscricaoEm && (!c.vistoEm || c.vistoEm < c.novaInscricaoEm);
+
+router.get("/novos/contagem", requireAuth, (req, res) => {
+  const gestao = ["Gestor", "Supervisora"].includes(req.consultor.perfil);
+  const minhasVagas = new Set(db.readCollection("vagas").filter((v) => v.consultorId === req.consultor.id).map((v) => v.id));
+  const novos = db.readCollection("candidatos").filter(ehNovo);
+  const meus = gestao ? novos : novos.filter((c) => !c.vagaId || minhasVagas.has(c.vagaId));
+  res.json({ total: meus.length, todos: novos.length });
 });
 
 router.get("/:id", (req, res) => {
@@ -328,6 +341,64 @@ router.get("/:id/curriculo", requireAuth, (req, res) => {
   res.setHeader("Content-Type", alvo.tipo || "application/octet-stream");
   res.setHeader("Content-Disposition", `${req.query.baixar ? "attachment" : "inline"}; filename*=UTF-8''${encodeURIComponent(alvo.nomeOriginal)}`);
   res.sendFile(caminho);
+});
+
+router.post("/:id/visto", requireAuth, (req, res) => {
+  const candidato = db.findById("candidatos", req.params.id);
+  if (!candidato) return res.status(404).json({ erro: "Candidato não encontrado." });
+  if (!ehNovo(candidato)) return res.json(candidato);
+  res.json(db.update("candidatos", candidato.id, { vistoEm: new Date().toISOString(), vistoPor: req.consultor.nome }));
+});
+
+// ---------- Documentos do candidato (parecer comportamental anexado etc.) ----------
+// Nunca são apagados: "remover" só tira da lista (fica em documentosRemovidos, com quem e quando).
+const TIPOS_DOCUMENTO = ["Parecer comportamental", "Teste / avaliação", "Referência", "Outro"];
+
+router.post("/:id/documentos", requireAuth, (req, res) => {
+  const candidato = db.findById("candidatos", req.params.id);
+  if (!candidato) return res.status(404).json({ erro: "Candidato não encontrado." });
+  if (!podeEditar(req, db.findById("vagas", candidato.vagaId))) {
+    return res.status(403).json({ erro: "Você só pode anexar documentos em candidatos de vagas atribuídas a você." });
+  }
+  const b = req.body || {};
+  const tipoDoc = TIPOS_DOCUMENTO.includes(b.tipoDocumento) ? b.tipoDocumento : "Parecer comportamental";
+  let doc;
+  try {
+    doc = salvarDocumento(candidato, b.nomeArquivo, b.conteudoBase64, req.consultor.nome, {
+      tipoDocumento: tipoDoc,
+      descricao: String(b.descricao || "").trim().slice(0, 300),
+      enviadoPorId: req.consultor.id,
+    });
+  } catch (err) {
+    return res.status(400).json({ erro: err.message });
+  }
+  res.json(db.update("candidatos", candidato.id, { documentos: [...(candidato.documentos || []), doc] }));
+});
+
+router.get("/:id/documentos/:docId", requireAuth, (req, res) => {
+  const candidato = db.findById("candidatos", req.params.id);
+  const doc = candidato && [...(candidato.documentos || []), ...(candidato.documentosRemovidos || [])].find((d) => d.id === req.params.docId);
+  if (!doc) return res.status(404).send("Documento não encontrado.");
+  const caminho = caminhoCurriculo(doc.arquivo);
+  if (!caminho) return res.status(404).send("Arquivo não encontrado no servidor.");
+  res.setHeader("Content-Type", doc.tipo || "application/octet-stream");
+  res.setHeader("Content-Disposition", `${req.query.baixar ? "attachment" : "inline"}; filename*=UTF-8''${encodeURIComponent(doc.nomeOriginal)}`);
+  res.sendFile(caminho);
+});
+
+router.post("/:id/documentos/:docId/remover", requireAuth, (req, res) => {
+  const candidato = db.findById("candidatos", req.params.id);
+  if (!candidato) return res.status(404).json({ erro: "Candidato não encontrado." });
+  const doc = (candidato.documentos || []).find((d) => d.id === req.params.docId);
+  if (!doc) return res.status(404).json({ erro: "Documento não encontrado." });
+  const gestao = ["Gestor", "Supervisora"].includes(req.consultor.perfil);
+  if (!gestao && doc.enviadoPorId !== req.consultor.id) return res.status(403).json({ erro: "Só quem anexou ou a gestão pode remover o documento." });
+  res.json(
+    db.update("candidatos", candidato.id, {
+      documentos: candidato.documentos.filter((d) => d.id !== doc.id),
+      documentosRemovidos: [...(candidato.documentosRemovidos || []), { ...doc, removidoEm: new Date().toISOString(), removidoPor: req.consultor.nome }],
+    })
+  );
 });
 
 // ---------- Banco de talentos: incluir o mesmo candidato em outra vaga ----------

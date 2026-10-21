@@ -162,6 +162,7 @@ router.post("/vagas/:token/inscricao", (req, res) => {
         ...campos,
         consentimentoLgpd: consentimento,
         reinscricoes: [...(existente.reinscricoes || []), { em: new Date().toISOString(), dados }],
+        novaInscricaoEm: new Date().toISOString(), // reenvio volta a aparecer como "novo" para a equipe
       });
     } else {
       candidato = db.insert("candidatos", {
@@ -180,6 +181,7 @@ router.post("/vagas/:token/inscricao", (req, res) => {
         curriculo: null,
         consentimentoLgpd: consentimento,
         inscritoPeloLink: true,
+        novaInscricaoEm: new Date().toISOString(), // "🆕 novo" até alguém da equipe abrir o cadastro
       });
       try {
         candidato = db.update("candidatos", candidato.id, salvarCurriculo(candidato, b.curriculo.nomeArquivo, b.curriculo.conteudoBase64, "Candidato (link da vaga)"));
@@ -247,6 +249,7 @@ router.post("/talentos", (req, res) => {
         ...salvarCurriculo(existente, b.curriculo.nomeArquivo, b.curriculo.conteudoBase64, "Candidato (banco de talentos)"),
         consentimentoLgpd: consentimento,
         reinscricoes: [...(existente.reinscricoes || []), { em: new Date().toISOString(), dados }],
+        novaInscricaoEm: new Date().toISOString(), // reenvio volta a aparecer como "novo" para a equipe
       });
     } else {
       candidato = db.insert("candidatos", {
@@ -263,6 +266,7 @@ router.post("/talentos", (req, res) => {
         curriculo: null,
         consentimentoLgpd: consentimento,
         cadastroEspontaneo: true,
+        novaInscricaoEm: new Date().toISOString(),
       });
       try {
         candidato = db.update("candidatos", candidato.id, salvarCurriculo(candidato, b.curriculo.nomeArquivo, b.curriculo.conteudoBase64, "Candidato (banco de talentos)"));

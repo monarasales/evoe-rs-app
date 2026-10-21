@@ -41,6 +41,7 @@ function colunaSortavel(campo, label, ordenacao) {
 function cardVagaHtml(vaga) {
   return `
     <div class="vaga-card prioridade-${vaga.prioridade} ${vaga.emStandBy ? "vaga-card--standby" : ""}" draggable="true" data-id="${vaga.id}">
+      ${vaga.qtdNovasInscricoes ? `<a class="selo-novas" href="#/candidatos/${vaga.id}" title="Inscrições pelo link que ninguém abriu ainda">🆕 ${vaga.qtdNovasInscricoes} nova${vaga.qtdNovasInscricoes > 1 ? "s" : ""} inscriç${vaga.qtdNovasInscricoes > 1 ? "ões" : "ão"}</a>` : ""}
       <h4>${vaga.titulo}</h4>
       <div class="empresa">${nomeEmpresa(vaga.empresaId)}</div>
       <div class="consultor-responsavel" title="Consultor responsável">🧑‍💼 ${nomeConsultor(vaga.consultorId)}</div>
@@ -183,7 +184,10 @@ export async function renderKanban(root) {
         setTimeout(() => card.style.opacity = "0.4", 0);
       });
       card.addEventListener("dragend", () => (card.style.opacity = "1"));
-      card.addEventListener("click", () => abrirVaga(card.dataset.id));
+      card.addEventListener("click", (e) => {
+        if (e.target.closest(".selo-novas")) return; // o selo leva direto aos candidatos novos
+        abrirVaga(card.dataset.id);
+      });
     });
 
     board.querySelectorAll(".kanban-column").forEach((col) => {

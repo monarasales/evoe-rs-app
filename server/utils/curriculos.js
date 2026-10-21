@@ -48,6 +48,33 @@ function salvarCurriculo(candidato, nomeArquivo, conteudoBase64, enviadoPor) {
   return { curriculo: novo, curriculosAnteriores: anteriores };
 }
 
+/**
+ * Outros documentos do candidato (ex.: parecer comportamental em PDF/Word). Mesma pasta e
+ * mesmas regras do currículo; nunca apagados do disco. Devolve o registro do documento.
+ */
+function salvarDocumento(candidato, nomeArquivo, conteudoBase64, enviadoPor, extras = {}) {
+  const ext = path.extname(String(nomeArquivo || "")).toLowerCase();
+  if (!TIPOS_CURRICULO[ext]) throw new Error("Formato não aceito. Envie PDF, Word (DOC/DOCX), ODT, RTF, TXT ou imagem (JPG/PNG).");
+  const buffer = Buffer.from(String(conteudoBase64 || ""), "base64");
+  if (!buffer.length) throw new Error("Arquivo vazio.");
+  if (buffer.length > TAMANHO_MAX) throw new Error("Arquivo maior que 8 MB.");
+  const pasta = path.join(PASTA_CURRICULOS, candidato.id);
+  fs.mkdirSync(pasta, { recursive: true });
+  const seguro = path.basename(String(nomeArquivo)).replace(/[^\w.\- ]+/g, "_").slice(-80);
+  const arquivo = `${Date.now()}-doc-${seguro}`;
+  fs.writeFileSync(path.join(pasta, arquivo), buffer);
+  return {
+    id: db.newId(),
+    arquivo: `${candidato.id}/${arquivo}`,
+    nomeOriginal: path.basename(String(nomeArquivo)),
+    tipo: TIPOS_CURRICULO[ext],
+    tamanho: buffer.length,
+    enviadoEm: new Date().toISOString(),
+    enviadoPor,
+    ...extras,
+  };
+}
+
 /** Caminho absoluto seguro de um currículo (null se inválido ou inexistente). */
 function caminhoCurriculo(arquivoRelativo) {
   const raiz = path.resolve(PASTA_CURRICULOS);
@@ -56,4 +83,4 @@ function caminhoCurriculo(arquivoRelativo) {
   return caminho;
 }
 
-module.exports = { salvarCurriculo, caminhoCurriculo, TAMANHO_MAX };
+module.exports = { salvarCurriculo, salvarDocumento, caminhoCurriculo, TAMANHO_MAX };

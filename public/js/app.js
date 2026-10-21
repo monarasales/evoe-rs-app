@@ -73,7 +73,7 @@ function montarNav() {
     return `
       ${secao.titulo ? `<div class="sidebar-nav-titulo">${secao.titulo}</div>` : ""}
       ${itensVisiveis
-        .map((l) => `<a href="${l.href}"><span class="nav-icone">${l.icone}</span><span>${l.label}</span></a>`)
+        .map((l) => `<a href="${l.href}"><span class="nav-icone">${l.icone}</span><span>${l.label}</span>${l.href === "#/candidatos" ? '<span class="nav-badge hidden" id="badge-candidatos" title="Novas inscrições pelo link"></span>' : ""}</a>`)
         .join("")}
     `;
   }).join("");
@@ -92,7 +92,21 @@ async function carregarCachesBasicos() {
   store.etapasCandidato = etapasCandidato;
 }
 
+/** Contador de novas inscrições (ninguém da equipe abriu ainda) no menu "Candidatos". */
+async function atualizarBadgeCandidatos() {
+  try {
+    const { total } = await api.get("/api/candidatos/novos/contagem");
+    const el = document.getElementById("badge-candidatos");
+    if (!el) return;
+    el.textContent = total > 99 ? "99+" : String(total);
+    el.classList.toggle("hidden", !total);
+  } catch (e) {
+    /* silencioso */
+  }
+}
+
 async function atualizarBadgeNotificacoes() {
+  atualizarBadgeCandidatos();
   try {
     const { total } = await api.get("/api/notificacoes/nao-lidas/contagem");
     [notifBadge, notifBadgeMobile].forEach((badge) => {
@@ -213,6 +227,6 @@ async function init() {
 }
 
 // pequenas exportações usadas por outras views (evita import circular do state)
-window.__evoe = { showToast, atualizarBadgeNotificacoes };
+window.__evoe = { showToast, atualizarBadgeNotificacoes, atualizarBadgeCandidatos };
 
 init();

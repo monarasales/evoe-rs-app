@@ -62,18 +62,66 @@ export async function renderCrm(root) {
         <div class="sub">Empresas para as quais a Evoé presta serviço de recrutamento.</div>
         <button id="btn-nova-empresa" class="btn btn-primary btn-sm">+ Nova Empresa</button>
       </div>
+      <div class="cand-filtros">
+        <input type="search" id="emp-busca" class="input-toolbar" placeholder="🔍 Buscar empresa, contato, e-mail, CNPJ ou segmento" />
+        <select id="emp-ordem"><option value="az">Nome (A → Z)</option><option value="za">Nome (Z → A)</option><option value="recentes">Cadastradas recentemente</option></select>
+      </div>
+      <div class="letras-filtro" id="emp-letras"></div>
+      <div id="emp-contagem" class="sub" style="margin-bottom:8px;"></div>
       <div id="tabela-empresas"></div>
     `;
     conteudo.querySelector("#btn-nova-empresa").addEventListener("click", () => abrirFormularioEmpresa(null));
     carregarEmpresas();
   }
 
+  let empresasCache = [];
+  let letraEmp = "";
   async function carregarEmpresas() {
-    const empresas = await api.get("/api/empresas");
+    empresasCache = await api.get("/api/empresas");
+    const busca = conteudo.querySelector("#emp-busca");
+    if (busca && !busca.dataset.ligado) {
+      busca.dataset.ligado = "1";
+      busca.addEventListener("input", desenharEmpresas);
+      conteudo.querySelector("#emp-ordem").addEventListener("change", desenharEmpresas);
+    }
+    desenharEmpresas();
+  }
+
+  function desenharEmpresas() {
     const el = conteudo.querySelector("#tabela-empresas");
     if (!el) return;
+    const sem = (s) => String(s || "").normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase();
+    const q = sem(conteudo.querySelector("#emp-busca").value.trim());
+    const qd = q.replace(/\D/g, "");
+    const ordem = conteudo.querySelector("#emp-ordem").value;
+    const inicial = (e) => {
+      const l = sem(e.nome).replace(/[^a-z0-9]/g, "").charAt(0).toUpperCase();
+      return /[A-Z]/.test(l) ? l : "#";
+    };
+    // Letras: clique para ver só as empresas que começam com ela.
+    const letras = [...new Set(empresasCache.map(inicial))].sort();
+    conteudo.querySelector("#emp-letras").innerHTML =
+      `<button type="button" class="letra ${!letraEmp ? "ativo" : ""}" data-letra="">Todas</button>` +
+      letras.map((l) => `<button type="button" class="letra ${letraEmp === l ? "ativo" : ""}" data-letra="${l}">${l}</button>`).join("");
+    conteudo.querySelectorAll("#emp-letras .letra").forEach((b) =>
+      b.addEventListener("click", () => {
+        letraEmp = b.dataset.letra;
+        desenharEmpresas();
+      })
+    );
+    const empresas = empresasCache
+      .filter((e) => !letraEmp || inicial(e) === letraEmp)
+      .filter((e) => {
+        if (!q) return true;
+        const alvo = sem([e.nome, e.contatoResponsavel, e.emailContato, e.segmento, e.endereco, e.cnpj].join(" "));
+        return alvo.includes(q) || (qd.length >= 4 && String((e.cnpj || "") + (e.whatsappContato || "")).replace(/\D/g, "").includes(qd));
+      })
+      .sort((a, b) =>
+        ordem === "recentes" ? String(b.createdAt || "").localeCompare(String(a.createdAt || "")) : (ordem === "za" ? -1 : 1) * sem(a.nome).localeCompare(sem(b.nome), "pt-BR")
+      );
+    conteudo.querySelector("#emp-contagem").textContent = `${empresas.length} empresa(s)${empresas.length !== empresasCache.length ? ` de ${empresasCache.length}` : ""}`;
     if (empresas.length === 0) {
-      el.innerHTML = '<div class="empty-state">Nenhuma empresa cadastrada.</div>';
+      el.innerHTML = `<div class="empty-state">${empresasCache.length ? "Nenhuma empresa encontrada." : "Nenhuma empresa cadastrada."}</div>`;
       return;
     }
     el.innerHTML = `

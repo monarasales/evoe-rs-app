@@ -728,3 +728,26 @@ table tr:hover td { background: #fafbfc; }
 .crm-vazio { text-align: center; padding: 10px 0; }
 .crm-interacao-nova { background: var(--bg); border-radius: 8px; padding: 10px 12px; margin-bottom: 8px; }
 .crm-interacao-nova textarea { width: 100%; }
+
+/* Novas inscrições pelo link */
+.tag-novo { background: #fff1d6; color: #9a5b00; font-weight: 700; }
+tr.linha-nova td { background: #fffaf0; }
+tr.linha-nova td:first-child { box-shadow: inset 4px 0 0 #f0a020; }
+.chip-novos { background: #fff1d6 !important; color: #9a5b00 !important; border-color: #f0c070 !important; font-weight: 600; }
+.chip-novos.ativo { background: #f0a020 !important; color: white !important; }
+.selo-novas { display: inline-block; margin-bottom: 6px; padding: 2px 9px; border-radius: 999px; background: #f0a020; color: white; font-size: 12px; font-weight: 700; text-decoration: none; }
+.selo-novas:hover { background: #d88a10; }
+.nav-badge { margin-left: auto; min-width: 20px; padding: 1px 7px; border-radius: 999px; background: #f0a020; color: white; font-size: 11.5px; font-weight: 700; text-align: center; }
+.cand-filtros select#cand-ordem { min-width: 190px; }
+
+/* Documentos do candidato (parecer anexado) */
+.docs-box { background: var(--bg); border-radius: 8px; padding: 10px 12px; }
+.docs-lista { list-style: none; margin: 0 0 8px; padding: 0; }
+.docs-lista li { padding: 6px 0; border-bottom: 1px solid var(--border); }
+.docs-novo { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin-bottom: 4px; }
+.docs-novo input[type="text"] { flex: 1 1 180px; }
+
+/* Filtro por letra (CRM › Clientes) */
+.letras-filtro { display: flex; flex-wrap: wrap; gap: 4px; margin: 8px 0; }
+.letras-filtro .letra { border: 1px solid var(--border); background: white; border-radius: 6px; padding: 3px 8px; font-size: 12.5px; cursor: pointer; color: inherit; }
+.letras-filtro .letra.ativo { background: var(--navy, #14213d); color: white; border-color: transparent; }

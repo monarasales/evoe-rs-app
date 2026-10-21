@@ -68,7 +68,8 @@ function avisarResponsavel(vaga, req, oQue) {
 
 function comCampos(vaga) {
   const candidatosDaVaga = db.readCollection("candidatos").filter((c) => c.vagaId === vaga.id);
-  return computeVagaFields(vaga, candidatosDaVaga);
+  const qtdNovasInscricoes = candidatosDaVaga.filter((c) => c.novaInscricaoEm && (!c.vistoEm || c.vistoEm < c.novaInscricaoEm)).length;
+  return { ...computeVagaFields(vaga, candidatosDaVaga), qtdNovasInscricoes };
 }
 
 router.get("/", (req, res) => {

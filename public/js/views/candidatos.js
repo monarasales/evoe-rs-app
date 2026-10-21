@@ -56,6 +56,18 @@ function telefoneMascara(valor) {
   return `(${d.slice(0, 2)}) ${d.slice(2, 7)}-${d.slice(7)}`;
 }
 
+/** Inscrição pelo link que ninguém da equipe abriu ainda. */
+const ehNovo = (c) => !!c.novaInscricaoEm && (!c.vistoEm || c.vistoEm < c.novaInscricaoEm);
+const dataCadastro = (c) => c.novaInscricaoEm || c.createdAt || "";
+function ordenar(modo) {
+  const nome = (a, b) => normalizar(a.nome).localeCompare(normalizar(b.nome), "pt-BR");
+  if (modo === "az") return nome;
+  if (modo === "za") return (a, b) => nome(b, a);
+  if (modo === "antigos") return (a, b) => (dataCadastro(a) < dataCadastro(b) ? -1 : dataCadastro(a) > dataCadastro(b) ? 1 : 0);
+  // recentes: novas inscrições não vistas primeiro, depois as mais recentes
+  return (a, b) => ehNovo(b) - ehNovo(a) || (dataCadastro(a) < dataCadastro(b) ? 1 : dataCadastro(a) > dataCadastro(b) ? -1 : 0);
+}
+
 function tamanhoArquivo(bytes) {
   return bytes > 1024 * 1024 ? `${(bytes / 1024 / 1024).toFixed(1)} MB` : `${Math.max(1, Math.round(bytes / 1024))} KB`;
 }
@@ -81,6 +93,12 @@ export async function renderCandidatos(root, params) {
     <div class="cand-filtros">
       <input type="search" id="cand-busca" class="input-toolbar" placeholder="🔍 Buscar por nome, e-mail, telefone, cidade ou parecer" />
       <div id="cand-filtro-vaga"></div>
+      <select id="cand-ordem" title="Ordenar">
+        <option value="recentes">Mais recentes primeiro</option>
+        <option value="az">Nome (A → Z)</option>
+        <option value="za">Nome (Z → A)</option>
+        <option value="antigos">Mais antigos primeiro</option>
+      </select>
     </div>
     <div class="funil-chips" id="cand-funil"></div>
     <div id="cand-contagem" class="sub" style="margin-bottom:8px;"></div>
@@ -110,6 +128,21 @@ export async function renderCandidatos(root, params) {
   let filtroVaga = params.vagaId || "";
   const busca = root.querySelector("#cand-busca");
   let filtroFase = "";
+  let soNovos = false;
+  const ordemSel = root.querySelector("#cand-ordem");
+  try {
+    ordemSel.value = localStorage.getItem("evoe_cand_ordem") || "recentes";
+  } catch (e) {
+    /* sem armazenamento: usa o padrão */
+  }
+  ordemSel.addEventListener("change", () => {
+    try {
+      localStorage.setItem("evoe_cand_ordem", ordemSel.value);
+    } catch (e) {
+      /* ok */
+    }
+    montarTabela();
+  });
 
   const cbFiltro = criarCombobox(root.querySelector("#cand-filtro-vaga"), {
     opcoes: [{ valor: "__banco__", rotulo: "★ Banco de talentos (sem vaga)", termos: ["banco", "talentos"], detalhe: "Cadastros espontâneos pela página de vagas" }, ...opcoesVaga(vagas)],
@@ -132,31 +165,43 @@ export async function renderCandidatos(root, params) {
     return todos
       .filter((c) => !filtroVaga || (filtroVaga === "__banco__" ? !c.vagaId : c.vagaId === filtroVaga))
       .filter((c) => !filtroFase || (c.fase || "Recrutamento") === filtroFase)
+      .filter((c) => !soNovos || ehNovo(c))
       .filter((c) => {
         if (!q) return true;
         const texto = [c.nome, c.email, c.telefone, c.cidade, c.linkedin, c.areaInteresse, c.parecerComportamental, c.obsReferencia, ...(c.pareceres || []).map((p) => p.texto)].join(" ");
         const digitos = q.replace(/\D/g, "");
         return normalizar(texto).includes(q) || (digitos.length >= 4 && String(c.telefone || "").replace(/\D/g, "").includes(digitos));
       })
-      .sort((a, b) => normalizar(a.nome).localeCompare(normalizar(b.nome), "pt-BR"));
+      .sort(ordenar(ordemSel.value));
   }
 
   // Contadores do funil (respeitam vaga e busca, não a fase escolhida).
   function desenharFunil() {
-    const salvo = filtroFase;
+    const salvo = [filtroFase, soNovos];
     filtroFase = "";
+    soNovos = false;
     const base = filtrados();
-    filtroFase = salvo;
+    [filtroFase, soNovos] = salvo;
     const conta = (f) => base.filter((c) => (c.fase || "Recrutamento") === f).length;
+    const novos = base.filter(ehNovo).length;
     root.querySelector("#cand-funil").innerHTML =
-      `<button type="button" class="funil-chip ${!filtroFase ? "ativo" : ""}" data-fase="">Todas <strong>${base.length}</strong></button>` +
+      (novos || soNovos ? `<button type="button" class="funil-chip chip-novos ${soNovos ? "ativo" : ""}" id="chip-novos" title="Inscrições pelo link que ninguém da equipe abriu ainda">🆕 Novas inscrições <strong>${novos}</strong></button>` : "") +
+      `<button type="button" class="funil-chip ${!filtroFase && !soNovos ? "ativo" : ""}" data-fase="">Todas <strong>${base.length}</strong></button>` +
       FASES.map((f) => `<button type="button" class="funil-chip fase-${classeFase(f)} ${filtroFase === f ? "ativo" : ""}" data-fase="${escapeHtml(f)}">${escapeHtml(f)} <strong>${conta(f)}</strong></button>`).join("");
-    root.querySelectorAll(".funil-chip").forEach((b) =>
+    root.querySelectorAll(".funil-chip[data-fase]").forEach((b) =>
       b.addEventListener("click", () => {
         filtroFase = b.dataset.fase;
+        soNovos = false;
         montarTabela();
       })
     );
+    const chipNovos = root.querySelector("#chip-novos");
+    if (chipNovos)
+      chipNovos.addEventListener("click", () => {
+        soNovos = !soNovos;
+        filtroFase = "";
+        montarTabela();
+      });
   }
 
   function montarTabela() {
@@ -179,13 +224,13 @@ export async function renderCandidatos(root, params) {
               const v = vagaPorId(c.vagaId);
               const nPareceres = (c.pareceres || []).length + ((c.parecerComportamental || "").trim() ? 1 : 0);
               return `
-            <tr data-id="${c.id}">
-              <td><strong>${escapeHtml(c.nome)}</strong>${c.inscritoPeloLink ? ' <span class="tag tag-prospect-contato" title="Inscrito pelo link da vaga">link</span>' : ""}<div class="sub">${c.telefone ? `${escapeHtml(c.telefone)}${botaoWhatsapp(c, v)}` : ""}${c.telefone && c.email ? " · " : ""}${escapeHtml(c.email || "")}</div></td>
+            <tr data-id="${c.id}" class="${ehNovo(c) ? "linha-nova" : ""}">
+              <td>${ehNovo(c) ? `<span class="tag tag-novo" title="Inscreveu-se em ${new Date(c.novaInscricaoEm).toLocaleString("pt-BR", { dateStyle: "short", timeStyle: "short" })} — ninguém da equipe abriu ainda">🆕 NOVO</span> ` : ""}<strong>${escapeHtml(c.nome)}</strong>${c.inscritoPeloLink ? ' <span class="tag tag-prospect-contato" title="Inscrito pelo link da vaga">link</span>' : ""}<div class="sub">${c.telefone ? `${escapeHtml(c.telefone)}${botaoWhatsapp(c, v)}` : ""}${c.telefone && c.email ? " · " : ""}${escapeHtml(c.email || "")}</div></td>
               <td>${v ? `${escapeHtml(empresaNome(v.empresaId))}<div class="sub">${escapeHtml(v.titulo)}</div>` : !c.vagaId ? `<span class="tag tag-standby">Banco de talentos</span>${c.areaInteresse ? `<div class="sub">${escapeHtml(c.areaInteresse)}</div>` : ""}` : "—"}</td>
-              <td>${tagFase(c)}</td>
+              <td>${tagFase(c)}<div class="sub" title="Data do cadastro/inscrição">📅 ${dataCadastro(c) ? new Date(dataCadastro(c)).toLocaleDateString("pt-BR") : "—"}</div></td>
               <td>${c.disc ? `<span class="tag disc-tag disc-${c.disc.resultado.primario}" title="Perfil DISC">${escapeHtml(c.disc.resultado.perfil)}</span>` : c.discToken ? '<span class="sub" title="Link do teste enviado, aguardando resposta">⏳</span>' : '<span class="sub">—</span>'}</td>
               <td>${c.curriculo ? `<a href="/api/candidatos/${c.id}/curriculo" target="_blank" rel="noopener" title="${escapeHtml(c.curriculo.nomeOriginal)}">📄 abrir</a>` : '<span class="sub">—</span>'}</td>
-              <td>${nPareceres ? `💬 ${nPareceres}` : '<span class="sub">—</span>'}${c.jusbrasilOk ? ' <span title="Referência/Jusbrasil OK">✅</span>' : ""}</td>
+              <td>${nPareceres ? `💬 ${nPareceres}` : (c.documentos || []).length ? "" : '<span class="sub">—</span>'}${(c.documentos || []).length ? ` <span title="Documentos anexados (parecer etc.)">📎 ${c.documentos.length}</span>` : ""}${c.jusbrasilOk ? ' <span title="Referência/Jusbrasil OK">✅</span>' : ""}</td>
               <td class="sub">${[c.dataEntrevista ? `RH ${dataBr(c.dataEntrevista)}` : "", c.dataEntrevistaCliente ? `Cliente ${dataBr(c.dataEntrevistaCliente)}` : ""].filter(Boolean).join("<br>") || "—"}</td>
               <td><button class="btn btn-outline btn-sm btn-editar">Abrir</button></td>
             </tr>`;
@@ -218,6 +263,17 @@ export async function renderCandidatos(root, params) {
     const c = candidato || {};
     const v = (campo) => escapeHtml(c[campo] || "");
     const podeEditar = !editando || podeGerenciarVagas() || (vagaPorId(c.vagaId) || {}).consultorId === store.usuario.id;
+    if (editando && ehNovo(c)) {
+      // Abriu = a equipe já viu esta inscrição (fica registrado quem e quando).
+      api
+        .post(`/api/candidatos/${c.id}/visto`)
+        .then((atual) => {
+          Object.assign(c, atual);
+          montarTabela();
+          if (window.__evoe.atualizarBadgeCandidatos) window.__evoe.atualizarBadgeCandidatos();
+        })
+        .catch(() => {});
+    }
 
     abrirModal(`
       <h2>${editando ? escapeHtml(c.nome) : "Novo Candidato"}</h2>
@@ -305,7 +361,22 @@ export async function renderCandidatos(root, params) {
             <textarea id="c-av-empresa" rows="4" placeholder="Devolutiva do cliente após a entrevista com o gestor...">${v("avaliacaoEmpresa")}</textarea>
           </div>
         </div>
-        <div class="form-row"><label>Parecer comportamental</label><textarea id="c-parecer" rows="3">${v("parecerComportamental")}</textarea></div>
+        <div class="form-row"><label>Parecer comportamental</label><textarea id="c-parecer" rows="3" placeholder="Resumo do parecer (o documento completo pode ser anexado abaixo)">${v("parecerComportamental")}</textarea></div>
+        <div class="form-row docs-box">
+          <label>📎 Parecer e documentos anexados</label>
+          <div id="c-docs">${listaDocumentos(c)}</div>
+          ${
+            editando
+              ? `<div class="docs-novo">
+                  <select id="c-doc-tipo">${["Parecer comportamental", "Teste / avaliação", "Referência", "Outro"].map((t) => `<option>${t}</option>`).join("")}</select>
+                  <input type="text" id="c-doc-desc" maxlength="300" placeholder="Descrição (opcional)" />
+                  <input type="file" id="c-doc-arquivo" accept=".pdf,.doc,.docx,.odt,.rtf,.txt,.jpg,.jpeg,.png" />
+                  <button type="button" class="btn btn-secondary btn-sm" id="c-doc-anexar">Anexar documento</button>
+                </div>
+                <div class="sub">PDF, Word ou imagem, até 8 MB. Os arquivos ficam guardados no cadastro do candidato.</div>`
+              : '<div class="sub">Salve o candidato primeiro; depois abra o cadastro para anexar o parecer em PDF ou Word.</div>'
+          }
+        </div>
         <div class="form-row checkbox-row">
           <input type="checkbox" id="c-jusbrasil" ${c.jusbrasilOk ? "checked" : ""} />
           <label for="c-jusbrasil" style="margin:0;">Checagem de referência e Jusbrasil OK</label>
@@ -393,6 +464,7 @@ export async function renderCandidatos(root, params) {
       ligarFunil(c);
       ligarDisc(c);
       ligarPareceres(c);
+      ligarDocumentos(c);
       let vagaCopia = "";
       criarCombobox($("c-copiar-vaga"), {
         opcoes: opcoesVaga(vagasQuePodeEditar().filter((x) => x.id !== c.vagaId)),
@@ -619,6 +691,56 @@ export async function renderCandidatos(root, params) {
       painel.scrollIntoView({ block: "nearest" });
     }
 
+    function ligarDocumentos(cand) {
+      const redesenhar = () => {
+        $("c-docs").innerHTML = listaDocumentos(cand);
+        ligarRemover();
+      };
+      const ligarRemover = () =>
+        document.querySelectorAll("[data-remover-doc]").forEach((b) =>
+          b.addEventListener("click", async () => {
+            if (!confirm("Remover este documento da lista? (O arquivo continua guardado no histórico.)")) return;
+            try {
+              Object.assign(cand, await api.post(`/api/candidatos/${cand.id}/documentos/${b.dataset.removerDoc}/remover`));
+              redesenhar();
+              showToast("Documento removido da lista.", "sucesso");
+            } catch (err) {
+              mostrarErro(err.message);
+            }
+          })
+        );
+      ligarRemover();
+      const btn = $("c-doc-anexar");
+      btn.addEventListener("click", async () => {
+        const arquivo = $("c-doc-arquivo").files[0];
+        if (!arquivo) return mostrarErro("Escolha o arquivo do parecer (PDF, Word ou imagem).");
+        if (arquivo.size > 8 * 1024 * 1024) return mostrarErro("O arquivo passa de 8 MB.");
+        btn.disabled = true;
+        btn.textContent = "Enviando...";
+        try {
+          Object.assign(
+            cand,
+            await api.post(`/api/candidatos/${cand.id}/documentos`, {
+              nomeArquivo: arquivo.name,
+              conteudoBase64: await lerArquivoBase64(arquivo),
+              tipoDocumento: $("c-doc-tipo").value,
+              descricao: $("c-doc-desc").value,
+            })
+          );
+          $("c-doc-arquivo").value = "";
+          $("c-doc-desc").value = "";
+          redesenhar();
+          carregar();
+          showToast("Documento anexado.", "sucesso");
+        } catch (err) {
+          mostrarErro(err.message);
+        } finally {
+          btn.disabled = false;
+          btn.textContent = "Anexar documento";
+        }
+      });
+    }
+
     function ligarDisc(cand) {
       const area = $("c-disc");
       const urlDisc = () => `${location.origin}/disc/${cand.discToken}`;
@@ -786,6 +908,23 @@ export async function renderCandidatos(root, params) {
       }
     });
   }
+}
+
+function listaDocumentos(c) {
+  const docs = (c.documentos || []).slice().reverse();
+  if (!docs.length) return '<div class="sub" style="margin-bottom:6px;">Nenhum documento anexado.</div>';
+  const meuId = store.usuario.id;
+  const gestao = ["Gestor", "Supervisora"].includes(store.usuario.perfil);
+  return `<ul class="docs-lista">${docs
+    .map(
+      (d) => `<li>📄 <a href="/api/candidatos/${c.id}/documentos/${d.id}" target="_blank" rel="noopener"><strong>${escapeHtml(d.nomeOriginal)}</strong></a>
+        <span class="tag tag-standby">${escapeHtml(d.tipoDocumento || "Documento")}</span>
+        <span class="sub">${tamanhoArquivo(d.tamanho)} · ${new Date(d.enviadoEm).toLocaleDateString("pt-BR")} · ${escapeHtml(d.enviadoPor || "")}</span>
+        · <a href="/api/candidatos/${c.id}/documentos/${d.id}?baixar=1">baixar</a>
+        ${d.enviadoPorId === meuId || gestao ? ` · <button type="button" class="link-btn" data-remover-doc="${d.id}" style="color:var(--danger);">remover</button>` : ""}
+        ${d.descricao ? `<div class="sub">${escapeHtml(d.descricao)}</div>` : ""}</li>`
+    )
+    .join("")}</ul>`;
 }
 
 function blocoCurriculo(c) {

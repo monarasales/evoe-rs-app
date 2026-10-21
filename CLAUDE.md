@@ -80,6 +80,11 @@ Baseado no documento "Controle de Ponto Próprio" (Resolut). Construído por eta
   Mensagem editável em 2 níveis: modelo padrão (Configurações › Parâmetros, Gestor; `parametros` chave
   "mensagemConvite", `GET/PUT /api/config/mensagem-convite`, marcadores {VAGA} {DETALHES} {PERFIL} {LINK}) e
   personalizada por vaga (`vaga.mensagemConvite` via `PATCH /api/vagas/:id/link`; vazio = volta ao padrão).
+- INSCRIÇÃO NOVA: inscrição pelo link/banco de talentos grava `novaInscricaoEm`; fica "🆕 NOVO" até alguém abrir o
+  cadastro (`POST /api/candidatos/:id/visto` grava `vistoEm`/`vistoPor`). Selo "🆕 N novas inscrições" no cartão da vaga
+  (`qtdNovasInscricoes` em /api/vagas), chip "Novas inscrições" e contador no menu Candidatos (`GET /api/candidatos/novos/contagem`).
+- Documentos do candidato (parecer comportamental em PDF/Word etc.): `candidato.documentos` via `POST /:id/documentos`,
+  `GET /:id/documentos/:docId`; "remover" só move para `documentosRemovidos` (arquivo nunca é apagado). `utils/curriculos.salvarDocumento`.
 - Retorno ao candidato (botão "💬 Retorno ao candidato" no funil): `public/js/retornoCandidato.js` — 5 situações
   (convite entrevista Evoé, passou na Evoé → entrevista com gestor, aprovado pelo gestor, não seguiu na Evoé, não seguiu
   com o gestor). Linguagem neutra; devolutiva NUNCA traz o motivo. Envio por WhatsApp/e-mail/copiar; cada envio fica em
