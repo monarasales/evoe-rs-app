@@ -1,0 +1,93 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+  <title>Perfil da vaga — Evoé Gestão e RH</title>
+  <meta name="description" content="Conte para a Evoé Gestão e RH sobre a sua empresa e o perfil da vaga." />
+  <meta name="robots" content="noindex" />
+  <meta property="og:title" content="Perfil da vaga — Evoé Gestão & RH" />
+  <meta property="og:description" content="Formulário rápido para iniciarmos o seu processo seletivo." />
+  <meta property="og:image" content="/img/og-vagas.png" />
+  <style>
+    :root {
+      --navy: #122454; --navy-dark: #0b1638; --teal: #22c3b6; --purple: #7c5cfa;
+      --gradiente: linear-gradient(135deg, #22c3b6 0%, #7c5cfa 100%);
+      --bg: #f3f5f9; --borda: #e3e7ec; --texto: #1f2937; --suave: #6b7683;
+      --erro: #c0392b; --erro-bg: #fdecea; --ok: #1e7e45; --ok-bg: #e8f8ee; --aviso: #8a5a00; --aviso-bg: #fff4dc;
+    }
+    * { box-sizing: border-box; }
+    body { margin: 0; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; background: var(--bg); color: var(--texto); -webkit-font-smoothing: antialiased; }
+    header { background: var(--navy-dark); padding: calc(14px + env(safe-area-inset-top, 0px)) 16px 14px; text-align: center; }
+    header img { max-height: 46px; max-width: 70%; }
+    header .marca { color: var(--teal); font-weight: 700; letter-spacing: 1px; }
+    .progresso { position: sticky; top: 0; z-index: 5; background: white; border-bottom: 1px solid var(--borda); padding: 10px 16px; }
+    .progresso-in { max-width: 760px; margin: 0 auto; }
+    .barra { height: 8px; background: #e9edf3; border-radius: 99px; overflow: hidden; }
+    .barra div { height: 100%; width: 0; background: var(--gradiente); transition: width .3s; }
+    .progresso small { color: var(--suave); font-size: 12.5px; }
+    main { max-width: 760px; margin: 0 auto; padding: 18px 16px 60px; }
+    h1 { color: var(--navy); font-size: 24px; margin: 6px 0 6px; letter-spacing: -.3px; }
+    .intro { color: var(--suave); line-height: 1.55; margin-bottom: 16px; }
+    .cartao { background: white; border: 1px solid var(--borda); border-radius: 14px; padding: 20px; box-shadow: 0 4px 14px rgba(16,30,44,.06); margin-bottom: 16px; }
+    .cartao h2 { color: var(--navy); font-size: 18px; margin: 0 0 4px; display: flex; gap: 8px; align-items: center; }
+    .cartao h2 .num { display: inline-flex; width: 26px; height: 26px; border-radius: 50%; background: var(--gradiente); color: white; font-size: 13px; align-items: center; justify-content: center; flex: none; }
+    .explica { background: #eef3ff; border-radius: 10px; padding: 10px 12px; font-size: 13.5px; color: #34406b; line-height: 1.5; margin: 8px 0 4px; }
+    label { display: block; font-size: 14px; font-weight: 600; margin: 14px 0 6px; }
+    label .opc { font-weight: 400; color: var(--suave); }
+    input[type=text], input[type=email], input[type=tel], input[type=number], input[type=time], select, textarea {
+      width: 100%; padding: 11px 12px; border: 1px solid var(--borda); border-radius: 10px; font-size: 16px; font-family: inherit; background: white; color: inherit;
+    }
+    input:focus, textarea:focus, select:focus { outline: none; border-color: var(--teal); }
+    textarea { min-height: 80px; resize: vertical; }
+    .linha { display: grid; grid-template-columns: 1fr 1fr; gap: 0 12px; }
+    .linha3 { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 0 12px; }
+    .dica { font-size: 12.5px; color: var(--suave); margin-top: 5px; line-height: 1.45; }
+    .chips { display: flex; flex-wrap: wrap; gap: 7px; }
+    .chip { border: 1.5px solid var(--borda); background: white; border-radius: 999px; padding: 8px 13px; font-size: 14px; cursor: pointer; color: inherit; font-family: inherit; }
+    .chip.on { border-color: var(--teal); background: #e3f8f6; color: #0f6f68; font-weight: 600; }
+    .chip.on::before { content: "✓ "; }
+    .dias { display: grid; grid-template-columns: repeat(7, 1fr); gap: 6px; }
+    .dia { border: 1.5px solid var(--borda); background: white; border-radius: 10px; padding: 10px 0; font-weight: 700; cursor: pointer; font-size: 14px; color: inherit; font-family: inherit; }
+    .dia.on { background: var(--navy); border-color: var(--navy); color: white; }
+    .horarios { margin-top: 10px; display: grid; gap: 8px; }
+    .horario { display: grid; grid-template-columns: 54px 1fr 1fr; gap: 8px; align-items: center; background: #f8fafc; border-radius: 10px; padding: 8px 10px; }
+    .horario strong { font-size: 14px; }
+    .horario input { padding: 8px; font-size: 15px; }
+    .total { margin-top: 8px; font-size: 13.5px; color: var(--navy); font-weight: 600; }
+    .lista-itens { display: grid; gap: 6px; margin-top: 4px; }
+    .item { display: flex; gap: 6px; }
+    .item input { flex: 1; }
+    .btn-mini { border: 1px solid var(--borda); background: white; border-radius: 9px; padding: 8px 12px; cursor: pointer; font-size: 14px; color: var(--navy); font-family: inherit; }
+    .btn-mini.remover { color: var(--erro); }
+    .sn { display: flex; gap: 8px; }
+    .cond { border-left: 3px solid var(--teal); padding-left: 12px; margin-top: 4px; }
+    .alerta { background: var(--aviso-bg); color: var(--aviso); border-radius: 10px; padding: 10px 12px; font-size: 13.5px; margin-top: 8px; line-height: 1.45; }
+    .erro { background: var(--erro-bg); color: var(--erro); padding: 12px; border-radius: 10px; margin-top: 14px; font-size: 14px; }
+    .status { border-radius: 12px; padding: 14px 16px; margin-bottom: 16px; line-height: 1.55; }
+    .status.ok { background: var(--ok-bg); color: var(--ok); }
+    .status.aviso { background: var(--aviso-bg); color: var(--aviso); }
+    .status.info { background: #eef3ff; color: #34406b; }
+    .status pre { white-space: pre-wrap; font-family: inherit; margin: 8px 0 0; }
+    .botao { display: block; width: 100%; margin-top: 18px; padding: 16px; border: none; border-radius: 12px; background: var(--gradiente); color: white; font-size: 17px; font-weight: 700; cursor: pointer; }
+    .botao:disabled { opacity: .6; cursor: wait; }
+    .rodape { text-align: center; color: var(--suave); font-size: 12.5px; margin-top: 18px; line-height: 1.5; }
+    .isca { position: absolute; left: -5000px; }
+    .sucesso { text-align: center; padding: 26px 18px; }
+    .sucesso .icone { font-size: 52px; }
+    @media (max-width: 560px) {
+      .linha, .linha3 { grid-template-columns: 1fr; }
+      .dias { grid-template-columns: repeat(4, 1fr); }
+      .cartao { padding: 16px; }
+    }
+  </style>
+</head>
+<body>
+  <header>
+    <img src="/img/logo-evoe-topbar.svg" alt="Evoé Gestão e RH" onerror="this.outerHTML='<span class=marca>EVOÉ GESTÃO E RH</span>'" />
+  </header>
+  <div class="progresso" id="progresso" hidden><div class="progresso-in"><div class="barra"><div id="barra"></div></div><small id="progresso-txt"></small></div></div>
+  <main id="app"><p class="intro">Carregando...</p></main>
+  <script type="module" src="/js/perfilVagaCliente.js"></script>
+</body>
+</html>

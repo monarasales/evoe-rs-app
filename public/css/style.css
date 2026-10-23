@@ -751,3 +751,21 @@ tr.linha-nova td:first-child { box-shadow: inset 4px 0 0 #f0a020; }
 .letras-filtro { display: flex; flex-wrap: wrap; gap: 4px; margin: 8px 0; }
 .letras-filtro .letra { border: 1px solid var(--border); background: white; border-radius: 6px; padding: 3px 8px; font-size: 12.5px; cursor: pointer; color: inherit; }
 .letras-filtro .letra.ativo { background: var(--navy, #14213d); color: white; border-color: transparent; }
+
+/* Perfis de vaga enviados pelos clientes */
+.pv-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 12px; }
+.pv-card { background: white; border: 1px solid var(--border); border-radius: 12px; padding: 12px 14px; cursor: pointer; display: flex; flex-direction: column; gap: 3px; }
+.pv-card:hover { box-shadow: 0 3px 10px rgba(0,0,0,.08); }
+.pv-card-novo { border-left: 4px solid #f0a020; }
+.pv-card-topo { display: flex; justify-content: space-between; gap: 8px; align-items: center; margin-bottom: 4px; }
+.pv-secao { border-top: 1px solid var(--border); padding: 10px 0; }
+.pv-secao h4 { margin: 0 0 6px; color: var(--navy); font-size: 14.5px; }
+.pv-secao ul { margin: 0 0 6px 18px; padding: 0; }
+.pv-linha { display: grid; grid-template-columns: 120px 1fr; gap: 8px; font-size: 13.5px; padding: 2px 0; }
+.pv-linha span { color: var(--text-muted); }
+.chips-ro { display: flex; flex-wrap: wrap; gap: 5px; }
+.pv-validar { background: var(--success-bg); border-radius: 10px; padding: 12px 14px; margin-top: 12px; }
+.pv-validar h3 { margin: 0 0 8px; font-size: 16px; color: var(--success); }
+.pv-ajuste { margin-top: 10px; }
+.pv-ajuste summary { cursor: pointer; font-weight: 600; color: var(--navy); }
+@media (max-width: 560px) { .pv-linha { grid-template-columns: 1fr; gap: 0; } }

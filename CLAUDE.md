@@ -80,6 +80,13 @@ Baseado no documento "Controle de Ponto Próprio" (Resolut). Construído por eta
   Mensagem editável em 2 níveis: modelo padrão (Configurações › Parâmetros, Gestor; `parametros` chave
   "mensagemConvite", `GET/PUT /api/config/mensagem-convite`, marcadores {VAGA} {DETALHES} {PERFIL} {LINK}) e
   personalizada por vaga (`vaga.mensagemConvite` via `PATCH /api/vagas/:id/link`; vazio = volta ao padrão).
+- PERFIL DA VAGA PELO CLIENTE: página pública `/perfil-vaga` (link geral) e `/perfil-vaga/<token>` (personalizado,
+  ligado a e-mail/WhatsApp do contato) → `public/perfil-vaga.html` + `public/js/perfilVagaCliente.js`; API pública
+  `/api/publico/perfil-vaga` (routes/perfilVagaPublico.js). Gestor revisa em "Perfis dos clientes" (#/perfis-vaga,
+  routes/solicitacoesVaga.js): gerar link, pedir ajuste, validar (cria/usa empresa + vaga com perfilVaga e pagina
+  preenchidos, `vaga.perfilClienteId`) e confirmar ao cliente (e-mail automático + WhatsApp 1 clique). Coleção
+  "solicitacoesVaga"; reenvio guarda `versoesAnteriores`. Regras puras em utils/perfilVaga.js (test/perfilVaga.test.js).
+  "Perfil que não contrata" é INTERNO (nunca vai para pagina) e tem alerta de termos discriminatórios.
 - INSCRIÇÃO NOVA: inscrição pelo link/banco de talentos grava `novaInscricaoEm`; fica "🆕 NOVO" até alguém abrir o
   cadastro (`POST /api/candidatos/:id/visto` grava `vistoEm`/`vistoPor`). Selo "🆕 N novas inscrições" no cartão da vaga
   (`qtdNovasInscricoes` em /api/vagas), chip "Novas inscrições" e contador no menu Candidatos (`GET /api/candidatos/novos/contagem`).

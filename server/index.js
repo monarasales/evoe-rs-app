@@ -72,7 +72,9 @@ app.use("/api/colaboradores", require("./routes/colaboradores"));
 app.use("/api/ponto", require("./routes/ponto"));
 app.use("/api/ponto-gestao", require("./routes/pontoGestao"));
 app.use("/api/configuracao", require("./routes/configuracao"));
+app.use("/api/publico/perfil-vaga", require("./routes/perfilVagaPublico"));
 app.use("/api/publico", require("./routes/publico"));
+app.use("/api/solicitacoes-vaga", require("./routes/solicitacoesVaga"));
 app.use("/api/nps", require("./routes/nps"));
 
 // Páginas públicas: /vagas (todas as abertas), /vaga/<código> (inscrição),
@@ -80,6 +82,11 @@ app.use("/api/nps", require("./routes/nps"));
 // O servidor injeta título, prévia para WhatsApp e dados para o Google para Vagas.
 app.get(["/vagas", "/vaga/:token", "/disc/:token", "/talentos", "/avaliacao/:token"], (req, res) => {
   res.type("html").send(require("./utils/paginaPublicaSeo").renderizar(req));
+});
+
+// Formulário do perfil da vaga para o CLIENTE preencher (link enviado pela Evoé).
+app.get(["/perfil-vaga", "/perfil-vaga/:token"], (req, res) => {
+  res.sendFile(path.join(__dirname, "..", "public", "perfil-vaga.html"));
 });
 
 app.use(express.static(path.join(__dirname, "..", "public")));

@@ -11,6 +11,7 @@ import { renderCrm } from "./views/crm.js";
 import { renderFinanceiro } from "./views/financeiro.js";
 import { renderPonto } from "./views/ponto.js";
 import { renderColaboradores } from "./views/colaboradores.js";
+import { renderPerfisVaga } from "./views/perfisVaga.js";
 import { renderPontoGestao } from "./views/pontoGestao.js";
 import { renderNps } from "./views/nps.js";
 
@@ -39,6 +40,7 @@ const NAV_SECOES = [
     itens: [
       { href: "#/kanban", label: "Funil de Vagas", icone: "🧭" },
       { href: "#/candidatos", label: "Candidatos", icone: "👥" },
+      { href: "#/perfis-vaga", label: "Perfis dos clientes", icone: "📋", somenteGestor: true },
     ],
   },
   {
@@ -73,7 +75,7 @@ function montarNav() {
     return `
       ${secao.titulo ? `<div class="sidebar-nav-titulo">${secao.titulo}</div>` : ""}
       ${itensVisiveis
-        .map((l) => `<a href="${l.href}"><span class="nav-icone">${l.icone}</span><span>${l.label}</span>${l.href === "#/candidatos" ? '<span class="nav-badge hidden" id="badge-candidatos" title="Novas inscrições pelo link"></span>' : ""}</a>`)
+        .map((l) => `<a href="${l.href}"><span class="nav-icone">${l.icone}</span><span>${l.label}</span>${l.href === "#/candidatos" ? '<span class="nav-badge hidden" id="badge-candidatos" title="Novas inscrições pelo link"></span>' : ""}${l.href === "#/perfis-vaga" ? '<span class="nav-badge hidden" id="badge-perfis" title="Perfis aguardando sua validação"></span>' : ""}</a>`)
         .join("")}
     `;
   }).join("");
@@ -105,8 +107,22 @@ async function atualizarBadgeCandidatos() {
   }
 }
 
+/** Perfis de vaga enviados por clientes aguardando validação (só Gestor). */
+async function atualizarBadgePerfis() {
+  const el = document.getElementById("badge-perfis");
+  if (!el) return;
+  try {
+    const { aguardando } = await api.get("/api/solicitacoes-vaga/contagem");
+    el.textContent = String(aguardando);
+    el.classList.toggle("hidden", !aguardando);
+  } catch (e) {
+    /* silencioso */
+  }
+}
+
 async function atualizarBadgeNotificacoes() {
   atualizarBadgeCandidatos();
+  atualizarBadgePerfis();
   try {
     const { total } = await api.get("/api/notificacoes/nao-lidas/contagem");
     [notifBadge, notifBadgeMobile].forEach((badge) => {
@@ -208,6 +224,7 @@ function registrarRotas() {
   registrarRota("/ponto-gestao", renderPontoGestao);
   registrarRota("/nps", renderNps);
   registrarRota("/colaboradores", renderColaboradores);
+  registrarRota("/perfis-vaga", renderPerfisVaga);
 }
 
 async function init() {
@@ -227,6 +244,6 @@ async function init() {
 }
 
 // pequenas exportações usadas por outras views (evita import circular do state)
-window.__evoe = { showToast, atualizarBadgeNotificacoes, atualizarBadgeCandidatos };
+window.__evoe = { showToast, atualizarBadgeNotificacoes, atualizarBadgeCandidatos, atualizarBadgePerfis };
 
 init();
