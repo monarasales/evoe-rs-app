@@ -75,6 +75,7 @@ app.use("/api/configuracao", require("./routes/configuracao"));
 app.use("/api/publico/perfil-vaga", require("./routes/perfilVagaPublico"));
 app.use("/api/publico", require("./routes/publico"));
 app.use("/api/solicitacoes-vaga", require("./routes/solicitacoesVaga"));
+app.use("/api/propostas", require("./routes/propostas"));
 app.use("/api/nps", require("./routes/nps"));
 
 // Páginas públicas: /vagas (todas as abertas), /vaga/<código> (inscrição),

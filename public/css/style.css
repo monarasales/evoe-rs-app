@@ -356,10 +356,11 @@ table tr:hover td { background: #fafbfc; }
 .modal-close-row { display: flex; justify-content: flex-end; gap: 8px; margin-top: 20px; }
 .form-row { margin-bottom: 14px; }
 .form-row label { display: block; font-size: 12.5px; font-weight: 600; margin-bottom: 5px; color: var(--text); }
-.form-row input:not([type="radio"]):not([type="checkbox"]), .form-row select, .form-row textarea {
+.form-row input:not([type="radio"]):not([type="checkbox"]), .form-row select, .form-row textarea,
+.pp-vaga input, .pp-secao input[type="text"], .pp-secao textarea {
   width: 100%; padding: 9px 11px; border: 1px solid var(--border); border-radius: 8px; font-size: 13.5px; transition: border-color .12s;
 }
-.form-row input:focus, .form-row select:focus, .form-row textarea:focus { outline: none; border-color: var(--teal); }
+.form-row input:focus, .form-row select:focus, .form-row textarea:focus, .pp-vaga input:focus, .pp-secao input:focus, .pp-secao textarea:focus { outline: none; border-color: var(--teal); }
 .form-row textarea { min-height: 70px; resize: vertical; }
 .form-row input[type="radio"], .form-row input[type="checkbox"] {
   width: 15px; height: 15px; margin: 0; padding: 0; border-radius: 50%; flex: none;
@@ -769,3 +770,18 @@ tr.linha-nova td:first-child { box-shadow: inset 4px 0 0 #f0a020; }
 .pv-ajuste { margin-top: 10px; }
 .pv-ajuste summary { cursor: pointer; font-weight: 600; color: var(--navy); }
 @media (max-width: 560px) { .pv-linha { grid-template-columns: 1fr; gap: 0; } }
+
+/* CRM › Propostas (editor) */
+.pp-editor .section-title { margin-top: 16px; }
+.pp-marcadores { margin-bottom: 8px; line-height: 1.8; }
+.pp-marcadores code { background: var(--bg); border: 1px solid var(--border); border-radius: 5px; padding: 1px 5px; font-size: 11.5px; cursor: help; }
+.pp-secao { border: 1px solid var(--border); border-radius: 10px; padding: 10px 12px; margin-bottom: 10px; background: white; }
+.pp-secao-topo { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; margin-bottom: 6px; }
+.pp-secao-topo .pp-titulo { flex: 1 1 220px; font-weight: 700; }
+.pp-chk { display: flex; align-items: center; gap: 4px; font-size: 12.5px; font-weight: 400; margin: 0; white-space: nowrap; }
+.pp-secao textarea { width: 100%; font-family: inherit; line-height: 1.5; }
+.pp-vaga { display: grid; grid-template-columns: 2fr 1fr 70px 1.2fr auto; gap: 8px; align-items: center; margin-bottom: 6px; }
+.pp-vaga-cab { margin-bottom: 2px; font-size: 12.5px; }
+.pp-total { margin: 8px 0 4px; font-size: 15px; color: var(--navy); }
+.pp-envio { margin-top: 12px; background: var(--bg); border-radius: 10px; padding: 10px 12px; }
+@media (max-width: 640px) { .pp-vaga { grid-template-columns: 1fr 1fr; } .pp-vaga-cab { display: none; } }

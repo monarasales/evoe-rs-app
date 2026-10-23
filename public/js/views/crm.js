@@ -2,6 +2,7 @@ import { api } from "../api.js";
 import { store, showToast, formatarData, isGestor } from "../state.js";
 import { abrirModal, fecharModal } from "../modal.js";
 import { renderProspects } from "./crmProspects.js";
+import { renderPropostas, novaProposta } from "./crmPropostas.js";
 
 function escapeHtml(str) {
   const div = document.createElement("div");
@@ -12,6 +13,7 @@ function escapeHtml(str) {
 const ABAS = [
   { id: "clientes", label: "Clientes" },
   { id: "prospects", label: "Prospects" },
+  { id: "propostas", label: "Propostas" },
 ];
 
 
@@ -52,6 +54,7 @@ export async function renderCrm(root) {
   function renderizarAba() {
     marcarAbaAtiva();
     if (abaAtiva === "clientes") renderAbaClientes();
+    else if (abaAtiva === "propostas") renderPropostas(conteudo);
     else renderAbaProspects();
   }
 
@@ -137,12 +140,15 @@ export async function renderCrm(root) {
               <td>${escapeHtml(e.contatoResponsavel)}</td>
               <td>${escapeHtml(e.emailContato)}</td>
               <td>${e.endereco ? escapeHtml(e.endereco) : '<span class="sub">— não cadastrado —</span>'}</td>
-              <td><button class="btn btn-outline btn-sm btn-editar-empresa">Editar</button></td>
+              <td class="link-acoes"><button class="btn btn-outline btn-sm btn-proposta-empresa" title="Gerar proposta para este cliente">📄 Proposta</button><button class="btn btn-outline btn-sm btn-editar-empresa">Editar</button></td>
             </tr>`
             )
             .join("")}
         </tbody>
       </table>`;
+    el.querySelectorAll(".btn-proposta-empresa").forEach((btn) =>
+      btn.addEventListener("click", (e) => novaProposta({ empresaId: e.target.closest("tr").dataset.id }))
+    );
     el.querySelectorAll(".btn-editar-empresa").forEach((btn) =>
       btn.addEventListener("click", (e) => {
         const id = e.target.closest("tr").dataset.id;

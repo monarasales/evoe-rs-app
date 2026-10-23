@@ -6,6 +6,7 @@ import { api } from "../api.js";
 import { store, showToast, formatarData } from "../state.js";
 import { abrirModal, fecharModal } from "../modal.js";
 import { lerTelefone, primeiroNome } from "../retornoCandidato.js";
+import { novaProposta } from "./crmPropostas.js";
 
 const esc = (s) => {
   const d = document.createElement("div");
@@ -273,6 +274,7 @@ export async function renderProspects(conteudo) {
         <div id="prospect-form-erro" class="form-erro hidden"></div>
         <div class="modal-close-row">
           ${ed ? '<button type="button" id="p-excluir" class="btn btn-danger" style="margin-right:auto;">Excluir</button>' : ""}
+          ${ed ? '<button type="button" id="p-proposta" class="btn btn-outline">📄 Gerar proposta</button>' : ""}
           ${ed && !p.empresaId ? '<button type="button" id="p-converter" class="btn btn-secondary">✅ Fechou! Virar cliente</button>' : ""}
           <button type="button" id="p-fechar" class="btn btn-outline">Fechar</button>
           <button type="submit" class="btn btn-primary">${ed ? "Salvar" : "Criar prospect"}</button>
@@ -320,6 +322,7 @@ export async function renderProspects(conteudo) {
           erro(esc(err.message));
         }
       });
+      $m("p-proposta").addEventListener("click", () => novaProposta({ prospectId: p.id }, carregar));
       const conv = $m("p-converter");
       if (conv)
         conv.addEventListener("click", async () => {

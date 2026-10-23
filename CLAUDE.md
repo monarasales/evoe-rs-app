@@ -80,6 +80,12 @@ Baseado no documento "Controle de Ponto Próprio" (Resolut). Construído por eta
   Mensagem editável em 2 níveis: modelo padrão (Configurações › Parâmetros, Gestor; `parametros` chave
   "mensagemConvite", `GET/PUT /api/config/mensagem-convite`, marcadores {VAGA} {DETALHES} {PERFIL} {LINK}) e
   personalizada por vaga (`vaga.mensagemConvite` via `PATCH /api/vagas/:id/link`; vazio = volta ao padrão).
+- PROPOSTAS (CRM › Propostas, só Gestor): `server/utils/proposta.js` (modelo padrão com os textos do PDF da Evoé,
+  marcadores {CLIENTE} {PERCENTUAL}..., cálculo valor/vaga = máx(salário × taxa, salário mínimo), PDF pdfkit com
+  imagens em server/assets/proposta/ — capa, papel timbrado c/ marca d'água, parceiros — e Word via docx).
+  Rotas `routes/propostas.js`: modelo em parametros "modeloProposta" (restaurar guarda o anterior), numeração
+  parametros "propostas" (001/AAAA), cada proposta guarda cópia própria dos textos (`secoesAnteriores` ao editar).
+  Status Rascunho/Enviada/Aceita/Recusada/Arquivada; "Enviada" leva o prospect a "Proposta Enviada" + valorProposta.
 - PERFIL DA VAGA PELO CLIENTE: página pública `/perfil-vaga` (link geral) e `/perfil-vaga/<token>` (personalizado,
   ligado a e-mail/WhatsApp do contato) → `public/perfil-vaga.html` + `public/js/perfilVagaCliente.js`; API pública
   `/api/publico/perfil-vaga` (routes/perfilVagaPublico.js). Gestor revisa em "Perfis dos clientes" (#/perfis-vaga,
