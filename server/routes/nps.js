@@ -14,6 +14,26 @@ const router = express.Router();
 router.use(requireAuth);
 
 const baseUrl = (req) => `${req.protocol}://${req.get("host")}`;
+
+/** Telefone comparável (sem +55, zero ou máscara). */
+const chaveTel = (t) => {
+  let d = String(t || "").replace(/\D/g, "").replace(/^0+/, "");
+  if (d.length >= 12 && d.startsWith("55")) d = d.slice(2);
+  return d.length >= 10 ? d : "";
+};
+/** Pesquisa REAL sem resposta ligada a este telefone (na pesquisa ou no cadastro da empresa). */
+function pesquisaRealDoTelefone(tel) {
+  const k = chaveTel(tel);
+  if (!k) return null;
+  const empresas = new Map(db.readCollection("empresas").map((e) => [e.id, e]));
+  return (
+    db
+      .readCollection(COL)
+      .filter((p) => !p.teste && !p.respondidaEm)
+      .sort((a, b) => String(b.createdAt).localeCompare(String(a.createdAt)))
+      .find((p) => chaveTel(p.whatsapp) === k || (p.empresaId && chaveTel((empresas.get(p.empresaId) || {}).whatsappContato) === k)) || null
+  );
+}
 const podeEditar = (req, vaga) =>
   ["Gestor", "Supervisora"].includes(req.consultor.perfil) || (vaga && vaga.consultorId === req.consultor.id);
 
@@ -33,6 +53,8 @@ function paraTela(p) {
     respondidaEm: p.respondidaEm,
     respostas: p.respostas,
     respostaManual: !!p.respostaManual,
+    respostaTransferida: !!p.respostaTransferida,
+    transferidaPara: p.transferidaPara || null,
     empresaId: p.empresaId || null,
     link: linkPesquisa(p),
     linkWhatsapp: linkWhatsapp(p),
@@ -126,6 +148,27 @@ router.patch("/:id/contato", requireGestor, async (req, res) => {
   res.json({ pesquisa: paraTela(atual), email: envioEmail, atualizadas });
 });
 
+// Resposta dada numa pesquisa de TESTE por um cliente: transfere para a pesquisa real da vaga.
+// A pesquisa de teste continua guardada (marcada com transferidaPara).
+router.post("/:id/transferir", requireGestor, (req, res) => {
+  const teste = db.findById(COL, req.params.id);
+  if (!teste || !teste.teste) return res.status(404).json({ erro: "Pesquisa de teste não encontrada." });
+  if (!teste.respondidaEm) return res.status(400).json({ erro: "Esta pesquisa de teste ainda não foi respondida." });
+  if (teste.transferidaPara) return res.status(400).json({ erro: "Esta resposta já foi transferida." });
+  const real = db.findById(COL, (req.body || {}).paraId);
+  if (!real || real.teste) return res.status(400).json({ erro: "Escolha a pesquisa da vaga do cliente." });
+  if (real.respondidaEm) return res.status(400).json({ erro: "A pesquisa desta vaga já tem resposta." });
+  const agora = new Date().toISOString();
+  const respondente = teste.respostas.respondente && teste.respostas.respondente !== teste.consultorNome ? teste.respostas.respondente : real.contatoNome || "";
+  const atualizada = db.update(COL, real.id, {
+    respostas: { ...teste.respostas, respondente, transferidaDeTeste: teste.id, transferidaPor: req.consultor.nome },
+    respondidaEm: teste.respondidaEm,
+    respostaTransferida: true,
+  });
+  db.update(COL, teste.id, { transferidaPara: real.id, transferidaEm: agora, transferidaPor: req.consultor.nome });
+  res.json(paraTela(atualizada));
+});
+
 // Resposta recebida fora do link (ex.: o cliente respondeu por mensagem no WhatsApp):
 // a gestão registra a nota. Fica marcada como "registrada pela Evoé".
 router.post("/:id/resposta-manual", requireGestor, (req, res) => {
@@ -212,6 +255,14 @@ router.post("/reenviar-falhas", requireGestor, async (req, res) => {
 router.post("/teste", requireGestor, (req, res) => {
   const tel = String((req.body || {}).telefone || "").replace(/\D/g, "");
   if (tel.length < 10) return res.status(400).json({ erro: "Informe o WhatsApp com DDD, ex.: (85) 98862-0412." });
+  // Número de um cliente com pesquisa pendente: a resposta de TESTE não contaria no NPS.
+  const real = pesquisaRealDoTelefone(tel);
+  if (real && !(req.body || {}).forcar) {
+    return res.status(409).json({
+      erro: `Este número é de ${real.empresaNome}, que tem a pesquisa da vaga "${real.vagaTitulo}" aguardando resposta. Envie a pesquisa real — a de teste não entra nos indicadores.`,
+      pesquisaReal: paraTela(real),
+    });
+  }
   const p = db.insert(COL, {
     token: crypto.randomBytes(12).toString("base64url"),
     teste: true,
@@ -273,7 +324,15 @@ router.get("/painel", requireGestor, (req, res) => {
     senhaRecusada: !!(ultimoErroEmail && /535|BadCredentials|Username and Password/i.test(ultimoErroEmail.erro || "")),
   };
 
+  // Respostas de teste que parecem ser de clientes (mesmo número de uma pesquisa real pendente).
+  const sugestoesTransferencia = todasComTeste
+    .filter((p) => p.teste && p.respondidaEm && !p.transferidaPara)
+    .map((p) => ({ teste: paraTela(p), para: pesquisaRealDoTelefone(p.whatsapp) }))
+    .filter((s) => s.para)
+    .map((s) => ({ teste: s.teste, para: paraTela(s.para) }));
+
   res.json({
+    sugestoesTransferencia,
     diagnostico,
     meses: listaMeses,
     criterios: CRITERIOS,

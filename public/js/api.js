@@ -20,6 +20,7 @@ async function request(method, url, body) {
     const msg = (data && data.erro) || `Erro ${res.status} ao chamar ${url}`;
     const err = new Error(msg);
     err.status = res.status;
+    err.dados = data; // detalhes extras que a rota devolveu junto com o erro
     throw err;
   }
   return data;

@@ -792,3 +792,4 @@ tr.linha-nova td:first-child { box-shadow: inset 4px 0 0 #f0a020; }
 .nps-escala-adm { display: flex; flex-wrap: wrap; gap: 5px; }
 .nota-btn { width: 38px; height: 38px; border: 1px solid var(--border); border-radius: 8px; background: white; cursor: pointer; font-weight: 700; color: inherit; }
 .nota-btn.on { background: var(--navy); color: white; border-color: var(--navy); }
+.nps-sugestao .nps-sug-linha { display: flex; justify-content: space-between; align-items: center; gap: 10px; flex-wrap: wrap; padding: 8px 0; border-top: 1px solid rgba(0,0,0,.06); margin-top: 6px; }

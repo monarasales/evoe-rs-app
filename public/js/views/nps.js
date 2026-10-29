@@ -78,6 +78,35 @@ export async function renderNps(root) {
       } catch (err) {
         if (janela) janela.close();
         const box = document.getElementById("nps-teste-erro");
+        const real = err.dados && err.dados.pesquisaReal;
+        if (real) {
+          box.innerHTML = `⚠️ ${esc(err.message)}
+            <div class="link-acoes" style="margin-top:8px;">
+              <button type="button" class="btn btn-primary btn-sm" id="nps-teste-real">💬 Enviar a pesquisa real (${esc(real.vagaTitulo)})</button>
+              <button type="button" class="btn btn-outline btn-sm" id="nps-teste-forcar">Enviar teste mesmo assim</button>
+            </div>`;
+          box.classList.remove("hidden");
+          document.getElementById("nps-teste-real").addEventListener("click", () => {
+            window.open(real.linkWhatsapp, "_blank", "noopener");
+            api.post(`/api/nps/${real.id}/whatsapp`).catch(() => {});
+            fecharModal();
+            showToast(`Pesquisa da vaga ${real.vagaTitulo} aberta no WhatsApp.`, "sucesso");
+            carregar();
+          });
+          document.getElementById("nps-teste-forcar").addEventListener("click", async () => {
+            const j2 = window.open("", "_blank");
+            try {
+              const p = await api.post("/api/nps/teste", { telefone: tel.value, forcar: true });
+              if (j2) j2.location = p.linkWhatsapp;
+              fecharModal();
+              carregar();
+            } catch (e2) {
+              if (j2) j2.close();
+              showToast(e2.message, "erro");
+            }
+          });
+          return;
+        }
         box.textContent = err.message;
         box.classList.remove("hidden");
       }
@@ -125,7 +154,18 @@ export async function renderNps(root) {
     const z = ZONA[g.zona];
     const dg = d.diagnostico || {};
     const filaPendente = pendentesWhatsapp(d.pesquisas).length;
+    pesquisasAtuais = d.pesquisas;
+    const sug = d.sugestoesTransferencia || [];
     const alertas = [
+      sug.length
+        ? `<div class="ponto-aviso nps-sugestao">🔁 <strong>${sug.length} resposta(s) chegaram por uma pesquisa de TESTE enviada ao número de um cliente</strong> — por isso não estão contando no NPS. Transfira para a pesquisa da vaga:
+            ${sug
+              .map(
+                (s) => `<div class="nps-sug-linha"><span><strong>${esc(s.para.empresaNome)}</strong> · vaga ${esc(s.para.vagaTitulo)} — nota <strong>${s.teste.respostas.nps}/10</strong>, respondida em ${new Date(s.teste.respondidaEm).toLocaleDateString("pt-BR")}${s.teste.respostas.feedback ? ` · "${esc(s.teste.respostas.feedback.slice(0, 80))}"` : ""}</span>
+                  <button type="button" class="btn btn-primary btn-sm" data-transferir-de="${esc(s.teste.id)}" data-transferir-para="${esc(s.para.id)}">Transferir resposta</button></div>`
+              )
+              .join("")}</div>`
+        : "",
       dg.senhaRecusada
         ? `<div class="ponto-aviso">⚠️ <strong>Os e-mails não estão saindo:</strong> o Gmail recusou o usuário/senha configurados no servidor. ${dg.emailsComFalha} pesquisa(s) ficaram sem e-mail. Depois de corrigir a senha, clique em <button type="button" class="link-btn" id="nps-reenviar-falhas">Reenviar e-mails que falharam</button>.</div>`
         : dg.emailsComFalha
@@ -271,7 +311,7 @@ function linhaPesquisa(p, oculta) {
   const semContato = !p.teste && !(p.whatsapp && p.whatsapp.length >= 10) && !(p.emails || []).length;
   return `<tr class="${oculta ? "nps-oculta hidden" : ""}">
     <td><strong>${esc(p.vagaTitulo)}</strong>${p.teste ? ' <span class="tag tag-encerrada">teste</span>' : ""}<div class="sub">${esc(p.empresaNome || "—")}${p.contatoNome ? ` · ${esc(p.contatoNome)}` : ""}</div></td>
-    <td>${esc(p.consultorNome || "—")}</td>
+    <td>${esc(p.consultorNome || "—")}${p.teste && r && !p.transferidaPara ? `<div><button type="button" class="link-btn" data-transferir-escolher="${esc(p.id)}">↪ Era de um cliente? Transferir</button></div>` : ""}${p.transferidaPara ? '<div class="sub">↪ transferida para a pesquisa do cliente</div>' : ""}${p.respostaTransferida ? '<div class="sub">↩ veio de uma pesquisa de teste</div>' : ""}</td>
     <td class="sub">${new Date(p.criadaEm).toLocaleDateString("pt-BR")}<br>
       ${email ? (email.ok ? "✉️ e-mail enviado" : '✉️ <span class="saldo-neg">não enviado</span>') : ""}${email && !email.ok ? `<div class="sub" title="${esc(email.erro || "")}">${esc((email.erro || "").slice(0, 60))}</div>` : ""}
       ${whats ? `<br>💬 enviado no WhatsApp em ${new Date(whats.em).toLocaleDateString("pt-BR")}` : ""}${semContato ? '<br><span class="saldo-neg">sem contato</span>' : ""}</td>
@@ -296,7 +336,8 @@ function linhaPesquisa(p, oculta) {
 function tabelaPesquisas(lista) {
   if (!lista.length) return '<div class="empty-state">Nenhuma pesquisa ainda. Ela é criada quando uma vaga é marcada como "11. Aprovado".</div>';
   const cab = "<thead><tr><th>Vaga / cliente</th><th>Consultor(a)</th><th>Envio</th><th>Situação</th><th></th></tr></thead>";
-  const respondidas = lista.filter((p) => p.respostas).sort((a, b) => String(b.respondidaEm).localeCompare(String(a.respondidaEm)));
+  // clientes primeiro (mais recentes no topo); pesquisas de teste por último
+  const respondidas = lista.filter((p) => p.respostas).sort((a, b) => !!a.teste - !!b.teste || String(b.respondidaEm).localeCompare(String(a.respondidaEm)));
   const pendentes = lista.filter((p) => !p.respostas);
   return `
     <h3 class="nps-subtitulo">✅ Respostas recebidas (${respondidas.length})</h3>
@@ -337,6 +378,20 @@ export function ligarAcoes(raiz, aoMudar) {
       b.disabled = false;
     })
   );
+  raiz.querySelectorAll("[data-transferir-de]").forEach((b) =>
+    b.addEventListener("click", async () => {
+      b.disabled = true;
+      try {
+        const r = await api.post(`/api/nps/${b.dataset.transferirDe}/transferir`, { paraId: b.dataset.transferirPara });
+        showToast(`Resposta transferida para ${r.empresaNome} (${r.vagaTitulo}). Já conta no NPS.`, "sucesso");
+        if (aoMudar) aoMudar();
+      } catch (err) {
+        showToast(err.message, "erro");
+        b.disabled = false;
+      }
+    })
+  );
+  raiz.querySelectorAll("[data-transferir-escolher]").forEach((b) => b.addEventListener("click", () => escolherTransferencia(b.dataset.transferirEscolher, aoMudar)));
   raiz.querySelectorAll("[data-contato]").forEach((b) => b.addEventListener("click", () => editarContato(b.dataset.contato, aoMudar)));
   raiz.querySelectorAll("[data-registrar]").forEach((b) => b.addEventListener("click", () => registrarResposta(b.dataset.registrar, aoMudar)));
   raiz.querySelectorAll("[data-copiar]").forEach((b) =>
@@ -549,6 +604,33 @@ function abrirFilaWhatsapp(pesquisas, aoConcluir) {
     }
   };
   desenhar();
+}
+
+let pesquisasAtuais = [];
+
+/** Transferir uma resposta de teste para a pesquisa de uma vaga (escolhida da lista). */
+function escolherTransferencia(testeId, aoMudar) {
+  const pendentes = pesquisasAtuais.filter((p) => !p.teste && !p.respostas);
+  abrirModal(`<h2>↪ Transferir resposta de teste</h2>
+    <p class="sub">Escolha a pesquisa da vaga do cliente que respondeu. A resposta passa a contar no NPS; a pesquisa de teste continua guardada.</p>
+    <div class="form-row"><label>Pesquisa do cliente</label><select id="tr-para"><option value="">Escolha...</option>${pendentes
+      .map((p) => `<option value="${esc(p.id)}">${esc(p.empresaNome || "—")} — ${esc(p.vagaTitulo)}</option>`)
+      .join("")}</select></div>
+    <div id="tr-erro" class="form-erro hidden"></div>
+    <div class="modal-close-row"><button type="button" class="btn btn-outline" id="tr-fechar">Fechar</button><button type="button" class="btn btn-primary" id="tr-ok">Transferir</button></div>`);
+  document.getElementById("tr-fechar").addEventListener("click", fecharModal);
+  document.getElementById("tr-ok").addEventListener("click", async () => {
+    try {
+      await api.post(`/api/nps/${testeId}/transferir`, { paraId: document.getElementById("tr-para").value });
+      fecharModal();
+      showToast("Resposta transferida. Já conta no NPS.", "sucesso");
+      if (aoMudar) aoMudar();
+    } catch (e) {
+      const el = document.getElementById("tr-erro");
+      el.textContent = e.message;
+      el.classList.remove("hidden");
+    }
+  });
 }
 
 /** Contato da pesquisa (fora da fila: botão "✏️ Adicionar contato" na lista). */
