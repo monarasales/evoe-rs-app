@@ -30,13 +30,16 @@ function contatosDaVaga(vaga) {
 const linkPesquisa = (p) => `${p.base}/avaliacao/${p.token}`;
 
 // Mensagem padrão definida pela diretora (Monara): os clientes falam com ela, então a
-// pesquisa vai em nome dela. Só o nome do contato e o link mudam por cliente.
+// pesquisa vai em nome dela. Cita a VAGA e quem conduziu o processo: um cliente com várias
+// vagas (e consultores diferentes) precisa saber qual processo está avaliando.
 function mensagemPadrao(p) {
   const saudacao = p.contatoNome ? `Olá, ${primeiroNome(p.contatoNome)}! Tudo bem?` : "Olá! Tudo bem?";
+  const vaga = p.vagaTitulo ? ` da vaga de *${p.vagaTitulo}*` : "";
+  const consultor = primeiroNome(p.consultorNome);
   return [
     saudacao,
     "Aqui é a Monara, diretora da Evoé Gestão & RH.",
-    "Concluímos mais uma etapa do nosso trabalho com vocês e gostaria muito de ouvir a sua percepção sobre a experiência com a nossa consultoria. Esse retorno é muito importante para continuarmos aprimorando nossas entregas e fortalecendo cada vez mais a nossa parceria.",
+    `Concluímos o processo seletivo${vaga}${consultor ? `, conduzido por ${consultor}, da nossa equipe,` : ""} e gostaria muito de ouvir a sua percepção sobre a experiência com a nossa consultoria${vaga ? " nesse processo" : ""}. Esse retorno é muito importante para continuarmos aprimorando nossas entregas e fortalecendo cada vez mais a nossa parceria.`,
     "Preparamos uma pesquisa bem rápida, com apenas 6 perguntas e duração média de 1 minuto:",
     linkPesquisa(p),
     "Agradeço pela confiança na Evoé e, principalmente, pela parceria conosco.",
@@ -57,7 +60,7 @@ async function enviarPorEmail(p, lembrete = false) {
     await enviarEmail({
       para: p.emails.join(", "),
       assunto: `${lembrete ? "Lembrete: " : ""}Sua opinião sobre a Evoé — vaga ${p.vagaTitulo}`,
-      texto: `${mensagemPadrao(p)}\n\nMonara\nDiretora — Evoé Gestão & RH`,
+      texto: `${mensagemPadrao(p).replace(/\*/g, "")}\n\nMonara\nDiretora — Evoé Gestão & RH`,
     });
     return { ok: true };
   } catch (err) {

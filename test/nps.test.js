@@ -56,3 +56,12 @@ test("validação: exige todas as notas de 1 a 5 e NPS de 0 a 10", () => {
   assert.throws(() => validarRespostas({ ...ok, criterios: { ...ok.criterios, prazo: 0 } }), /Prazo/);
   assert.throws(() => validarRespostas({ ...ok, criterios: { ...ok.criterios, consultor: undefined } }), /Consultor/);
 });
+
+test("mensagem do NPS cita a vaga e quem conduziu o processo", () => {
+  const { mensagemPadrao } = require("../server/utils/npsPesquisas");
+  const msg = mensagemPadrao({ contatoNome: "Carla Mendes", vagaTitulo: "Analista Financeiro", consultorNome: "Lidya Vanessa", base: "https://x", token: "abc" });
+  assert.match(msg, /processo seletivo da vaga de \*Analista Financeiro\*, conduzido por Lidya, da nossa equipe,/);
+  assert.match(msg, /https:\/\/x\/avaliacao\/abc/);
+  const semVaga = mensagemPadrao({ base: "https://x", token: "t" });
+  assert.match(semVaga, /Concluímos o processo seletivo e gostaria/);
+});

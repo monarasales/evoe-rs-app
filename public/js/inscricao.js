@@ -196,8 +196,8 @@
     raiz.innerHTML = `
       <div class="cartao">
         <div class="etapa">Pesquisa de satisfação</div>
-        <h1 style="margin-top:4px;">Como foi sua experiência com a Evoé?</h1>
-        <p class="secao-sub">Processo seletivo: <strong>${esc(d.vaga)}</strong>${d.empresa ? ` · ${esc(d.empresa)}` : ""}. Leva 1 minuto.</p>
+        <h1 style="margin-top:4px;">Como foi o processo seletivo${d.vaga ? ` da vaga de ${esc(d.vaga)}` : ""}?</h1>
+        <p class="secao-sub">${d.empresa ? `${esc(d.empresa)} · ` : ""}${d.consultor ? `Conduzido por <strong>${esc(d.consultor)}</strong> · ` : ""}Sua avaliação vale só para este processo. Leva 1 minuto.</p>
       </div>
       <form id="form-nps" novalidate>
         <div class="cartao">
