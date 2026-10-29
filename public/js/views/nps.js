@@ -48,7 +48,7 @@ export async function renderNps(root) {
   const alvo = root.querySelector("#nps-conteudo");
   let ultimas = [];
   root.querySelector("#nps-campanha").addEventListener("click", () => abrirCampanha(() => carregar()));
-  root.querySelector("#nps-fila").addEventListener("click", () => abrirFilaWhatsapp(pendentesWhatsapp(ultimas), () => carregar()));
+  root.querySelector("#nps-fila").addEventListener("click", () => abrirFilaWhatsapp(filaWhatsapp(ultimas), () => carregar()));
   root.querySelector("#nps-teste").addEventListener("click", () => {
     abrirModal(`
       <h2>Enviar pesquisa de teste</h2>
@@ -180,7 +180,7 @@ export async function renderNps(root) {
         carregar();
       });
     const btnAbrirFila = alvo.querySelector("#nps-abrir-fila");
-    if (btnAbrirFila) btnAbrirFila.addEventListener("click", () => abrirFilaWhatsapp(pendentesWhatsapp(ultimas), () => carregar()));
+    if (btnAbrirFila) btnAbrirFila.addEventListener("click", () => abrirFilaWhatsapp(filaWhatsapp(ultimas), () => carregar()));
   }
   carregar();
 }
@@ -263,39 +263,46 @@ function tabelaMensal(mensal, criterios) {
     .join("")}</tbody></table></div>`;
 }
 
-function tabelaPesquisas(listaOriginal) {
-  // Pendentes primeiro (são as que pedem ação), depois as respondidas mais recentes.
-  const lista = [...listaOriginal.filter((p) => !p.respostas), ...listaOriginal.filter((p) => p.respostas)];
+function linhaPesquisa(p, oculta) {
+  const email = p.envios.filter((e) => e.canal.startsWith("email")).slice(-1)[0];
+  const whats = p.envios.filter((e) => e.canal === "whatsapp").slice(-1)[0];
+  const r = p.respostas;
+  const cat = r ? (r.nps >= 9 ? "promotor" : r.nps >= 7 ? "neutro" : "detrator") : null;
+  const semContato = !p.teste && !(p.whatsapp && p.whatsapp.length >= 10) && !(p.emails || []).length;
+  return `<tr class="${oculta ? "nps-oculta hidden" : ""}">
+    <td><strong>${esc(p.vagaTitulo)}</strong>${p.teste ? ' <span class="tag tag-encerrada">teste</span>' : ""}<div class="sub">${esc(p.empresaNome || "—")}${p.contatoNome ? ` · ${esc(p.contatoNome)}` : ""}</div></td>
+    <td>${esc(p.consultorNome || "—")}</td>
+    <td class="sub">${new Date(p.criadaEm).toLocaleDateString("pt-BR")}<br>
+      ${email ? (email.ok ? "✉️ e-mail enviado" : '✉️ <span class="saldo-neg">não enviado</span>') : ""}${email && !email.ok ? `<div class="sub" title="${esc(email.erro || "")}">${esc((email.erro || "").slice(0, 60))}</div>` : ""}
+      ${whats ? `<br>💬 enviado no WhatsApp em ${new Date(whats.em).toLocaleDateString("pt-BR")}` : ""}${semContato ? '<br><span class="saldo-neg">sem contato</span>' : ""}</td>
+    <td>${
+      r
+        ? `<span class="tag nps-cat-${cat}">${r.nps}/10 · ${cat}</span>
+           <div class="sub">respondida em ${new Date(p.respondidaEm).toLocaleDateString("pt-BR")}${r.respondente ? ` por ${esc(r.respondente)}` : ""}${p.respostaManual ? ` · registrada por ${esc(r.registradaPor || "Evoé")} (${esc(r.canal || "WhatsApp")})` : ""}</div>
+           ${r.feedback ? `<div class="parecer-texto" style="margin-top:4px;">"${esc(r.feedback)}"</div>` : ""}`
+        : '<span class="tag tag-standby">aguardando resposta</span>'
+    }</td>
+    <td style="white-space:nowrap;">${
+      r
+        ? ""
+        : `${semContato ? `<button class="btn btn-primary btn-sm" data-contato="${esc(p.id)}">✏️ Adicionar contato</button>` : `<button class="btn btn-primary btn-sm" data-whats="${esc(p.id)}" data-link="${esc(p.linkWhatsapp)}">WhatsApp</button>`}
+           ${p.vagaId && (p.emails || []).length ? `<button class="btn btn-outline btn-sm" data-reenviar="${esc(p.vagaId)}">Reenviar e-mail</button>` : ""}
+           <button class="btn btn-outline btn-sm" data-copiar="${esc(p.link)}">Copiar link</button>
+           <button class="btn btn-outline btn-sm" data-registrar="${esc(p.id)}" title="O cliente respondeu por mensagem? Registre a nota aqui.">📝 Registrar resposta</button>`
+    }</td>
+  </tr>`;
+}
+
+function tabelaPesquisas(lista) {
   if (!lista.length) return '<div class="empty-state">Nenhuma pesquisa ainda. Ela é criada quando uma vaga é marcada como "11. Aprovado".</div>';
-  return `<div class="tabela-rolavel"><table class="nps-pesquisas"><thead><tr><th>Vaga / cliente</th><th>Consultor(a)</th><th>Envio</th><th>Situação</th><th></th></tr></thead><tbody>${lista
-    .map((p, i) => {
-      const email = p.envios.filter((e) => e.canal.startsWith("email")).slice(-1)[0];
-      const whats = p.envios.filter((e) => e.canal === "whatsapp").slice(-1)[0];
-      const r = p.respostas;
-      const cat = r ? (r.nps >= 9 ? "promotor" : r.nps >= 7 ? "neutro" : "detrator") : null;
-      return `<tr class="${i >= 15 ? "nps-oculta hidden" : ""}">
-        <td><strong>${esc(p.vagaTitulo)}</strong>${p.teste ? ' <span class="tag tag-encerrada">teste</span>' : ""}<div class="sub">${esc(p.empresaNome || "—")}${p.contatoNome ? ` · ${esc(p.contatoNome)}` : ""}</div></td>
-        <td>${esc(p.consultorNome || "—")}</td>
-        <td class="sub">${new Date(p.criadaEm).toLocaleDateString("pt-BR")}<br>
-          ${email ? (email.ok ? `✉️ e-mail enviado` : `✉️ <span class="saldo-neg">não enviado</span>`) : ""}${email && !email.ok ? `<div class="sub" title="${esc(email.erro || "")}">${esc((email.erro || "").slice(0, 60))}</div>` : ""}
-          ${whats ? "<br>💬 WhatsApp aberto" : ""}</td>
-        <td>${
-          r
-            ? `<span class="tag nps-cat-${cat}">${r.nps}/10 · ${cat === "promotor" ? "promotor" : cat === "neutro" ? "neutro" : "detrator"}</span>
-               <div class="sub">respondida em ${new Date(p.respondidaEm).toLocaleDateString("pt-BR")}${r.respondente ? ` por ${esc(r.respondente)}` : ""}</div>
-               ${r.feedback ? `<details><summary class="sub">ver comentário</summary><div class="parecer-texto">${esc(r.feedback)}</div></details>` : ""}`
-            : '<span class="tag tag-standby">aguardando resposta</span>'
-        }</td>
-        <td style="white-space:nowrap;">${
-          r
-            ? ""
-            : `<button class="btn btn-primary btn-sm" data-whats="${esc(p.id)}" data-link="${esc(p.linkWhatsapp)}">WhatsApp</button>
-               ${p.vagaId ? `<button class="btn btn-outline btn-sm" data-reenviar="${esc(p.vagaId)}">Reenviar e-mail</button>` : ""}
-               <button class="btn btn-outline btn-sm" data-copiar="${esc(p.link)}">Copiar link</button>`
-        }</td>
-      </tr>`;
-    })
-    .join("")}</tbody></table></div>${lista.length > 15 ? `<button type="button" class="btn btn-outline btn-sm" id="nps-mostrar-todas" style="margin-top:10px;">Mostrar todas (${lista.length})</button>` : ""}`;
+  const cab = "<thead><tr><th>Vaga / cliente</th><th>Consultor(a)</th><th>Envio</th><th>Situação</th><th></th></tr></thead>";
+  const respondidas = lista.filter((p) => p.respostas).sort((a, b) => String(b.respondidaEm).localeCompare(String(a.respondidaEm)));
+  const pendentes = lista.filter((p) => !p.respostas);
+  return `
+    <h3 class="nps-subtitulo">✅ Respostas recebidas (${respondidas.length})</h3>
+    ${respondidas.length ? `<div class="tabela-rolavel"><table class="nps-pesquisas">${cab}<tbody>${respondidas.map((p) => linhaPesquisa(p, false)).join("")}</tbody></table></div>` : '<div class="sub" style="margin-bottom:10px;">Nenhuma resposta ainda. Se um cliente respondeu por mensagem no WhatsApp, use "📝 Registrar resposta" na pesquisa dele, abaixo.</div>'}
+    <h3 class="nps-subtitulo">⏳ Aguardando resposta (${pendentes.length})</h3>
+    ${pendentes.length ? `<div class="tabela-rolavel"><table class="nps-pesquisas">${cab}<tbody>${pendentes.map((p, i) => linhaPesquisa(p, i >= 15)).join("")}</tbody></table></div>${pendentes.length > 15 ? `<button type="button" class="btn btn-outline btn-sm" id="nps-mostrar-todas" style="margin-top:10px;">Mostrar todas (${pendentes.length})</button>` : ""}` : '<div class="sub">Todas as pesquisas foram respondidas. 🎉</div>'}`;
 }
 
 /** Ações dos botões de envio (painel e cadastro da vaga usam as mesmas). */
@@ -330,6 +337,8 @@ export function ligarAcoes(raiz, aoMudar) {
       b.disabled = false;
     })
   );
+  raiz.querySelectorAll("[data-contato]").forEach((b) => b.addEventListener("click", () => editarContato(b.dataset.contato, aoMudar)));
+  raiz.querySelectorAll("[data-registrar]").forEach((b) => b.addEventListener("click", () => registrarResposta(b.dataset.registrar, aoMudar)));
   raiz.querySelectorAll("[data-copiar]").forEach((b) =>
     b.addEventListener("click", async () => {
       try {
@@ -343,7 +352,12 @@ export function ligarAcoes(raiz, aoMudar) {
 }
 
 // ---------- Disparo para vagas já fechadas ----------
-/** Pesquisas sem resposta que ainda não foram abertas no WhatsApp (fila de envio). */
+/** Fila do WhatsApp: todas as pesquisas sem resposta (enviadas aparecem como "Enviado"). */
+function filaWhatsapp(pesquisas) {
+  return pesquisas.filter((p) => !p.respostas && !p.teste);
+}
+
+/** Pesquisas sem resposta que ainda não foram abertas no WhatsApp (contagem do aviso). */
 function pendentesWhatsapp(pesquisas) {
   return pesquisas.filter((p) => !p.respostas && !p.teste && !p.envios.some((e) => e.canal === "whatsapp"));
 }
@@ -433,30 +447,51 @@ async function abrirCampanha(aoConcluir) {
   });
 }
 
-/** Fila de envio pelo WhatsApp: um clique por cliente, com progresso. */
+const dataEnvioWhats = (p) => {
+  const e = (p.envios || []).filter((x) => x.canal === "whatsapp").slice(-1)[0];
+  return e ? new Date(e.em).toLocaleDateString("pt-BR") : "";
+};
+const temWhats = (p) => p.whatsapp && String(p.whatsapp).replace(/\D/g, "").length >= 10;
+
+/** Fila de envio pelo WhatsApp: um clique por cliente, com progresso; sem contato → cadastrar ali mesmo. */
 function abrirFilaWhatsapp(pesquisas, aoConcluir) {
   const fila = pesquisas.map((p) => ({ ...p, enviado: p.envios.some((e) => e.canal === "whatsapp") }));
+  let editando = null;
+  // Ordem: a enviar → sem contato → já enviadas
+  const ordem = (p) => (temWhats(p) && !p.enviado ? 0 : !temWhats(p) ? 1 : 2);
+  fila.sort((a, b) => ordem(a) - ordem(b));
   const desenhar = () => {
-    const comWhats = fila.filter((p) => p.whatsapp && p.whatsapp.length >= 10);
+    const comWhats = fila.filter(temWhats);
     const feitos = comWhats.filter((p) => p.enviado).length;
     const proximo = comWhats.find((p) => !p.enviado);
+    const semContato = fila.filter((p) => !temWhats(p)).length;
     abrirModal(`
       <h2>💬 Fila de envio pelo WhatsApp</h2>
-      <p class="sub">Clique em <strong>Enviar</strong>: o WhatsApp abre na conversa do cliente com a mensagem pronta — é só apertar enviar e voltar aqui para o próximo.</p>
-      <div class="camp-progresso"><div class="bar-track"><div class="bar-fill bar-fill-ok" style="width:${comWhats.length ? (feitos / comWhats.length) * 100 : 0}%"></div></div><strong>${feitos} de ${comWhats.length}</strong></div>
+      <p class="sub">Clique em <strong>Enviar</strong>: o WhatsApp abre na conversa do cliente com a mensagem pronta — é só apertar enviar e voltar aqui para o próximo.${semContato ? ` ${semContato} cliente(s) sem WhatsApp: clique em <strong>✏️ Adicionar contato</strong>.` : ""}</p>
+      <div class="camp-progresso"><div class="bar-track"><div class="bar-fill bar-fill-ok" style="width:${comWhats.length ? (feitos / comWhats.length) * 100 : 0}%"></div></div><strong>${feitos} de ${comWhats.length} enviados</strong></div>
       <div class="tabela-rolavel camp-lista"><table><tbody>${fila
-        .map(
-          (p) => `<tr class="${p === proximo ? "camp-proximo" : ""}">
-            <td><strong>${esc(p.empresaNome || p.vagaTitulo)}</strong><div class="sub">${esc(p.vagaTitulo)}${p.contatoNome ? ` · ${esc(p.contatoNome)}` : ""}</div></td>
-            <td style="white-space:nowrap;text-align:right;">${
-              !p.whatsapp || p.whatsapp.length < 10
-                ? `<span class="sub">sem WhatsApp${p.envios.some((e) => e.canal === "email" && e.ok) ? " · ✉️ e-mail enviado" : ""}</span>`
-                : p.enviado
-                ? '<span class="tag tag-nprazo">✓ aberto no WhatsApp</span>'
-                : `<button type="button" class="btn ${p === proximo ? "btn-primary" : "btn-outline"} btn-sm" data-enviar="${esc(p.id)}">Enviar</button>`
-            }</td>
-          </tr>`
-        )
+        .map((p) => {
+          const acao = !temWhats(p)
+            ? `<button type="button" class="btn btn-outline btn-sm" data-editar="${esc(p.id)}">✏️ Adicionar contato</button>${p.envios.some((e) => e.canal.startsWith("email") && e.ok) ? '<div class="sub">✉️ e-mail enviado</div>' : ""}`
+            : p.enviado
+            ? `<span class="tag tag-nprazo">✅ Enviado${dataEnvioWhats(p) ? ` em ${dataEnvioWhats(p)}` : ""}</span> <button type="button" class="link-btn" data-enviar="${esc(p.id)}">reenviar</button>`
+            : `<button type="button" class="btn ${p === proximo ? "btn-primary" : "btn-outline"} btn-sm" data-enviar="${esc(p.id)}">Enviar</button>`;
+          const form =
+            editando === p.id
+              ? `<tr class="fila-contato"><td colspan="2"><div class="form-cols">
+                  <div class="form-row"><label>WhatsApp</label><input type="tel" id="fc-whats" placeholder="(85) 90000-0000" value="${esc(p.whatsapp || "")}" /></div>
+                  <div class="form-row"><label>E-mail</label><input type="email" id="fc-email" value="${esc((p.emails || [])[0] || "")}" /></div>
+                </div>
+                <div class="form-row"><label>Nome do contato <span class="sub">(opcional)</span></label><input type="text" id="fc-nome" value="${esc(p.contatoNome || "")}" /></div>
+                <div class="sub" style="margin-bottom:6px;">O contato também fica salvo no cadastro da empresa no CRM.</div>
+                <div id="fc-erro" class="form-erro hidden"></div>
+                <div class="link-acoes"><button type="button" class="btn btn-primary btn-sm" id="fc-salvar">Salvar contato</button><button type="button" class="btn btn-outline btn-sm" id="fc-cancelar">Cancelar</button></div></td></tr>`
+              : "";
+          return `<tr class="${p === proximo ? "camp-proximo" : ""}">
+            <td><strong>${esc(p.empresaNome || p.vagaTitulo)}</strong><div class="sub">${esc(p.vagaTitulo)}${p.contatoNome ? ` · ${esc(p.contatoNome)}` : ""}${temWhats(p) ? ` · ${esc(p.whatsapp)}` : ""}</div></td>
+            <td style="white-space:nowrap;text-align:right;">${acao}</td>
+          </tr>${form}`;
+        })
         .join("")}</tbody></table></div>
       ${!proximo && comWhats.length ? '<div class="funil-final aprovado" style="margin-top:10px;">🎉 Todos os clientes com WhatsApp foram enviados!</div>' : ""}
       <div class="modal-close-row"><button type="button" class="btn btn-outline" id="fila-fechar">${proximo ? "Continuar depois" : "Fechar"}</button></div>`);
@@ -469,10 +504,123 @@ function abrirFilaWhatsapp(pesquisas, aoConcluir) {
         const p = fila.find((x) => x.id === b.dataset.enviar);
         window.open(p.linkWhatsapp, "_blank", "noopener");
         p.enviado = true;
+        p.envios = [...p.envios, { canal: "whatsapp", em: new Date().toISOString(), ok: true }];
         api.post(`/api/nps/${p.id}/whatsapp`).catch(() => {});
         desenhar();
       })
     );
+    document.querySelectorAll("[data-editar]").forEach((b) =>
+      b.addEventListener("click", () => {
+        editando = b.dataset.editar;
+        desenhar();
+        document.getElementById("fc-whats").focus();
+      })
+    );
+    const salvar = document.getElementById("fc-salvar");
+    if (salvar) {
+      document.getElementById("fc-cancelar").addEventListener("click", () => {
+        editando = null;
+        desenhar();
+      });
+      salvar.addEventListener("click", async () => {
+        const erro = document.getElementById("fc-erro");
+        erro.classList.add("hidden");
+        try {
+          const r = await api.patch(`/api/nps/${editando}/contato`, {
+            whatsapp: document.getElementById("fc-whats").value,
+            email: document.getElementById("fc-email").value,
+            contatoNome: document.getElementById("fc-nome").value,
+          });
+          const i = fila.findIndex((x) => x.id === editando);
+          fila[i] = { ...r.pesquisa, enviado: r.pesquisa.envios.some((e) => e.canal === "whatsapp") };
+          // mesma empresa, outras vagas: recebem o contato também
+          (r.atualizadas || []).forEach((u) => {
+            const k = fila.findIndex((x) => x.id === u.id);
+            if (k >= 0) fila[k] = { ...u, enviado: u.envios.some((e) => e.canal === "whatsapp") };
+          });
+          editando = null;
+          showToast(`Contato salvo${r.email ? (r.email.ok ? " e pesquisa enviada por e-mail" : ` (e-mail não enviado: ${r.email.erro})`) : ""}. ${temWhats(fila[i]) ? "Agora é só clicar em Enviar." : ""}`, r.email && !r.email.ok ? "erro" : "sucesso");
+          desenhar();
+        } catch (e) {
+          erro.textContent = e.message;
+          erro.classList.remove("hidden");
+        }
+      });
+    }
   };
   desenhar();
+}
+
+/** Contato da pesquisa (fora da fila: botão "✏️ Adicionar contato" na lista). */
+function editarContato(id, aoMudar) {
+  abrirModal(`<h2>✏️ Contato do cliente</h2>
+    <div class="form-cols">
+      <div class="form-row"><label>WhatsApp</label><input type="tel" id="ec-whats" placeholder="(85) 90000-0000" /></div>
+      <div class="form-row"><label>E-mail</label><input type="email" id="ec-email" /></div>
+    </div>
+    <div class="form-row"><label>Nome do contato <span class="sub">(opcional)</span></label><input type="text" id="ec-nome" /></div>
+    <div class="sub">O contato também fica salvo no cadastro da empresa no CRM.</div>
+    <div id="ec-erro" class="form-erro hidden"></div>
+    <div class="modal-close-row"><button type="button" class="btn btn-outline" id="ec-fechar">Fechar</button><button type="button" class="btn btn-primary" id="ec-salvar">Salvar contato</button></div>`);
+  document.getElementById("ec-fechar").addEventListener("click", fecharModal);
+  document.getElementById("ec-salvar").addEventListener("click", async () => {
+    try {
+      const r = await api.patch(`/api/nps/${id}/contato`, { whatsapp: document.getElementById("ec-whats").value, email: document.getElementById("ec-email").value, contatoNome: document.getElementById("ec-nome").value });
+      fecharModal();
+      showToast("Contato salvo. Agora já dá para enviar pelo WhatsApp.", "sucesso");
+      if (aoMudar) aoMudar();
+      if (temWhats(r.pesquisa) && confirm("Abrir o WhatsApp agora com a pesquisa pronta?")) {
+        window.open(r.pesquisa.linkWhatsapp, "_blank", "noopener");
+        api.post(`/api/nps/${id}/whatsapp`).then(() => aoMudar && aoMudar()).catch(() => {});
+      }
+    } catch (e) {
+      const el = document.getElementById("ec-erro");
+      el.textContent = e.message;
+      el.classList.remove("hidden");
+    }
+  });
+}
+
+/** Cliente respondeu por mensagem (fora do link): a gestão registra a nota. */
+function registrarResposta(id, aoMudar) {
+  const CRIT = [["atendimento", "Atendimento"], ["qualidade", "Qualidade da seleção"], ["prazo", "Prazo"], ["atualizacao", "Atualização do processo"], ["consultor", "Consultor(a)"]];
+  let nota = null;
+  abrirModal(`<h2>📝 Registrar resposta do cliente</h2>
+    <p class="sub">Use quando o cliente respondeu por mensagem (WhatsApp, ligação...) em vez de abrir o link. A resposta fica marcada como registrada por você.</p>
+    <label>Nota de 0 a 10 (recomendaria a Evoé?) *</label>
+    <div class="nps-escala-adm">${Array.from({ length: 11 }, (_, n) => `<button type="button" class="nota-btn" data-n="${n}">${n}</button>`).join("")}</div>
+    <div class="sub" style="margin:10px 0 4px;">Notas dos critérios (1 a 5) — preencha só se o cliente informou:</div>
+    <div class="form-cols">${CRIT.map(([k, rot]) => `<div class="form-row"><label>${rot}</label><select data-crit="${k}"><option value="">—</option>${[5, 4, 3, 2, 1].map((n) => `<option value="${n}">${n}</option>`).join("")}</select></div>`).join("")}</div>
+    <div class="form-cols">
+      <div class="form-row"><label>Quem respondeu</label><input type="text" id="rr-quem" /></div>
+      <div class="form-row"><label>Por onde</label><select id="rr-canal"><option>WhatsApp</option><option>Ligação</option><option>E-mail</option><option>Pessoalmente</option></select></div>
+    </div>
+    <div class="form-row"><label>Comentário do cliente</label><textarea id="rr-feedback" rows="3" placeholder="Cole aqui o que o cliente escreveu"></textarea></div>
+    <div id="rr-erro" class="form-erro hidden"></div>
+    <div class="modal-close-row"><button type="button" class="btn btn-outline" id="rr-fechar">Fechar</button><button type="button" class="btn btn-primary" id="rr-salvar">Registrar resposta</button></div>`);
+  document.querySelectorAll(".nota-btn").forEach((b) =>
+    b.addEventListener("click", () => {
+      nota = Number(b.dataset.n);
+      document.querySelectorAll(".nota-btn").forEach((x) => x.classList.toggle("on", x === b));
+    })
+  );
+  document.getElementById("rr-fechar").addEventListener("click", fecharModal);
+  document.getElementById("rr-salvar").addEventListener("click", async () => {
+    const erro = document.getElementById("rr-erro");
+    if (nota === null) {
+      erro.textContent = "Escolha a nota de 0 a 10.";
+      return erro.classList.remove("hidden");
+    }
+    const criterios = {};
+    document.querySelectorAll("[data-crit]").forEach((s) => s.value && (criterios[s.dataset.crit] = Number(s.value)));
+    try {
+      await api.post(`/api/nps/${id}/resposta-manual`, { nps: nota, criterios, respondente: document.getElementById("rr-quem").value, canal: document.getElementById("rr-canal").value, feedback: document.getElementById("rr-feedback").value });
+      fecharModal();
+      showToast("Resposta registrada.", "sucesso");
+      if (aoMudar) aoMudar();
+    } catch (e) {
+      erro.textContent = e.message;
+      erro.classList.remove("hidden");
+    }
+  });
 }

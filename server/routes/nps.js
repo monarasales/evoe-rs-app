@@ -32,6 +32,8 @@ function paraTela(p) {
     envios: p.envios || [],
     respondidaEm: p.respondidaEm,
     respostas: p.respostas,
+    respostaManual: !!p.respostaManual,
+    empresaId: p.empresaId || null,
     link: linkPesquisa(p),
     linkWhatsapp: linkWhatsapp(p),
   };
@@ -70,6 +72,83 @@ router.post("/:id/whatsapp", (req, res) => {
   if (!p) return res.status(404).json({ erro: "Pesquisa não encontrada." });
   if (!podeEditar(req, db.findById("vagas", p.vagaId))) return res.status(403).json({ erro: "Sem acesso." });
   res.json(paraTela(registrarEnvio(p, { canal: "whatsapp", para: p.whatsapp || "(número escolhido no WhatsApp)", por: req.consultor.nome, ok: true })));
+});
+
+// Cadastrar/corrigir o contato do cliente direto na fila (sem ir ao CRM): grava na pesquisa
+// e no cadastro da empresa. O contato anterior da empresa fica em historicoContatos.
+router.patch("/:id/contato", requireGestor, async (req, res) => {
+  const p = db.findById(COL, req.params.id);
+  if (!p) return res.status(404).json({ erro: "Pesquisa não encontrada." });
+  const b = req.body || {};
+  const whatsapp = String(b.whatsapp || "").replace(/\D/g, "");
+  const email = String(b.email || "").trim().toLowerCase();
+  const nome = String(b.contatoNome || "").trim().slice(0, 120);
+  if (whatsapp && whatsapp.length < 10) return res.status(400).json({ erro: "WhatsApp com DDD, ex.: (85) 98862-0412." });
+  if (email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) return res.status(400).json({ erro: "E-mail inválido." });
+  if (!whatsapp && !email) return res.status(400).json({ erro: "Informe o WhatsApp ou o e-mail do cliente." });
+  const dados = {};
+  if (whatsapp) dados.whatsapp = whatsapp;
+  if (email) dados.emails = [...new Set([email, ...(p.emails || [])])];
+  if (nome) dados.contatoNome = nome;
+  let atual = db.update(COL, p.id, dados);
+
+  const empresa = p.empresaId ? db.findById("empresas", p.empresaId) : null;
+  if (empresa) {
+    const novo = {};
+    if (whatsapp && String(empresa.whatsappContato || "").replace(/\D/g, "") !== whatsapp) novo.whatsappContato = b.whatsapp;
+    if (email && String(empresa.emailContato || "").toLowerCase() !== email) novo.emailContato = email;
+    if (nome && !empresa.contatoResponsavel) novo.contatoResponsavel = nome;
+    if (Object.keys(novo).length) {
+      novo.historicoContatos = [
+        ...(empresa.historicoContatos || []),
+        { em: new Date().toISOString(), por: req.consultor.nome, origem: "Fila do NPS", anterior: { whatsappContato: empresa.whatsappContato || "", emailContato: empresa.emailContato || "", contatoResponsavel: empresa.contatoResponsavel || "" } },
+      ];
+      db.update("empresas", empresa.id, novo);
+    }
+  }
+  // Outras pesquisas pendentes da mesma empresa sem contato recebem o mesmo contato.
+  const outras = p.empresaId
+    ? db.readCollection(COL).filter((x) => x.id !== p.id && x.empresaId === p.empresaId && !x.respondidaEm && !x.teste)
+    : [];
+  const atualizadas = outras.map((x) => {
+    const d2 = {};
+    if (whatsapp && String(x.whatsapp || "").length < 10) d2.whatsapp = whatsapp;
+    if (email && !(x.emails || []).length) d2.emails = [email];
+    if (nome && !x.contatoNome) d2.contatoNome = nome;
+    return Object.keys(d2).length ? paraTela(db.update(COL, x.id, d2)) : null;
+  }).filter(Boolean);
+  // E-mail novo: já tenta enviar a pesquisa por e-mail também.
+  let envioEmail = null;
+  if (email && !emailJaEntregue(atual)) {
+    envioEmail = await enviarPorEmail(atual);
+    atual = registrarEnvio(atual, { canal: "email", para: atual.emails.join(", "), por: req.consultor.nome, ...envioEmail });
+  }
+  res.json({ pesquisa: paraTela(atual), email: envioEmail, atualizadas });
+});
+
+// Resposta recebida fora do link (ex.: o cliente respondeu por mensagem no WhatsApp):
+// a gestão registra a nota. Fica marcada como "registrada pela Evoé".
+router.post("/:id/resposta-manual", requireGestor, (req, res) => {
+  const p = db.findById(COL, req.params.id);
+  if (!p) return res.status(404).json({ erro: "Pesquisa não encontrada." });
+  if (p.respondidaEm) return res.status(400).json({ erro: "Esta pesquisa já tem resposta." });
+  const b = req.body || {};
+  const nps = Number(b.nps);
+  if (!Number.isInteger(nps) || nps < 0 || nps > 10) return res.status(400).json({ erro: "Informe a nota de 0 a 10 que o cliente deu." });
+  const criterios = {};
+  for (const c of CRITERIOS) {
+    const n = Number((b.criterios || {})[c.id]);
+    if (Number.isInteger(n) && n >= 1 && n <= 5) criterios[c.id] = n;
+  }
+  const respostas = {
+    criterios,
+    nps,
+    feedback: String(b.feedback || "").trim().slice(0, 3000),
+    respondente: String(b.respondente || p.contatoNome || "").trim().slice(0, 120),
+    registradaPor: req.consultor.nome,
+    canal: String(b.canal || "WhatsApp").slice(0, 30),
+  };
+  res.json(paraTela(db.update(COL, p.id, { respostas, respondidaEm: new Date().toISOString(), respostaManual: true })));
 });
 
 // ---------- Disparo para vagas JÁ FECHADAS (Gestor valida antes) ----------

@@ -37,9 +37,17 @@ function resumir(respostas) {
   const n = respostas.length;
   const cont = { promotor: 0, neutro: 0, detrator: 0 };
   const somas = Object.fromEntries(CRITERIOS.map((c) => [c.id, 0]));
+  const qtds = Object.fromEntries(CRITERIOS.map((c) => [c.id, 0]));
   for (const r of respostas) {
     cont[categoria(r.nps)]++;
-    for (const c of CRITERIOS) somas[c.id] += r.criterios[c.id];
+    // critérios podem faltar (resposta registrada pela Evoé a partir de uma mensagem do cliente)
+    for (const c of CRITERIOS) {
+      const v = r.criterios && r.criterios[c.id];
+      if (Number.isFinite(v)) {
+        somas[c.id] += v;
+        qtds[c.id]++;
+      }
+    }
   }
   const pct = (x) => (n ? Math.round((x / n) * 1000) / 10 : 0);
   return {
@@ -51,8 +59,11 @@ function resumir(respostas) {
     pctPromotores: pct(cont.promotor),
     pctNeutros: pct(cont.neutro),
     pctDetratores: pct(cont.detrator),
-    medias: Object.fromEntries(CRITERIOS.map((c) => [c.id, n ? Math.round((somas[c.id] / n) * 10) / 10 : null])),
-    mediaGeral: n ? Math.round((CRITERIOS.reduce((t, c) => t + somas[c.id], 0) / (n * CRITERIOS.length)) * 10) / 10 : null,
+    medias: Object.fromEntries(CRITERIOS.map((c) => [c.id, qtds[c.id] ? Math.round((somas[c.id] / qtds[c.id]) * 10) / 10 : null])),
+    mediaGeral: (() => {
+      const total = CRITERIOS.reduce((t, c) => t + qtds[c.id], 0);
+      return total ? Math.round((CRITERIOS.reduce((t, c) => t + somas[c.id], 0) / total) * 10) / 10 : null;
+    })(),
   };
 }
 
