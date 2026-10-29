@@ -45,6 +45,7 @@ function paraTela(p) {
     vagaTitulo: p.vagaTitulo,
     empresaNome: p.empresaNome,
     consultorNome: p.consultorNome,
+    consultorId: p.consultorId || null,
     contatoNome: p.contatoNome,
     emails: p.emails,
     whatsapp: p.whatsapp,

@@ -4,7 +4,7 @@
 // tem pouco contraste, por isso há rótulos visíveis e a tabela de dados).
 
 import { api } from "../api.js";
-import { showToast, isGestor } from "../state.js";
+import { showToast, isGestor, store } from "../state.js";
 import { abrirModal, fecharModal } from "../modal.js";
 
 const esc = (s) => {
@@ -155,6 +155,7 @@ export async function renderNps(root) {
     const dg = d.diagnostico || {};
     const filaPendente = pendentesWhatsapp(d.pesquisas).length;
     pesquisasAtuais = d.pesquisas;
+    criteriosAtuais = d.criterios || [];
     const sug = d.sugestoesTransferencia || [];
     const alertas = [
       sug.length
@@ -333,15 +334,99 @@ function linhaPesquisa(p, oculta) {
   </tr>`;
 }
 
+let criteriosAtuais = [];
+const catDe = (n) => (n >= 9 ? "promotor" : n >= 7 ? "neutro" : "detrator");
+
+/** Respostas agrupadas por empresa; cada vaga abre o detalhe da avaliação. */
+function respostasPorEmpresa(lista) {
+  const grupos = new Map();
+  lista.forEach((p) => {
+    const k = p.empresaNome || "Sem empresa";
+    if (!grupos.has(k)) grupos.set(k, []);
+    grupos.get(k).push(p);
+  });
+  return `<div class="nps-empresas">${[...grupos.entries()]
+    .sort((a, b) => a[0].localeCompare(b[0], "pt-BR"))
+    .map(([empresa, ps]) => {
+      const media = ps.reduce((s, p) => s + p.respostas.nps, 0) / ps.length;
+      return `<div class="nps-empresa">
+        <div class="nps-empresa-topo"><strong>${esc(empresa)}</strong><span class="sub">${ps.length} resposta${ps.length > 1 ? "s" : ""} · média ${String(Math.round(media * 10) / 10).replace(".", ",")}/10</span></div>
+        ${ps
+          .map((p) => {
+            const r = p.respostas;
+            return `<button type="button" class="nps-resp" data-ver="${esc(p.id)}">
+              <span class="tag nps-cat-${catDe(r.nps)}">${r.nps}/10</span>
+              <span class="nps-resp-txt"><strong>${esc(p.vagaTitulo)}</strong><span class="sub">Consultor(a): ${esc(p.consultorNome || "—")} · ${new Date(p.respondidaEm).toLocaleDateString("pt-BR")}${r.feedback ? ` · "${esc(r.feedback.slice(0, 70))}${r.feedback.length > 70 ? "…" : ""}"` : ""}</span></span>
+              <span class="nps-resp-ver">Ver respostas ›</span>
+            </button>`;
+          })
+          .join("")}
+      </div>`;
+    })
+    .join("")}</div>`;
+}
+
+/** Detalhe da avaliação: notas por critério, recomendação, comentário + devolutiva para a equipe. */
+function verResposta(id) {
+  const p = pesquisasAtuais.find((x) => x.id === id);
+  if (!p || !p.respostas) return;
+  const r = p.respostas;
+  const cat = catDe(r.nps);
+  const ROT = ["", "Muito ruim", "Ruim", "Regular", "Bom", "Excelente"];
+  const crits = criteriosAtuais.length ? criteriosAtuais : [{ id: "atendimento", nome: "Atendimento" }, { id: "qualidade", nome: "Qualidade da seleção" }, { id: "prazo", nome: "Prazo" }, { id: "atualizacao", nome: "Atualização do processo" }, { id: "consultor", nome: "Consultor(a)" }];
+  const nomeCrit = (c) => (c.id === "consultor" && p.consultorNome ? `Consultor(a): ${p.consultorNome}` : c.nome);
+  const texto = [
+    `⭐ *Avaliação do cliente — ${p.empresaNome || ""}*`,
+    `Vaga: ${p.vagaTitulo}`,
+    `Recomendação: *${r.nps}/10* (${cat})`,
+    ...crits.filter((c) => r.criterios && r.criterios[c.id]).map((c) => `• ${nomeCrit(c)}: ${r.criterios[c.id]}/5 (${ROT[r.criterios[c.id]]})`),
+    r.feedback ? `Comentário: "${r.feedback}"` : "",
+    `Respondida em ${new Date(p.respondidaEm).toLocaleDateString("pt-BR")}${r.respondente ? ` por ${r.respondente}` : ""}.`,
+  ]
+    .filter(Boolean)
+    .join("\n");
+  const consultor = (store.consultores || []).find((c) => c.id === p.consultorId);
+  const telC = consultor && String(consultor.whatsapp || "").replace(/\D/g, "");
+  abrirModal(`
+    <h2>⭐ ${esc(p.empresaNome || "Avaliação")}</h2>
+    <div class="sub" style="margin-bottom:12px;">Vaga <strong>${esc(p.vagaTitulo)}</strong> · Consultor(a): <strong>${esc(p.consultorNome || "—")}</strong> · respondida em ${new Date(p.respondidaEm).toLocaleString("pt-BR", { dateStyle: "short", timeStyle: "short" })}${r.respondente ? ` por ${esc(r.respondente)}` : ""}
+      ${p.respostaManual ? `<br>📝 Registrada por ${esc(r.registradaPor || "Evoé")} (${esc(r.canal || "WhatsApp")})` : ""}${p.respostaTransferida ? "<br>↩ Resposta recebida por uma pesquisa de teste e transferida para esta vaga" : ""}</div>
+    <div class="nps-det-nota nps-det-${cat}"><div class="nps-det-num">${r.nps}<small>/10</small></div><div>Recomendaria a Evoé<br><strong>${cat === "promotor" ? "Promotor 😍" : cat === "neutro" ? "Neutro 😐" : "Detrator ⚠️"}</strong></div></div>
+    <div class="nps-det-crits">${crits
+      .map((c) => {
+        const n = r.criterios && r.criterios[c.id];
+        return `<div class="nps-det-crit"><span>${esc(nomeCrit(c))}</span><span class="nps-estrelas">${n ? `${"★".repeat(n)}<span class="apagada">${"★".repeat(5 - n)}</span> <small>${ROT[n]}</small>` : '<small class="sub">não informado</small>'}</span></div>`;
+      })
+      .join("")}</div>
+    <div class="form-row" style="margin-top:12px;"><label>Comentário do cliente</label><div class="parecer-texto">${r.feedback ? esc(r.feedback) : '<span class="sub">Sem comentário.</span>'}</div></div>
+    <div class="modal-close-row">
+      <button type="button" class="btn btn-outline" id="vr-copiar" style="margin-right:auto;">📋 Copiar para a equipe</button>
+      ${telC && telC.length >= 10 ? `<a class="btn btn-secondary" target="_blank" rel="noopener" href="https://wa.me/${telC.startsWith("55") && telC.length >= 12 ? telC : "55" + telC}?text=${encodeURIComponent(texto)}">💬 Enviar ao consultor</a>` : ""}
+      <button type="button" class="btn btn-primary" id="vr-fechar">Fechar</button>
+    </div>`);
+  document.getElementById("vr-fechar").addEventListener("click", fecharModal);
+  document.getElementById("vr-copiar").addEventListener("click", async () => {
+    try {
+      await navigator.clipboard.writeText(texto);
+      showToast("Avaliação copiada — cole no grupo da equipe.", "sucesso");
+    } catch (e) {
+      prompt("Copie:", texto);
+    }
+  });
+}
+
 function tabelaPesquisas(lista) {
   if (!lista.length) return '<div class="empty-state">Nenhuma pesquisa ainda. Ela é criada quando uma vaga é marcada como "11. Aprovado".</div>';
   const cab = "<thead><tr><th>Vaga / cliente</th><th>Consultor(a)</th><th>Envio</th><th>Situação</th><th></th></tr></thead>";
   // clientes primeiro (mais recentes no topo); pesquisas de teste por último
   const respondidas = lista.filter((p) => p.respostas).sort((a, b) => !!a.teste - !!b.teste || String(b.respondidaEm).localeCompare(String(a.respondidaEm)));
   const pendentes = lista.filter((p) => !p.respostas);
+  const clientes = respondidas.filter((p) => !p.teste);
+  const testes = respondidas.filter((p) => p.teste);
   return `
-    <h3 class="nps-subtitulo">✅ Respostas recebidas (${respondidas.length})</h3>
-    ${respondidas.length ? `<div class="tabela-rolavel"><table class="nps-pesquisas">${cab}<tbody>${respondidas.map((p) => linhaPesquisa(p, false)).join("")}</tbody></table></div>` : '<div class="sub" style="margin-bottom:10px;">Nenhuma resposta ainda. Se um cliente respondeu por mensagem no WhatsApp, use "📝 Registrar resposta" na pesquisa dele, abaixo.</div>'}
+    <h3 class="nps-subtitulo">✅ Respostas recebidas por empresa (${clientes.length})</h3>
+    ${clientes.length ? respostasPorEmpresa(clientes) : '<div class="sub" style="margin-bottom:10px;">Nenhuma resposta ainda. Se um cliente respondeu por mensagem no WhatsApp, use "📝 Registrar resposta" na pesquisa dele, abaixo.</div>'}
+    ${testes.length ? `<details class="nps-testes"><summary class="sub">🧪 Pesquisas de teste respondidas (${testes.length}) — não contam no NPS</summary><div class="tabela-rolavel"><table class="nps-pesquisas">${cab}<tbody>${testes.map((p) => linhaPesquisa(p, false)).join("")}</tbody></table></div></details>` : ""}
     <h3 class="nps-subtitulo">⏳ Aguardando resposta (${pendentes.length})</h3>
     ${pendentes.length ? `<div class="tabela-rolavel"><table class="nps-pesquisas">${cab}<tbody>${pendentes.map((p, i) => linhaPesquisa(p, i >= 15)).join("")}</tbody></table></div>${pendentes.length > 15 ? `<button type="button" class="btn btn-outline btn-sm" id="nps-mostrar-todas" style="margin-top:10px;">Mostrar todas (${pendentes.length})</button>` : ""}` : '<div class="sub">Todas as pesquisas foram respondidas. 🎉</div>'}`;
 }
@@ -391,6 +476,7 @@ export function ligarAcoes(raiz, aoMudar) {
       }
     })
   );
+  raiz.querySelectorAll("[data-ver]").forEach((b) => b.addEventListener("click", () => verResposta(b.dataset.ver)));
   raiz.querySelectorAll("[data-transferir-escolher]").forEach((b) => b.addEventListener("click", () => escolherTransferencia(b.dataset.transferirEscolher, aoMudar)));
   raiz.querySelectorAll("[data-contato]").forEach((b) => b.addEventListener("click", () => editarContato(b.dataset.contato, aoMudar)));
   raiz.querySelectorAll("[data-registrar]").forEach((b) => b.addEventListener("click", () => registrarResposta(b.dataset.registrar, aoMudar)));

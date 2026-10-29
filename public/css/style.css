@@ -793,3 +793,28 @@ tr.linha-nova td:first-child { box-shadow: inset 4px 0 0 #f0a020; }
 .nota-btn { width: 38px; height: 38px; border: 1px solid var(--border); border-radius: 8px; background: white; cursor: pointer; font-weight: 700; color: inherit; }
 .nota-btn.on { background: var(--navy); color: white; border-color: var(--navy); }
 .nps-sugestao .nps-sug-linha { display: flex; justify-content: space-between; align-items: center; gap: 10px; flex-wrap: wrap; padding: 8px 0; border-top: 1px solid rgba(0,0,0,.06); margin-top: 6px; }
+
+/* NPS: respostas por empresa + detalhe */
+.nps-empresas { display: grid; grid-template-columns: repeat(auto-fill, minmax(340px, 1fr)); gap: 12px; margin-bottom: 14px; }
+.nps-empresa { background: white; border: 1px solid var(--border); border-radius: 12px; padding: 12px 14px; }
+.nps-empresa-topo { display: flex; justify-content: space-between; gap: 8px; align-items: baseline; flex-wrap: wrap; margin-bottom: 8px; }
+.nps-resp { display: flex; align-items: center; gap: 10px; width: 100%; text-align: left; background: var(--bg); border: 1px solid transparent; border-radius: 9px; padding: 9px 10px; margin-top: 6px; cursor: pointer; color: inherit; font: inherit; }
+.nps-resp:hover { border-color: var(--teal); background: white; }
+.nps-resp-txt { flex: 1; display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.nps-resp-ver { color: var(--teal); font-size: 12.5px; font-weight: 600; white-space: nowrap; }
+.nps-testes { margin: 6px 0 12px; }
+.nps-det-nota { display: flex; align-items: center; gap: 16px; border-radius: 12px; padding: 12px 16px; margin-bottom: 12px; }
+.nps-det-num { font-size: 40px; font-weight: 800; line-height: 1; }
+.nps-det-num small { font-size: 16px; font-weight: 600; }
+.nps-det-promotor { background: #e7f6ee; color: #146c3c; }
+.nps-det-neutro { background: #f1f2f4; color: #4b5563; }
+.nps-det-detrator { background: #fdecea; color: #a8322a; }
+.nps-det-crit { display: flex; justify-content: space-between; gap: 10px; padding: 7px 0; border-bottom: 1px solid var(--border); font-size: 14px; }
+.nps-estrelas { color: #f5a623; letter-spacing: 1px; white-space: nowrap; }
+.nps-estrelas .apagada { color: #d9dde3; }
+.nps-estrelas small { color: var(--text-muted); letter-spacing: 0; margin-left: 4px; }
+.nps-resp { font-size: 13.5px; line-height: 1.35; }
+.nps-resp-txt strong { font-size: 14px; }
+.nps-resp-txt .sub { font-size: 12.5px; display: block; overflow: hidden; text-overflow: ellipsis; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; }
+.nps-resp .tag { flex: none; }
+.modal-close-row a.btn { text-decoration: none; }
