@@ -134,17 +134,20 @@ function calcularDia({ data, marcacoes = [], escalaDia, config = {}, hoje, feria
   const atrasoAbonadoMin = oc.abonaAtraso ? atrasoBruto : 0;
 
   if (incompleta) {
-    // Pendência: só entra no total se o colaborador confirmou que saiu mais cedo.
+    // Pendência: só entra no total se o colaborador confirmou que saiu mais cedo — ou se a
+    // gestão aprovou a saída antecipada (com abono: fecha sem desconto; sem abono: desconta).
     const saldo = base.cargaCumprida - escala.cargaEsperada;
+    const fechado = !!confirmado || !!oc.confirmaDia;
     return {
       ...base,
       atrasoMin,
       atrasoAbonadoMin,
       incompleta: true,
-      confirmado: !!confirmado,
-      saldo: confirmado ? Math.min(0, saldo + atrasoAbonadoMin) : 0,
-      status: confirmado ? "normal" : "incompleto",
-      contaNoTotal: !!confirmado,
+      confirmado: fechado,
+      saidaAbonadaMin: oc.abonaSaida ? Math.max(0, -saldo) : 0,
+      saldo: !fechado ? 0 : oc.abonaSaida ? 0 : Math.min(0, saldo + atrasoAbonadoMin),
+      status: fechado ? "normal" : "incompleto",
+      contaNoTotal: fechado,
     };
   }
 
@@ -156,13 +159,16 @@ function calcularDia({ data, marcacoes = [], escalaDia, config = {}, hoje, feria
   const almoco = escala.temAlmoco ? avaliarAlmoco(horarios, almocoMin, almocoMax) : null;
 
   const saldoBruto = base.cargaCumprida - escala.cargaEsperada;
+  // "Saída antecipada justificada" devolve ao saldo os minutos da saída mais cedo.
+  const saidaAbonadaMin = oc.abonaSaida ? saidaAntecipadaMin : 0;
   return {
     ...base,
     atrasoMin,
     atrasoAbonadoMin,
-    saidaAntecipadaMin,
+    saidaAntecipadaMin: oc.abonaSaida ? 0 : saidaAntecipadaMin,
+    saidaAbonadaMin,
     almoco,
-    saldo: saldoBruto < 0 ? Math.min(0, saldoBruto + atrasoAbonadoMin) : saldoBruto,
+    saldo: saldoBruto < 0 ? Math.min(0, saldoBruto + atrasoAbonadoMin + saidaAbonadaMin) : saldoBruto,
     status: "normal",
     contaNoTotal: true,
   };

@@ -75,7 +75,7 @@ function montarNav() {
     return `
       ${secao.titulo ? `<div class="sidebar-nav-titulo">${secao.titulo}</div>` : ""}
       ${itensVisiveis
-        .map((l) => `<a href="${l.href}"><span class="nav-icone">${l.icone}</span><span>${l.label}</span>${l.href === "#/candidatos" ? '<span class="nav-badge hidden" id="badge-candidatos" title="Novas inscrições pelo link"></span>' : ""}${l.href === "#/perfis-vaga" ? '<span class="nav-badge hidden" id="badge-perfis" title="Perfis aguardando sua validação"></span>' : ""}</a>`)
+        .map((l) => `<a href="${l.href}"><span class="nav-icone">${l.icone}</span><span>${l.label}</span>${l.href === "#/candidatos" ? '<span class="nav-badge hidden" id="badge-candidatos" title="Novas inscrições pelo link"></span>' : ""}${l.href === "#/perfis-vaga" ? '<span class="nav-badge hidden" id="badge-perfis" title="Perfis aguardando sua validação"></span>' : ""}${l.href === "#/financeiro" ? '<span class="nav-badge nav-badge-alerta hidden" id="badge-financeiro" title="Parcelas vencidas ou vencendo hoje"></span>' : ""}${l.href === "#/ponto-gestao" ? '<span class="nav-badge hidden" id="badge-ponto" title="Ajustes de ponto para aprovar"></span>' : ""}</a>`)
         .join("")}
     `;
   }).join("");
@@ -120,9 +120,27 @@ async function atualizarBadgePerfis() {
   }
 }
 
+/** Contadores do Gestor: parcelas a cobrar (Financeiro) e ajustes de ponto (Gestão do Ponto). */
+async function atualizarBadgeFinanceiro() {
+  const badge = async (id, url, campo) => {
+    const el = document.getElementById(id);
+    if (!el) return;
+    try {
+      const n = (await api.get(url))[campo];
+      el.textContent = String(n);
+      el.classList.toggle("hidden", !n);
+    } catch (e) {
+      /* silencioso */
+    }
+  };
+  badge("badge-financeiro", "/api/financeiro/parcelas/contagem", "cobrar");
+  badge("badge-ponto", "/api/ponto-gestao/solicitacoes/contagem", "pendentes");
+}
+
 async function atualizarBadgeNotificacoes() {
   atualizarBadgeCandidatos();
   atualizarBadgePerfis();
+  atualizarBadgeFinanceiro();
   try {
     const { total } = await api.get("/api/notificacoes/nao-lidas/contagem");
     [notifBadge, notifBadgeMobile].forEach((badge) => {
@@ -244,6 +262,6 @@ async function init() {
 }
 
 // pequenas exportações usadas por outras views (evita import circular do state)
-window.__evoe = { showToast, atualizarBadgeNotificacoes, atualizarBadgeCandidatos, atualizarBadgePerfis };
+window.__evoe = { showToast, atualizarBadgeNotificacoes, atualizarBadgeCandidatos, atualizarBadgePerfis, atualizarBadgeFinanceiro };
 
 init();

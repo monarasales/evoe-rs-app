@@ -5,6 +5,7 @@ import { api } from "../api.js";
 import { store, showToast, formatarData } from "../state.js";
 import { abrirModal, fecharModal } from "../modal.js";
 import { criarCombobox } from "../combobox.js";
+import { lancarParcelas } from "./financeiro.js";
 
 const esc = (s) => {
   const d = document.createElement("div");
@@ -148,6 +149,13 @@ async function editor(p, { modo, aoMudar = () => {} }) {
           <button type="button" class="btn btn-outline btn-sm" id="pp-recusada">👎 Recusada</button>
         </div>
         ${p.prospectId ? '<div class="sub" style="margin-top:4px;">Ligada a um prospect do CRM: ao marcar como enviada, ele vai para "Proposta Enviada" com o valor total.</div>' : ""}
+        ${
+          p.status === "Aceita"
+            ? (p.parcelasLancadas || []).length
+              ? `<div class="sub" style="margin-top:6px;">💰 ${p.parcelasLancadas.length} parcela(s) já lançada(s) no Financeiro.</div>`
+              : '<div style="margin-top:8px;"><button type="button" class="btn btn-primary btn-sm" id="pp-parcelas">💰 Lançar parcelas no Financeiro</button> <span class="sub">para ser lembrada de cobrar</span></div>'
+            : ""
+        }
       </div>`
     }
     </div>`);
@@ -296,6 +304,11 @@ async function editor(p, { modo, aoMudar = () => {} }) {
       erro(e.message);
     }
   };
+  const btnParcelas = $("pp-parcelas");
+  if (btnParcelas)
+    btnParcelas.addEventListener("click", () =>
+      lancarParcelas({ empresaId: p.empresaId || "", clienteNome: p.clienteNome, total: calcular(condicoes()).total || "", propostaId: p.id, descricao: `Recrutamento e Seleção — proposta nº ${p.numero}` }, aoMudar)
+    );
   $("pp-enviada").addEventListener("click", () => mudarStatus("Enviada", "Proposta marcada como enviada."));
   $("pp-aceita").addEventListener("click", () => mudarStatus("Aceita", "Proposta aceita! 🎉"));
   $("pp-recusada").addEventListener("click", () => mudarStatus("Recusada", "Proposta marcada como recusada."));

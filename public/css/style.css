@@ -818,3 +818,30 @@ tr.linha-nova td:first-child { box-shadow: inset 4px 0 0 #f0a020; }
 .nps-resp-txt .sub { font-size: 12.5px; display: block; overflow: hidden; text-overflow: ellipsis; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; }
 .nps-resp .tag { flex: none; }
 .modal-close-row a.btn { text-decoration: none; }
+
+/* Ponto: solicitações de ajuste */
+.ponto-sol-topo { display: flex; justify-content: space-between; align-items: center; gap: 10px; flex-wrap: wrap; }
+.ponto-sol-item { border-top: 1px solid var(--border); padding: 8px 0; }
+.sol-tipos { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 12px; }
+.sol-tipo { border: 1.5px solid var(--border); background: white; border-radius: 999px; padding: 7px 12px; cursor: pointer; font-size: 13.5px; color: inherit; font-family: inherit; }
+.sol-tipo.ativo { border-color: var(--teal); background: #e3f8f6; color: #0f6f68; font-weight: 600; }
+.sol-batidas { grid-template-columns: repeat(4, 1fr); }
+.sol-card { background: white; border: 1px solid var(--border); border-radius: 12px; padding: 12px 14px; margin-bottom: 10px; }
+.sol-card-pend { border-left: 4px solid #f0a020; }
+.sol-card-topo { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; margin-bottom: 4px; }
+.sol-card-topo .tag { margin-left: auto; }
+.tab-btn .nav-badge { margin-left: 4px; }
+@media (max-width: 560px) { .sol-batidas { grid-template-columns: 1fr 1fr; } }
+
+/* Financeiro: contas a receber */
+.cr-kpis { display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap: 10px; margin-bottom: 12px; }
+.cr-kpis .kpi-value { font-size: 20px; }
+.cr-kpi-alerta { border-top: 3px solid var(--danger); }
+.cr-kpi-atencao { border-top: 3px solid #f0a020; }
+.cr-kpi-ok { border-top: 3px solid var(--success); }
+tr.cr-vencida td { background: #fff5f4; }
+tr.cr-hoje td { background: #fffaf0; }
+.nav-badge-alerta { background: var(--danger); }
+.ponto-sol-item, #mp-solicitacoes > .sub { font-size: 13.5px; }
+.ponto-sol-item .sub { font-size: 12.5px; }
+.cr-kpis .sub { font-size: 12px; color: var(--text-muted); margin-top: 4px; }

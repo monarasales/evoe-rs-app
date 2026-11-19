@@ -28,7 +28,8 @@ function inicioDoPonto(colaborador, marcacoesDoColab, hoje) {
  */
 function apurarColaborador(colaborador, inicio, fim, ctx = {}) {
   const hoje = ctx.hoje || dataLocal();
-  const todasDoColab = (ctx.marcacoes || db.readCollection(COL_MARCACOES)).filter((mk) => mk.colaboradorId === colaborador.id);
+  // Batida corrigida por ajuste aprovado fica guardada (invalidada), mas não entra no cálculo.
+  const todasDoColab = (ctx.marcacoes || db.readCollection(COL_MARCACOES)).filter((mk) => mk.colaboradorId === colaborador.id && !mk.invalidada);
   const inicioPonto = inicioDoPonto(colaborador, todasDoColab, hoje);
   if (inicio < inicioPonto) inicio = inicioPonto;
   if (inicio > fim) return [];

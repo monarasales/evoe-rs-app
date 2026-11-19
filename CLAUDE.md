@@ -80,6 +80,16 @@ Baseado no documento "Controle de Ponto Próprio" (Resolut). Construído por eta
   Mensagem editável em 2 níveis: modelo padrão (Configurações › Parâmetros, Gestor; `parametros` chave
   "mensagemConvite", `GET/PUT /api/config/mensagem-convite`, marcadores {VAGA} {DETALHES} {PERFIL} {LINK}) e
   personalizada por vaga (`vaga.mensagemConvite` via `PATCH /api/vagas/:id/link`; vazio = volta ao padrão).
+- PONTO › SOLICITAÇÕES DE AJUSTE (Etapa 3): colaborador pede em Meu Ponto (esqueci de bater, bati errado, saí mais
+  cedo, cheguei atrasado, faltei; motivo obrigatório; comprovante opcional sem CID) → `utils/ponto/solicitacoes.js`,
+  coleção "pontoSolicitacoes"; Gestor aprova/recusa em Gestão do Ponto › Solicitações. Aprovar: inclui batida
+  (origem "ajuste"), corrige (original fica `invalidada: true`, ignorada pela apuração) e/ou cria ocorrência
+  (atraso_justificado, saida_antecipada_justificada/confirmada, tipos de falta). Recusar exige comentário.
+- FINANCEIRO › CONTAS A RECEBER: `utils/contasReceber.js` une parcelas dos contratos (pagamentos em
+  `contrato.pagamentos.p1/p2`; contratos anteriores a 2026-11-19 têm a 1ª parcela presumida paga) e lançamentos
+  (coleção "recebiveis": manual ou de proposta aceita). Baixa, desfazer (guarda histórico), cobrança por WhatsApp
+  registrada; lembretes ao Gestor que se repetem até o pagamento (3 dias antes, no dia, a cada 3 dias de atraso,
+  vaga concluída) — substituiu o aviso único do contratoChecker.
 - PROPOSTAS (CRM › Propostas, só Gestor): `server/utils/proposta.js` (modelo padrão com os textos do PDF da Evoé,
   marcadores {CLIENTE} {PERCENTUAL}..., cálculo valor/vaga = máx(salário × taxa, salário mínimo), PDF pdfkit com
   imagens em server/assets/proposta/ — capa, papel timbrado c/ marca d'água, parceiros — e Word via docx).

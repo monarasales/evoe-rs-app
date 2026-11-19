@@ -3,6 +3,7 @@
 // aparecem, a conclusão da gestão sobre eles não.
 
 import { api } from "../api.js";
+import { blocoMinhasSolicitacoes, abrirSolicitacao } from "./pontoSolicitacoes.js";
 import { showToast } from "../state.js";
 import {
   escapeHtml,
@@ -84,6 +85,8 @@ export async function renderPonto(root) {
         <div id="mp-resumo" class="ponto-resumo"></div>
         <div id="mp-dias"></div>
       </div>
+
+      <div class="card" id="mp-solicitacoes"></div>
     </div>
   `;
 
@@ -180,12 +183,15 @@ export async function renderPonto(root) {
                   <td><strong>${dataCurta(d.data)}</strong> <span class="sub">${NOME_DIA[d.diaSemana]}</span></td>
                   <td>${horariosDia(d)}<div>${ocorrenciasDia(d)}</div></td>
                   <td>${d.horarios.length ? duracao(d.cargaCumprida) : "—"}</td>
-                  <td>${situacaoDia(d)}</td>
+                  <td>${situacaoDia(d)}${["incompleto", "falta"].includes(d.status) || d.atrasoMin > 0 || d.saidaAntecipadaMin > 0 ? `<div><button type="button" class="link-btn" data-justificar="${d.data}" data-tipo="${d.status === "falta" ? "falta" : d.status === "incompleto" ? "esqueci" : d.atrasoMin > 0 ? "atraso" : "saida_antecipada"}">📝 justificar</button></div>` : ""}</td>
                 </tr>`
               )
               .join("")}</tbody>
           </table></div>`
         : '<div class="empty-state">Nenhum dia de expediente neste mês até agora.</div>';
+      $("mp-dias").querySelectorAll("[data-justificar]").forEach((b) =>
+        b.addEventListener("click", () => abrirSolicitacao({ data: b.dataset.justificar, tipo: b.dataset.tipo }, recarregarSolicitacoes))
+      );
     } catch (err) {
       $("mp-dias").innerHTML = `<div class="empty-state">${escapeHtml(err.message)}</div>`;
     }
@@ -200,7 +206,13 @@ export async function renderPonto(root) {
     carregarMes();
   });
 
+  function recarregarSolicitacoes() {
+    blocoMinhasSolicitacoes($("mp-solicitacoes"), recarregarSolicitacoes);
+    carregarMes();
+  }
+
   desenharHoje();
   carregarLocalizacao();
   carregarMes();
+  blocoMinhasSolicitacoes($("mp-solicitacoes"), recarregarSolicitacoes);
 }

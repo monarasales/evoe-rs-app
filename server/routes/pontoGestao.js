@@ -252,6 +252,79 @@ router.delete("/ocorrencias/:id", (req, res) => {
   res.json({ sucesso: true });
 });
 
+// ---------- Solicitações de ajuste dos colaboradores ----------
+const SOL = require("../utils/ponto/solicitacoes");
+const { notify } = require("../utils/notify");
+const { caminhoCurriculo } = require("../utils/curriculos");
+
+router.get("/solicitacoes", (req, res) => {
+  const status = req.query.status || "";
+  const marcacoes = db.readCollection("pontoMarcacoes");
+  const lista = db
+    .readCollection(SOL.COL)
+    .filter((s) => !status || s.status === status)
+    .sort((a, b) => (b.status === "Pendente") - (a.status === "Pendente") || String(b.createdAt).localeCompare(String(a.createdAt)))
+    .map((s) => ({
+      ...s,
+      tipoNome: SOL.nomeTipo(s.tipo),
+      // batidas do dia, para a gestão ver o contexto antes de decidir
+      batidasDoDia: marcacoes.filter((mk) => mk.colaboradorId === s.colaboradorId && mk.data === s.data && !mk.invalidada).sort((a, b) => a.horaMin - b.horaMin).map((mk) => minParaHhmm(mk.horaMin)),
+      ocorrenciaNome: s.efeitos && s.efeitos.tipoOcorrencia ? SOL.nomeOcorrencia(s.efeitos.tipoOcorrencia) : null,
+    }));
+  res.json({ lista, opcoesFalta: SOL.OCORRENCIAS_FALTA.map((id) => ({ id, nome: SOL.nomeOcorrencia(id) })) });
+});
+
+router.get("/solicitacoes/contagem", (req, res) => {
+  res.json({ pendentes: db.readCollection(SOL.COL).filter((s) => s.status === "Pendente").length });
+});
+
+function avisarColaborador(s, aprovada, comentario) {
+  if (!s.consultorId) return;
+  notify({
+    tipo: "Ajuste de ponto",
+    destinatarioId: s.consultorId,
+    assunto: `Seu ajuste de ponto foi ${aprovada ? "aprovado ✅" : "recusado"}`,
+    mensagem: `${SOL.nomeTipo(s.tipo)} em ${s.data.split("-").reverse().join("/")}${comentario ? ` — ${comentario}` : ""}.`,
+  });
+}
+
+router.post("/solicitacoes/:id/aprovar", (req, res) => {
+  const s = db.findById(SOL.COL, req.params.id);
+  if (!s) return res.status(404).json({ erro: "Pedido não encontrado." });
+  if (s.status !== "Pendente") return res.status(400).json({ erro: "Este pedido já foi analisado." });
+  const b = req.body || {};
+  let efeitos;
+  try {
+    efeitos = SOL.aprovar(s, req.consultor, { abonar: !!b.abonar, tipoOcorrencia: b.tipoOcorrencia });
+  } catch (err) {
+    return res.status(400).json({ erro: err.message });
+  }
+  const comentario = String(b.comentario || "").trim().slice(0, 500);
+  const atual = db.update(SOL.COL, s.id, { status: "Aprovada", efeitos, decisao: { em: new Date().toISOString(), por: req.consultor.nome, porId: req.consultor.id, comentario, abonar: !!b.abonar } });
+  avisarColaborador(s, true, comentario);
+  res.json(atual);
+});
+
+router.post("/solicitacoes/:id/recusar", (req, res) => {
+  const s = db.findById(SOL.COL, req.params.id);
+  if (!s) return res.status(404).json({ erro: "Pedido não encontrado." });
+  if (s.status !== "Pendente") return res.status(400).json({ erro: "Este pedido já foi analisado." });
+  const comentario = String((req.body || {}).comentario || "").trim().slice(0, 500);
+  if (comentario.length < 3) return res.status(400).json({ erro: "Explique o motivo da recusa para o colaborador." });
+  const atual = db.update(SOL.COL, s.id, { status: "Recusada", decisao: { em: new Date().toISOString(), por: req.consultor.nome, porId: req.consultor.id, comentario } });
+  avisarColaborador(s, false, comentario);
+  res.json(atual);
+});
+
+router.get("/solicitacoes/:id/anexo", (req, res) => {
+  const s = db.findById(SOL.COL, req.params.id);
+  if (!s || !s.anexo) return res.status(404).send("Anexo não encontrado.");
+  const caminho = caminhoCurriculo(s.anexo.arquivo);
+  if (!caminho) return res.status(404).send("Arquivo não encontrado.");
+  res.setHeader("Content-Type", s.anexo.tipo || "application/octet-stream");
+  res.sendFile(caminho);
+});
+
 // ---------- Escalas ----------
 router.get("/jornadas", (req, res) => {
   const colaboradores = db.readCollection("colaboradores");

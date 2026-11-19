@@ -267,3 +267,28 @@ test("presença: atrasado conta como presente, aguardando dentro da tolerância,
   assert.equal(statusPresenca({ ...base, marcacoes: [], agoraMin: m("09:30"), ocorrencia: oc("home_office") }), "externo");
   assert.equal(statusPresenca({ ...base, escalaDia: null, marcacoes: [], agoraMin: m("09:30") }), "sem_expediente");
 });
+
+test("saída antecipada justificada devolve os minutos ao saldo", () => {
+  const { calcularDia } = require("../server/utils/ponto/motor");
+  const escalaDia = { entrada: "09:00", saida: "16:00" };
+  const base = { data: "2026-11-10", marcacoes: [540, 900], escalaDia, hoje: "2026-11-20" }; // 09:00–15:00
+  const sem = calcularDia(base);
+  assert.equal(sem.saidaAntecipadaMin, 60);
+  assert.equal(sem.saldo, -60);
+  const com = calcularDia({ ...base, ocorrencia: { abonaSaida: true } });
+  assert.equal(com.saldo, 0);
+  assert.equal(com.saidaAbonadaMin, 60);
+});
+
+test("dia incompleto: saída antecipada aprovada fecha o dia (com abono = sem desconto)", () => {
+  const { calcularDia } = require("../server/utils/ponto/motor");
+  const escalaDia = { entrada: "09:00", saidaAlmoco: "12:00", voltaAlmoco: "13:00", saida: "16:00" };
+  const base = { data: "2026-11-18", marcacoes: [540, 840], escalaDia, hoje: "2026-11-20" }; // só entrada e saída 14h
+  assert.equal(calcularDia(base).status, "incompleto");
+  const comAbono = calcularDia({ ...base, ocorrencia: { abonaSaida: true, confirmaDia: true } });
+  assert.equal(comAbono.status, "normal");
+  assert.equal(comAbono.saldo, 0);
+  const semAbono = calcularDia({ ...base, ocorrencia: { confirmaDia: true } });
+  assert.equal(semAbono.contaNoTotal, true);
+  assert.ok(semAbono.saldo < 0);
+});

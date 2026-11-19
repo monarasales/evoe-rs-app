@@ -9,7 +9,7 @@ const { somarDias } = require("./tempo");
 
 const COL_OCORRENCIAS = "pontoOcorrencias";
 
-const F = (abonaFalta, abonaAtraso, contaTrabalhado, descontaBanco) => ({ abonaFalta, abonaAtraso, contaTrabalhado, descontaBanco });
+const F = (abonaFalta, abonaAtraso, contaTrabalhado, descontaBanco, abonaSaida = false, confirmaDia = false) => ({ abonaFalta, abonaAtraso, contaTrabalhado, descontaBanco, abonaSaida, confirmaDia });
 
 // grupo, id, nome, efeitos, observação para a tela
 const CATALOGO = [
@@ -19,6 +19,8 @@ const CATALOGO = [
   ["Faltas e atrasos", "falta_justificada", "Falta justificada", F(true, false, false, false), "Aceita pela gestão, sem atestado."],
   ["Faltas e atrasos", "falta_injustificada", "Falta injustificada", F(false, false, false, false), "Registra a falta (não apaga): o caso sai da fila de pendências."],
   ["Faltas e atrasos", "atraso_justificado", "Atraso justificado", F(false, true, false, false), "Abona só o atraso do dia."],
+  ["Faltas e atrasos", "saida_antecipada_justificada", "Saída antecipada justificada", F(false, false, false, false, true, true), "Abona a saída mais cedo: o dia fecha sem desconto."],
+  ["Faltas e atrasos", "saida_antecipada_confirmada", "Saída antecipada (sem abono)", F(false, false, false, false, false, true), "Confirma que saiu mais cedo: o dia fecha e as horas a menos saem do banco."],
   ["Férias e folgas", "ferias", "Férias / recesso de estágio", F(true, false, false, false), "Sai do denominador da presença."],
   ["Férias e folgas", "folga_compensatoria", "Folga compensatória", F(true, false, false, true), "As horas saem do banco de horas."],
   ["Férias e folgas", "recesso_concedido", "Recesso concedido", F(true, false, false, false), "Recesso dado pela empresa."],
@@ -53,7 +55,7 @@ function mapaOcorrencias(ocorrencias = null) {
       const tipo = TIPOS.get(oc.tipo);
       if (!tipo || !AFETA_DIA(oc.tipo)) continue;
       for (let d = oc.dataInicio; d <= oc.dataFim; d = somarDias(d, 1)) {
-        mapa.set(`${oc.colaboradorId}|${d}`, { id: oc.id, tipo: tipo.id, nome: tipo.nome, abonaFalta: tipo.abonaFalta, abonaAtraso: tipo.abonaAtraso, contaTrabalhado: tipo.contaTrabalhado, descontaBanco: tipo.descontaBanco });
+        mapa.set(`${oc.colaboradorId}|${d}`, { id: oc.id, tipo: tipo.id, nome: tipo.nome, abonaFalta: tipo.abonaFalta, abonaAtraso: tipo.abonaAtraso, contaTrabalhado: tipo.contaTrabalhado, descontaBanco: tipo.descontaBanco, abonaSaida: !!tipo.abonaSaida, confirmaDia: !!tipo.confirmaDia });
       }
     }
   } catch (err) {

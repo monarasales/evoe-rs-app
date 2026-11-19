@@ -175,5 +175,64 @@ router.get("/meu/periodo", exigirColaborador, (req, res) => {
   res.json({ periodo, resumo, dias: dias.slice().reverse() });
 });
 
+// ---------- Solicitações de ajuste (o colaborador explica; a gestão aprova) ----------
+const SOL = require("../utils/ponto/solicitacoes");
+const { notify } = require("../utils/notify");
+const { salvarDocumento, caminhoCurriculo } = require("../utils/curriculos");
+
+router.get("/solicitacoes/tipos", (req, res) => res.json({ tipos: SOL.TIPOS_SOLICITACAO, rotulos: SOL.ROTULOS_BATIDA }));
+
+router.get("/meu/solicitacoes", exigirColaborador, (req, res) => {
+  const lista = db
+    .readCollection(SOL.COL)
+    .filter((s) => s.colaboradorId === req.colaborador.id)
+    .sort((a, b) => String(b.createdAt).localeCompare(String(a.createdAt)))
+    .map((s) => ({ ...s, tipoNome: SOL.nomeTipo(s.tipo) }));
+  res.json(lista);
+});
+
+router.post("/meu/solicitacoes", exigirColaborador, (req, res) => {
+  const b = req.body || {};
+  const { dados, erro } = SOL.validarSolicitacao(b, req.colaborador, dataLocal());
+  if (erro) return res.status(400).json({ erro });
+  let s = db.insert(SOL.COL, { ...dados, status: "Pendente", colaboradorNome: req.colaborador.nome });
+  if (b.anexo && b.anexo.conteudoBase64) {
+    try {
+      // comprovante (ex.: atestado) — sem CID/diagnóstico; fica na pasta do colaborador
+      s = db.update(SOL.COL, s.id, { anexo: salvarDocumento({ id: `ponto-${req.colaborador.id}` }, b.anexo.nomeArquivo, b.anexo.conteudoBase64, req.colaborador.nome) });
+    } catch (err) {
+      db.update(SOL.COL, s.id, { status: "Cancelada", canceladaMotivo: `Anexo inválido: ${err.message}` });
+      return res.status(400).json({ erro: err.message });
+    }
+  }
+  db.readCollection("consultores")
+    .filter((c) => c.perfil === "Gestor" && c.ativo !== false)
+    .forEach((g) =>
+      notify({
+        tipo: "Ajuste de ponto",
+        destinatarioId: g.id,
+        assunto: `Ajuste de ponto para aprovar: ${req.colaborador.nome}`,
+        mensagem: `${req.colaborador.nome} — ${SOL.nomeTipo(s.tipo)} em ${s.data.split("-").reverse().join("/")}: "${s.motivo.slice(0, 160)}". Analise em Gestão do Ponto › Solicitações.`,
+      })
+    );
+  res.status(201).json(s);
+});
+
+router.post("/meu/solicitacoes/:id/cancelar", exigirColaborador, (req, res) => {
+  const s = db.findById(SOL.COL, req.params.id);
+  if (!s || s.colaboradorId !== req.colaborador.id) return res.status(404).json({ erro: "Pedido não encontrado." });
+  if (s.status !== "Pendente") return res.status(400).json({ erro: "Este pedido já foi analisado." });
+  res.json(db.update(SOL.COL, s.id, { status: "Cancelada", canceladaEm: new Date().toISOString() }));
+});
+
+router.get("/meu/solicitacoes/:id/anexo", exigirColaborador, (req, res) => {
+  const s = db.findById(SOL.COL, req.params.id);
+  if (!s || s.colaboradorId !== req.colaborador.id || !s.anexo) return res.status(404).send("Anexo não encontrado.");
+  const caminho = caminhoCurriculo(s.anexo.arquivo);
+  if (!caminho) return res.status(404).send("Arquivo não encontrado.");
+  res.setHeader("Content-Type", s.anexo.tipo || "application/octet-stream");
+  res.sendFile(caminho);
+});
+
 module.exports = router;
 module.exports.colaboradorDaSessao = colaboradorDaSessao;

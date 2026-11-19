@@ -24,6 +24,7 @@ import {
 
 const ABAS = [
   { id: "hoje", label: "Hoje" },
+  { id: "solicitacoes", label: "Solicitações" },
   { id: "registros", label: "Registros" },
   { id: "folha", label: "Folha" },
   { id: "frequencia", label: "Frequência" },
@@ -47,12 +48,24 @@ export async function renderPontoGestao(root) {
       </div>
     </div>
     <div class="tabs" id="pg-tabs">
-      ${ABAS.map((a) => `<button type="button" class="tab-btn" data-aba="${a.id}">${a.label}</button>`).join("")}
+      ${ABAS.map((a) => `<button type="button" class="tab-btn" data-aba="${a.id}">${a.label}${a.id === "solicitacoes" ? ' <span class="nav-badge hidden" id="pg-sol-badge"></span>' : ""}</button>`).join("")}
     </div>
     <div id="pg-conteudo"></div>
   `;
   const conteudo = root.querySelector("#pg-conteudo");
   const tabs = root.querySelector("#pg-tabs");
+  async function atualizarContagem() {
+    try {
+      const { pendentes } = await api.get("/api/ponto-gestao/solicitacoes/contagem");
+      const b = root.querySelector("#pg-sol-badge");
+      b.textContent = String(pendentes);
+      b.classList.toggle("hidden", !pendentes);
+      if (window.__evoe.atualizarBadgeNotificacoes) window.__evoe.atualizarBadgeNotificacoes();
+    } catch (e) {
+      /* silencioso */
+    }
+  }
+  atualizarContagem();
 
   function renderizar() {
     tabs.querySelectorAll(".tab-btn").forEach((b) => b.classList.toggle("ativo", b.dataset.aba === abaAtiva));
@@ -64,6 +77,7 @@ export async function renderPontoGestao(root) {
     };
     const abas = {
       hoje: () => abaHoje(conteudo),
+      solicitacoes: () => abaSolicitacoes(conteudo, atualizarContagem),
       registros: () => abaRegistros(conteudo, estado),
       folha: () => abaFolha(conteudo, estado),
       frequencia: () => abaFrequencia(conteudo, estado),
@@ -721,6 +735,90 @@ async function abaInconsistencias(conteudo, estado, irPara) {
 }
 
 // ======================= Ocorrências =======================
+// ---------- Solicitações de ajuste dos colaboradores ----------
+async function abaSolicitacoes(conteudo, aoMudar) {
+  conteudo.innerHTML = '<div class="empty-state">Carregando...</div>';
+  let d;
+  try {
+    d = await api.get("/api/ponto-gestao/solicitacoes");
+  } catch (e) {
+    conteudo.innerHTML = `<div class="empty-state">${escapeHtml(e.message)}</div>`;
+    return;
+  }
+  const pend = d.lista.filter((s) => s.status === "Pendente");
+  const outras = d.lista.filter((s) => s.status !== "Pendente");
+  const detalhe = (s) =>
+    s.tipo === "esqueci"
+      ? `Incluir: ${(s.batidas || []).map((b) => `<strong>${escapeHtml(b.rotulo)} ${escapeHtml(b.hora)}</strong>`).join(" · ")}`
+      : s.tipo === "corrigir"
+      ? `Trocar a batida <strong>${escapeHtml(s.horaRegistrada)}</strong> por <strong>${escapeHtml(s.horaCorreta)}</strong>`
+      : s.tipo === "saida_antecipada"
+      ? `Saiu às <strong>${escapeHtml(s.horaSaida)}</strong>${s.incluirBatida ? " — não bateu a saída (o horário será incluído)" : ""}`
+      : s.tipo === "atraso"
+      ? s.horaChegada
+        ? `Chegou às <strong>${escapeHtml(s.horaChegada)}</strong>`
+        : ""
+      : s.dataFim && s.dataFim !== s.data
+      ? `De ${dataBr(s.data)} a ${dataBr(s.dataFim)}`
+      : "";
+  const acoes = (s) => {
+    if (s.tipo === "esqueci" || s.tipo === "corrigir") return `<button type="button" class="btn btn-primary btn-sm" data-aprovar="${s.id}">✅ Aprovar e ajustar o ponto</button>`;
+    if (s.tipo === "saida_antecipada" || s.tipo === "atraso")
+      return `<button type="button" class="btn btn-primary btn-sm" data-aprovar="${s.id}" data-abonar="1">✅ Aprovar e abonar (não desconta)</button>
+        <button type="button" class="btn btn-outline btn-sm" data-aprovar="${s.id}">Aprovar sem abonar (desconta do banco)</button>`;
+    return `<select data-tipo-falta="${s.id}">${d.opcoesFalta.map((o) => `<option value="${o.id}" ${o.id === "falta_justificada" ? "selected" : ""}>${escapeHtml(o.nome)}</option>`).join("")}</select>
+      <button type="button" class="btn btn-primary btn-sm" data-aprovar="${s.id}">✅ Aprovar</button>`;
+  };
+  const cartao = (s) => `<div class="sol-card ${s.status === "Pendente" ? "sol-card-pend" : ""}">
+      <div class="sol-card-topo"><strong>${escapeHtml(s.colaboradorNome || "")}</strong> <span class="sub">${escapeHtml(s.tipoNome)} · ${NOME_DIA[["dom", "seg", "ter", "qua", "qui", "sex", "sab"][new Date(`${s.data}T12:00:00`).getDay()]]} ${dataBr(s.data)}</span>
+        <span class="tag ${s.status === "Pendente" ? "tag-standby" : s.status === "Aprovada" ? "tag-nprazo" : "tag-atrasada"}">${escapeHtml(s.status)}</span></div>
+      ${detalhe(s) ? `<div>${detalhe(s)}</div>` : ""}
+      <div class="parecer-texto" style="margin:6px 0;">"${escapeHtml(s.motivo)}"</div>
+      <div class="sub">Batidas registradas no dia: ${s.batidasDoDia.length ? s.batidasDoDia.join(" · ") : "nenhuma"}${s.anexo ? ` · 📎 <a href="/api/ponto-gestao/solicitacoes/${s.id}/anexo" target="_blank" rel="noopener">${escapeHtml(s.anexo.nomeOriginal)}</a>` : ""} · pedido em ${new Date(s.createdAt).toLocaleString("pt-BR", { dateStyle: "short", timeStyle: "short" })}</div>
+      ${
+        s.status === "Pendente"
+          ? `<div class="form-row" style="margin:8px 0 6px;"><input type="text" data-comentario="${s.id}" placeholder="Comentário para o colaborador (obrigatório ao recusar)" /></div>
+             <div class="link-acoes">${acoes(s)}<button type="button" class="btn btn-outline btn-sm" data-recusar="${s.id}" style="color:var(--danger);">Recusar</button></div>`
+          : `<div class="sub" style="margin-top:4px;">${s.status} por ${escapeHtml((s.decisao || {}).por || "—")}${s.decisao && s.decisao.em ? ` em ${new Date(s.decisao.em).toLocaleDateString("pt-BR")}` : ""}${s.decisao && s.decisao.abonar ? " · abonado" : ""}${s.ocorrenciaNome ? ` · lançado como ${escapeHtml(s.ocorrenciaNome)}` : ""}${s.decisao && s.decisao.comentario ? ` — "${escapeHtml(s.decisao.comentario)}"` : ""}</div>`
+      }
+    </div>`;
+  conteudo.innerHTML = `
+    <div class="sub" style="margin-bottom:10px;">Pedidos dos colaboradores (esqueceu de bater, bateu errado, saiu mais cedo, atrasou, faltou). Ao aprovar, o ponto é ajustado automaticamente — as batidas originais ficam guardadas.</div>
+    <h3 class="nps-subtitulo">⏳ Aguardando sua análise (${pend.length})</h3>
+    ${pend.length ? pend.map(cartao).join("") : '<div class="empty-state">Nenhum pedido pendente. 🎉</div>'}
+    ${outras.length ? `<details style="margin-top:14px;"><summary class="sub">Histórico de pedidos analisados (${outras.length})</summary>${outras.map(cartao).join("")}</details>` : ""}`;
+  const comentario = (id) => (conteudo.querySelector(`[data-comentario="${id}"]`) || {}).value || "";
+  conteudo.querySelectorAll("[data-aprovar]").forEach((b) =>
+    b.addEventListener("click", async () => {
+      const id = b.dataset.aprovar;
+      b.disabled = true;
+      try {
+        const sel = conteudo.querySelector(`[data-tipo-falta="${id}"]`);
+        await api.post(`/api/ponto-gestao/solicitacoes/${id}/aprovar`, { abonar: !!b.dataset.abonar, tipoOcorrencia: sel ? sel.value : undefined, comentario: comentario(id) });
+        showToast("Pedido aprovado e ponto ajustado. O colaborador foi avisado.", "sucesso");
+        aoMudar();
+        abaSolicitacoes(conteudo, aoMudar);
+      } catch (e) {
+        showToast(e.message, "erro");
+        b.disabled = false;
+      }
+    })
+  );
+  conteudo.querySelectorAll("[data-recusar]").forEach((b) =>
+    b.addEventListener("click", async () => {
+      const id = b.dataset.recusar;
+      try {
+        await api.post(`/api/ponto-gestao/solicitacoes/${id}/recusar`, { comentario: comentario(id) });
+        showToast("Pedido recusado. O colaborador foi avisado.", "sucesso");
+        aoMudar();
+        abaSolicitacoes(conteudo, aoMudar);
+      } catch (e) {
+        showToast(e.message, "erro");
+      }
+    })
+  );
+}
+
 async function abaOcorrencias(conteudo, estado) {
   const sel = seletorMes(estado, () => abaOcorrencias(conteudo, estado));
   conteudo.innerHTML = `

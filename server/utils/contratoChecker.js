@@ -52,9 +52,10 @@ function checkParcelasContrato() {
   if (alterou) db.writeCollection("contratos", contratos);
 }
 
+// Substituído por utils/contasReceber.js (lembretes que se repetem até o pagamento, para
+// as duas parcelas e também para lançamentos manuais). Mantido aqui só por compatibilidade.
 function startContratoChecker(intervalMinutos = 60) {
-  checkParcelasContrato();
-  setInterval(checkParcelasContrato, intervalMinutos * 60 * 1000);
+  require("./contasReceber").startLembretesCobranca(intervalMinutos);
 }
 
 module.exports = { checkParcelasContrato, startContratoChecker };
